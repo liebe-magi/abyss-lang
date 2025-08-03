@@ -16,7 +16,7 @@ colored = "3.0.0"
 dirs = "6.0.0"
 pest = "2.7.11"
 pest_derive = "2.7.11"
-rustyline = "16.0.0"
+rustyline = "17.0.0"
 
 [[bin]]
 name = "abyss"

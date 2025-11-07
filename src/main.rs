@@ -2,7 +2,7 @@ use abyss_lang::{
     env::Environment,
     eval::{display_error_with_source, evaluate, EvalError, EvalResult},
     format::format_ast,
-    parser::{build_ast, parse, Rule},
+    parser::{emit_diagnostics, parse, ParserDiagnostic},
 };
 use clap::{Parser, Subcommand};
 use colored::*;
@@ -68,43 +68,42 @@ fn get_history_file_path() -> PathBuf {
     abyss_dir.join("abyss_history.log")
 }
 
+fn report_diagnostics(source_id: &str, source: &str, diagnostics: &[ParserDiagnostic]) -> bool {
+    if diagnostics.is_empty() {
+        return false;
+    }
+
+    if let Err(err) = emit_diagnostics(source_id, source, diagnostics) {
+        eprintln!("Failed to emit diagnostics: {err}");
+    }
+
+    true
+}
+
 /// Executes a given AbySS script by parsing and evaluating it in a new environment.
 ///
 /// # Arguments
 /// * `script` - A string containing the AbySS script to be executed.
 fn execute_script(script: &str) {
     let mut env = Environment::new();
+    let outcome = parse(script);
+    if report_diagnostics("<script>", script, &outcome.diagnostics) {
+        return;
+    }
 
-    match parse(script) {
-        Ok(pair) => {
-            for inner_pair in pair.into_inner() {
-                if inner_pair.as_rule() != Rule::EOI {
-                    match build_ast(inner_pair) {
-                        Ok(ast) => match evaluate(&ast, &mut env) {
-                            Ok(_) => {}
-                            Err(e) => {
-                                let error_message = e.to_string();
-                                match e {
-                                    EvalError::UndefinedVariable(_, line_info)
-                                    | EvalError::InvalidOperation(_, line_info)
-                                    | EvalError::NegativeExponent(line_info)
-                                    | EvalError::TypeError(_, line_info) => {
-                                        display_error_with_source(
-                                            script,
-                                            line_info,
-                                            &error_message,
-                                        );
-                                        return;
-                                    }
-                                }
-                            }
-                        },
-                        Err(e) => panic!("Error: {}", e),
-                    }
+    for ast in outcome.ast {
+        if let Err(error) = evaluate(&ast, &mut env) {
+            let message = error.to_string();
+            match error {
+                EvalError::UndefinedVariable(_, line_info)
+                | EvalError::InvalidOperation(_, line_info)
+                | EvalError::NegativeExponent(line_info)
+                | EvalError::TypeError(_, line_info) => {
+                    display_error_with_source(script, line_info, &message);
+                    return;
                 }
             }
         }
-        Err(e) => panic!("Error: {}", e),
     }
 }
 
@@ -113,21 +112,13 @@ fn execute_script(script: &str) {
 /// # Arguments
 /// * `script` - A string containing the AbySS script to be formatted.
 fn execute_format(script: &str) {
-    match parse(script) {
-        Ok(pair) => {
-            for inner_pair in pair.into_inner() {
-                if inner_pair.as_rule() != Rule::EOI {
-                    match build_ast(inner_pair) {
-                        Ok(ast) => {
-                            let formatted_code = format_ast(&ast, 0);
-                            println!("{}", formatted_code);
-                        }
-                        Err(e) => panic!("Error: {}", e),
-                    }
-                }
-            }
-        }
-        Err(e) => panic!("Error: {}", e),
+    let outcome = parse(script);
+    if report_diagnostics("<format>", script, &outcome.diagnostics) {
+        return;
+    }
+
+    for ast in outcome.ast {
+        println!("{}", format_ast(&ast, 0));
     }
 }
 
@@ -191,49 +182,40 @@ fn start_interpreter(debug: bool) {
                 let close_braces = current_statement.matches('}').count();
 
                 if open_braces == close_braces && current_statement.ends_with(';') {
-                    match parse(&current_statement) {
-                        Ok(pair) => {
-                            for inner_pair in pair.into_inner() {
-                                if inner_pair.as_rule() != Rule::EOI {
-                                    match build_ast(inner_pair) {
-                                        Ok(ast) => {
-                                            if debug {
-                                                println!("{}", format!("AST: {:?}", ast).yellow());
-                                            }
-                                            match evaluate(&ast, &mut env) {
-                                                Ok(result) => {
-                                                    current_session_code
-                                                        .push_str(&format_ast(&ast, 0));
-                                                    current_session_code.push('\n');
-                                                    match result {
-                                                        EvalResult::Omen(b) => match b {
-                                                            true => println!("{}", "boon".green()),
-                                                            false => println!("{}", "hex".green()),
-                                                        },
-                                                        EvalResult::Arcana(n) => {
-                                                            println!("{}", format!("{}", n).green())
-                                                        }
-                                                        EvalResult::Aether(n) => {
-                                                            println!("{}", format!("{}", n).green())
-                                                        }
-                                                        EvalResult::Rune(s) => {
-                                                            println!("{}", s.green())
-                                                        }
-                                                        _ => {}
-                                                    }
-                                                }
-                                                Err(e) => {
-                                                    println!("{}", format!("Error: {}", e).red())
-                                                }
-                                            }
-                                        }
-                                        Err(e) => println!("{}", format!("Error: {}", e).red()),
+                    let outcome = parse(&current_statement);
+                    if report_diagnostics("<repl>", &current_statement, &outcome.diagnostics) {
+                        current_statement.clear();
+                        continue;
+                    }
+
+                    for ast in outcome.ast {
+                        if debug {
+                            println!("{}", format!("AST: {:?}", ast).yellow());
+                        }
+
+                        match evaluate(&ast, &mut env) {
+                            Ok(result) => {
+                                current_session_code.push_str(&format_ast(&ast, 0));
+                                current_session_code.push('\n');
+                                match result {
+                                    EvalResult::Omen(true) => println!("{}", "boon".green()),
+                                    EvalResult::Omen(false) => println!("{}", "hex".green()),
+                                    EvalResult::Arcana(n) => {
+                                        println!("{}", format!("{}", n).green())
                                     }
+                                    EvalResult::Aether(n) => {
+                                        println!("{}", format!("{}", n).green())
+                                    }
+                                    EvalResult::Rune(s) => println!("{}", s.green()),
+                                    _ => {}
                                 }
                             }
+                            Err(e) => {
+                                println!("{}", format!("Error: {}", e).red());
+                            }
                         }
-                        Err(e) => println!("{}", format!("Error: {}", e).red()),
                     }
+
                     current_statement.clear();
                 }
             }

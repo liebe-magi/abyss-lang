@@ -127,7 +127,6 @@ impl fmt::Display for Token {
 }
 
 pub fn lexer() -> impl Parser<char, Vec<SpannedToken>, Error = Simple<char>> {
-    use crate::parser::helpers::abyss_whitespace;
     use chumsky::text;
 
     let sign = just('-').to(String::from("-")).or_not();
@@ -240,7 +239,7 @@ pub fn lexer() -> impl Parser<char, Vec<SpannedToken>, Error = Simple<char>> {
     .map_with_span(|tok, span: std::ops::Range<usize>| (tok, SimpleSpan::from(span)));
 
     token
-        .padded_by(abyss_whitespace())
+        .padded_by(crate::parser::helpers::abyss_whitespace())
         .repeated()
         .then_ignore(end())
 }

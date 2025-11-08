@@ -6,7 +6,6 @@ use abyss_lang::{
 };
 use clap::{Parser, Subcommand};
 use colored::*;
-use dirs;
 use rustyline::config::Configurer;
 use rustyline::error::ReadlineError;
 use rustyline::history::FileHistory;

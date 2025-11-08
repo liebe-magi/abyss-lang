@@ -131,13 +131,11 @@ pub fn lexer() -> impl Parser<char, Vec<SpannedToken>, Error = Simple<char>> {
 
     let sign = just('-').to(String::from("-")).or_not();
 
-    let digits = text::digits(10);
-
     let aether = sign
         .clone()
-        .then(digits.clone())
+        .then(text::digits(10))
         .then_ignore(just('.'))
-        .then(digits.clone())
+        .then(text::digits(10))
         .map(|((sign, int_part), frac_part)| {
             let mut number = String::new();
             if let Some(sign) = sign {
@@ -146,17 +144,23 @@ pub fn lexer() -> impl Parser<char, Vec<SpannedToken>, Error = Simple<char>> {
             number.push_str(&int_part);
             number.push('.');
             number.push_str(&frac_part);
-            let value = number.parse::<f64>().unwrap();
+            let value = number
+                .parse::<f64>()
+                .expect("parser should only construct valid f64 literals");
             Token::Aether(OrderedFloat(value))
         });
 
-    let arcana = sign.then(digits.clone()).map(|(sign, value)| {
+    let arcana = sign.then(text::digits(10)).map(|(sign, value)| {
         let mut number = String::new();
         if let Some(sign) = sign {
             number.push_str(&sign);
         }
         number.push_str(&value);
-        Token::Arcana(number.parse::<i64>().unwrap())
+        Token::Arcana(
+            number
+                .parse::<i64>()
+                .expect("parser should only construct valid i64 literals"),
+        )
     });
 
     let escape = just('\\').ignore_then(one_of(r#""ntr\"#).map(|c| match c {

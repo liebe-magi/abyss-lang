@@ -1,13 +1,83 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:base"
+    "config:recommended",
+    ":semanticCommits",
+    "group:allNonMajor",
+    "helpers:pinGitHubActionDigests"
   ],
-  "automerge": true,
-  "vulnerabilityAlerts": {
-    "enabled": true
-  },
+  "timezone": "Asia/Tokyo",
+  "rebaseWhen": "behind-base-branch",
+  "labels": [
+    "dependencies"
+  ],
+  "prHourlyLimit": 2,
+  "prConcurrentLimit": 5,
   "lockFileMaintenance": {
-    "enabled": true
-  }
+    "enabled": true,
+    "schedule": [
+      "before 3am on sunday"
+    ]
+  },
+  "packageRules": [
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "patch",
+        "minor",
+        "digest"
+      ],
+      "automerge": true,
+      "automergeType": "pr",
+      "labels": [
+        "dependencies",
+        "github-actions"
+      ]
+    },
+    {
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchUpdateTypes": [
+        "patch"
+      ],
+      "automerge": true,
+      "automergeType": "pr",
+      "labels": [
+        "dependencies",
+        "cargo",
+        "automerge-safe"
+      ]
+    },
+    {
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchUpdateTypes": [
+        "minor"
+      ],
+      "automerge": false,
+      "labels": [
+        "dependencies",
+        "cargo",
+        "review-required"
+      ]
+    },
+    {
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "labels": [
+        "dependencies",
+        "cargo",
+        "major"
+      ],
+      "prPriority": 1
+    }
+  ]
 }

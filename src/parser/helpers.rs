@@ -104,7 +104,7 @@ pub fn scrub_comments_preserve_layout(source: &str) -> String {
                     result.push(' ');
 
                     let mut prev = '\0';
-                    while let Some(c) = chars.next() {
+                    for c in chars.by_ref() {
                         if c == '\n' {
                             result.push('\n');
                         } else {

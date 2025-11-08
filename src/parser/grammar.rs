@@ -265,7 +265,7 @@ fn orbit_flow_parser<'a>(ctx: ParserContext) -> Boxed<'a, SpannedAst> {
 
     let resume = just(Token::Resume)
         .map_with_span(|_, span: SimpleSpan<usize>| span)
-        .then(ident.clone().or_not())
+        .then(ident.or_not())
         .map(move |(resume_span, maybe_ident)| {
             let span = maybe_ident
                 .as_ref()

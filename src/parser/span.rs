@@ -53,9 +53,7 @@ impl<T: Copy + Ord> ChumskySpan for SimpleSpan<T> {
         }
     }
 
-    fn context(&self) -> Self::Context {
-        ()
-    }
+    fn context(&self) -> Self::Context {}
 
     fn start(&self) -> Self::Offset {
         self.start

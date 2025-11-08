@@ -1,17 +1,17 @@
-pub use helpers::{abyss_whitespace, attach_line_info, scrub_comments_preserve_layout, LineMap};
+pub use helpers::{LineMap, abyss_whitespace, attach_line_info, scrub_comments_preserve_layout};
 pub use span::SimpleSpan;
-pub use tokens::{lexer, SpannedToken, Token};
+pub use tokens::{SpannedToken, Token, lexer};
 mod diagnostics;
 mod grammar;
 mod helpers;
 mod span;
 mod tokens;
 
-pub use diagnostics::{emit_diagnostics, ParserDiagnostic};
+pub use diagnostics::{ParserDiagnostic, emit_diagnostics};
 
 use std::sync::Arc;
 
-use chumsky::{input::IterInput, Parser};
+use chumsky::{Parser, input::IterInput};
 use ordered_float::OrderedFloat;
 
 use crate::ast::AST;

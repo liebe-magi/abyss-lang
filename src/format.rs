@@ -1,4 +1,4 @@
-use crate::ast::{AssignmentOp, Type, AST};
+use crate::ast::{AST, AssignmentOp, Type};
 
 /// Formats an AST node into a readable string with appropriate indentation.
 /// This function handles various types of AST nodes, applying formatting rules based on node type.

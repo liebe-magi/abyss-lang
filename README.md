@@ -13,6 +13,7 @@ AbySS (Advanced-scripting by Symbolic Syntax) is a programming language designed
 - **Spellcasting-inspired Programming**: The language's design mimics the experience of casting spells, with reserved keywords that evoke a magical theme.
 - **Interactive Spellcasting**: AbySS supports interactive scripting through an interpreter, allowing real-time execution and feedback.
 - **Structured Sorcery**: AbySS encourages structured programming, combining the flexibility of scripting with the rigor of structured code.
+- **Rust-native Parser & Diagnostics**: The compiler core uses `chumsky` combinators paired with `ariadne` to provide resilient parsing and AbySS-themed error messages.
 - **VSCode Extension**: Syntax highlighting, code completion, and snippets are available through the [AbySS Codex Familiar](https://github.com/liebe-magi/abyss-codex-familiar) VSCode extension.
 
 ## **Table of Contents**

@@ -1,5 +1,3 @@
-use pest::Span;
-
 /// Represents line and column information for debugging purposes.
 #[derive(Debug, Clone)]
 pub struct LineInfo {
@@ -8,9 +6,8 @@ pub struct LineInfo {
 }
 
 impl LineInfo {
-    /// Creates a `LineInfo` from a given `Span`.
-    pub fn from_span(span: &Span) -> Self {
-        let (line, column) = span.start_pos().line_col();
+    /// Creates a `LineInfo` from explicit 1-based line and column values.
+    pub fn new(line: usize, column: usize) -> Self {
         LineInfo { line, column }
     }
 }
@@ -114,7 +111,7 @@ pub struct ConditionalAssignment {
 }
 
 /// Represents the type of a variable or expression.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
     Arcana,
     Aether,

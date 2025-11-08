@@ -1,4 +1,4 @@
-use crate::ast::{LineInfo, Type, AST};
+use crate::ast::{AST, LineInfo, Type};
 use crate::eval::EvalError;
 use std::collections::HashMap;
 
@@ -132,6 +132,12 @@ impl Environment {
             }
         }
         None
+    }
+}
+
+impl Default for Environment {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

@@ -135,6 +135,12 @@ impl Environment {
     }
 }
 
+impl Default for Environment {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Represents the value stored in a variable, which can be a boolean (Omen), integer (Arcana),
 /// floating-point number (Aether), or string (Rune).
 #[derive(Debug, Clone)]

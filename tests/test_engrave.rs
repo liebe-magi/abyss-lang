@@ -170,7 +170,7 @@ fn test_function_with_recursive_calls() {
     result;
     "#;
 
-    let result_rust = 1 * 2 * 3 * 4 * 5;
+    let result_rust = 120;
 
     match test_base(input) {
         Ok(results) => {

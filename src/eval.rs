@@ -150,7 +150,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
         AST::Equal(left, right, line_info) => match (evaluate(left, env)?, evaluate(right, env)?) {
             (EvalResult::Arcana(l), EvalResult::Arcana(r)) => Ok(EvalResult::Omen(l == r)),
             (EvalResult::Aether(l), EvalResult::Aether(r)) => {
-                Ok(EvalResult::Omen((l - r).abs() < std::f64::EPSILON))
+                Ok(EvalResult::Omen((l - r).abs() < f64::EPSILON))
             }
             (EvalResult::Rune(l), EvalResult::Rune(r)) => Ok(EvalResult::Omen(l == r)),
             _ => Err(EvalError::InvalidOperation(
@@ -162,7 +162,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
             match (evaluate(left, env)?, evaluate(right, env)?) {
                 (EvalResult::Arcana(l), EvalResult::Arcana(r)) => Ok(EvalResult::Omen(l != r)),
                 (EvalResult::Aether(l), EvalResult::Aether(r)) => {
-                    Ok(EvalResult::Omen((l - r).abs() >= std::f64::EPSILON))
+                    Ok(EvalResult::Omen((l - r).abs() >= f64::EPSILON))
                 }
                 (EvalResult::Rune(l), EvalResult::Rune(r)) => Ok(EvalResult::Omen(l != r)),
                 _ => Err(EvalError::InvalidOperation(
@@ -540,7 +540,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                                     }
                                 }
                                 (EvalResult::Aether(cond_n), EvalResult::Aether(pat_n)) => {
-                                    if (cond_n - pat_n).abs() >= std::f64::EPSILON {
+                                    if (cond_n - pat_n).abs() >= f64::EPSILON {
                                         matched = false;
                                         break;
                                     }
@@ -574,7 +574,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                     };
 
                     if matched {
-                        let result = match evaluate(&body, env) {
+                        let result = match evaluate(body.as_ref(), env) {
                             Ok(result) => match result {
                                 EvalResult::Revealed(revealed) => *revealed,
                                 _ => result,
@@ -631,88 +631,87 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                 }
 
                 Ok(EvalResult::Abyss)
-            } else {
-                if let AST::OrbitParam {
-                    name,
-                    start,
-                    end,
-                    op,
-                    ..
-                } = &params[0]
+            } else if let AST::OrbitParam {
+                name,
+                start,
+                end,
+                op,
+                ..
+            } = &params[0]
+            {
+                let start_value = evaluate(start, env)?;
+                let end_value = evaluate(end, env)?;
+
+                if let (EvalResult::Arcana(start_num), EvalResult::Arcana(end_num)) =
+                    (start_value, end_value)
                 {
-                    let start_value = evaluate(start, env)?;
-                    let end_value = evaluate(end, env)?;
+                    let range = start_num..end_num + if op == ".." { 0 } else { 1 };
 
-                    if let (EvalResult::Arcana(start_num), EvalResult::Arcana(end_num)) =
-                        (start_value, end_value)
-                    {
-                        let range = start_num..end_num + if op == ".." { 0 } else { 1 };
+                    for value in range {
+                        env.push_scope();
 
-                        for value in range {
-                            env.push_scope();
-
-                            env.set_var(
-                                name.clone(),
-                                Value::Arcana(value),
-                                Type::Arcana,
-                                true,
-                                line_info.clone(),
-                            );
-
-                            let remaining_params = params[1..].to_vec();
-                            let result = match remaining_params.len() == 0 {
-                                true => evaluate(body, env)?,
-                                false => evaluate(
-                                    &AST::Orbit {
-                                        params: remaining_params,
-                                        body: body.clone(),
-                                        line_info: line_info.clone(),
-                                    },
-                                    env,
-                                )?,
-                            };
-
-                            match result {
-                                EvalResult::Resume(identifier) => {
-                                    if let Some(id) = identifier {
-                                        if id == *name {
-                                            continue;
-                                        } else {
-                                            env.pop_scope();
-                                            return Ok(EvalResult::Resume(Some(id)));
-                                        }
-                                    }
-                                    continue;
-                                }
-                                EvalResult::Eject(identifier) => {
-                                    if let Some(id) = identifier {
-                                        if id == *name {
-                                            break;
-                                        } else {
-                                            env.pop_scope();
-                                            return Ok(EvalResult::Eject(Some(id)));
-                                        }
-                                    }
-                                    break;
-                                }
-                                _ => {}
-                            }
-
-                            env.pop_scope();
-                        }
-                        Ok(EvalResult::Abyss)
-                    } else {
-                        Err(EvalError::TypeError(
-                            format!("Orbit parameter must be of type Arcana: {}", name),
+                        env.set_var(
+                            name.clone(),
+                            Value::Arcana(value),
+                            Type::Arcana,
+                            true,
                             line_info.clone(),
-                        ))
+                        );
+
+                        let remaining_params = params[1..].to_vec();
+                        let result = if remaining_params.is_empty() {
+                            evaluate(body.as_ref(), env)?
+                        } else {
+                            evaluate(
+                                &AST::Orbit {
+                                    params: remaining_params,
+                                    body: body.clone(),
+                                    line_info: line_info.clone(),
+                                },
+                                env,
+                            )?
+                        };
+
+                        match result {
+                            EvalResult::Resume(identifier) => {
+                                if let Some(id) = identifier {
+                                    if id == *name {
+                                        continue;
+                                    } else {
+                                        env.pop_scope();
+                                        return Ok(EvalResult::Resume(Some(id)));
+                                    }
+                                }
+                                continue;
+                            }
+                            EvalResult::Eject(identifier) => {
+                                if let Some(id) = identifier {
+                                    if id == *name {
+                                        break;
+                                    } else {
+                                        env.pop_scope();
+                                        return Ok(EvalResult::Eject(Some(id)));
+                                    }
+                                }
+                                break;
+                            }
+                            _ => {}
+                        }
+
+                        env.pop_scope();
                     }
+                    Ok(EvalResult::Abyss)
                 } else {
-                    Err(EvalError::InvalidOperation(
-                        "Expected OrbitParam in Orbit".to_string(),
+                    Err(EvalError::TypeError(
+                        format!("Orbit parameter must be of type Arcana: {}", name),
                         line_info.clone(),
                     ))
                 }
+            } else {
+                Err(EvalError::InvalidOperation(
+                    "Expected OrbitParam in Orbit".to_string(),
+                    line_info.clone(),
+                ))
             }
         }
         AST::Resume(identifier, _line_info) => Ok(EvalResult::Resume(identifier.clone())),

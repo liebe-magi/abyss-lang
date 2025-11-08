@@ -196,12 +196,12 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
                     .iter()
                     .map(|cond| {
                         if *is_match {
-                            format!("{}", format_ast(&cond.expression, indent_level))
+                            format_ast(cond.expression.as_ref(), indent_level)
                         } else {
                             format!(
                                 "{} = {}",
                                 cond.variable,
-                                format_ast(&cond.expression, indent_level)
+                                format_ast(cond.expression.as_ref(), indent_level)
                             )
                         }
                     })
@@ -225,19 +225,19 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
                     result.push_str(&format!(
                         "{}{} => {}\n",
                         "    ".repeat(indent_level + 1),
-                        if pattern == "" {
+                        if pattern.is_empty() {
                             "_".to_string()
                         } else {
                             format!("({})", pattern)
                         },
-                        format_ast(&body, indent_level + 1).trim()
+                        format_ast(body.as_ref(), indent_level + 1).trim()
                     ));
                 }
             }
             result.push_str(&format!("{}}}", indent));
             result
         }
-        AST::OracleDontCareItem(_) => format!("_"),
+        AST::OracleDontCareItem(_) => "_".to_string(),
         AST::Orbit { params, body, .. } => {
             let mut result = "orbit".to_string();
             if !params.is_empty() {
@@ -248,7 +248,7 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
                     .join(", ");
                 result.push_str(&format!(" ({})", params_str));
             }
-            result.push_str(&format_ast(body, indent_level).trim());
+            result.push_str(format_ast(body.as_ref(), indent_level).trim());
             result
         }
         AST::OrbitParam {

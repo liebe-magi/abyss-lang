@@ -40,7 +40,12 @@ fn test_cast_rune_to_aether() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, 3.14),
+                EvalResult::Aether(n) => {
+                    let expected = "3.14"
+                        .parse::<f64>()
+                        .expect("literal conversion should succeed");
+                    assert_eq!(*n, expected);
+                }
                 _ => panic!("Expected an Aether result"),
             }
         }

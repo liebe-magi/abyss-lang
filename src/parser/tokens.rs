@@ -146,7 +146,8 @@ pub fn lexer() -> impl Parser<char, Vec<SpannedToken>, Error = Simple<char>> {
             number.push_str(&int_part);
             number.push('.');
             number.push_str(&frac_part);
-            let value = number.parse::<f64>().unwrap();
+            let value = number.parse::<f64>()
+                .expect("parser should only construct valid f64 literals");
             Token::Aether(OrderedFloat(value))
         });
 
@@ -156,7 +157,8 @@ pub fn lexer() -> impl Parser<char, Vec<SpannedToken>, Error = Simple<char>> {
             number.push_str(&sign);
         }
         number.push_str(&value);
-        Token::Arcana(number.parse::<i64>().unwrap())
+        Token::Arcana(number.parse::<i64>()
+            .expect("parser should only construct valid i64 literals"))
     });
 
     let rune = just('"')

@@ -1,4 +1,4 @@
-use chumsky::prelude::*;
+use chumsky::{error::Rich, extra, prelude::*, span::SimpleSpan as ChumskySpan};
 use ordered_float::OrderedFloat;
 use std::fmt;
 
@@ -126,16 +126,22 @@ impl fmt::Display for Token {
     }
 }
 
-pub fn lexer() -> impl Parser<char, Vec<SpannedToken>, Error = Simple<char>> {
+type LexerExtra<'src> = extra::Err<Rich<'src, char, ChumskySpan<usize>>>;
+
+pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<SpannedToken>, LexerExtra<'src>> {
     use chumsky::text;
 
-    let sign = just('-').to(String::from("-")).or_not();
+    let sign = just::<&str, _, LexerExtra<'src>>("-")
+        .to(String::from("-"))
+        .or_not();
+
+    let digits = |radix| text::digits::<_, LexerExtra<'src>>(radix).collect::<String>();
 
     let aether = sign
         .clone()
-        .then(text::digits(10))
-        .then_ignore(just('.'))
-        .then(text::digits(10))
+        .then(digits(10))
+        .then_ignore(just::<&str, _, LexerExtra<'src>>("."))
+        .then(digits(10))
         .map(|((sign, int_part), frac_part)| {
             let mut number = String::new();
             if let Some(sign) = sign {
@@ -150,7 +156,7 @@ pub fn lexer() -> impl Parser<char, Vec<SpannedToken>, Error = Simple<char>> {
             Token::Aether(OrderedFloat(value))
         });
 
-    let arcana = sign.then(text::digits(10)).map(|(sign, value)| {
+    let arcana = sign.then(digits(10)).map(|(sign, value)| {
         let mut number = String::new();
         if let Some(sign) = sign {
             number.push_str(&sign);
@@ -163,21 +169,24 @@ pub fn lexer() -> impl Parser<char, Vec<SpannedToken>, Error = Simple<char>> {
         )
     });
 
-    let escape = just('\\').ignore_then(one_of(r#""ntr\"#).map(|c| match c {
-        '"' => '"',
-        'n' => '\n',
-        't' => '\t',
-        'r' => '\r',
-        '\\' => '\\',
-        other => other, // fallback: just use the char as is
-    }));
-    let rune_char = escape.or(filter(|c| *c != '"' && *c != '\\'));
-    let rune = just('"')
+    let escape = just::<char, _, LexerExtra<'src>>('\\').ignore_then(
+        one_of::<_, _, LexerExtra<'src>>(r#""ntr\"#).map(|c| match c {
+            '"' => '"',
+            'n' => '\n',
+            't' => '\t',
+            'r' => '\r',
+            '\\' => '\\',
+            other => other, // fallback: just use the char as is
+        }),
+    );
+    let rune_char =
+        escape.or(any::<_, LexerExtra<'src>>().filter(|c: &char| *c != '"' && *c != '\\'));
+    let rune = just::<char, _, LexerExtra<'src>>('"')
         .ignore_then(rune_char.repeated().collect::<String>())
-        .then_ignore(just('"'))
+        .then_ignore(just::<char, _, LexerExtra<'src>>('"'))
         .map(Token::Rune);
 
-    let ident = text::ident().map(|ident: String| match ident.as_str() {
+    let ident = text::ident::<_, LexerExtra<'src>>().map(|ident: &'src str| match ident {
         "forge" => Token::Forge,
         "morph" => Token::Morph,
         "oracle" => Token::Oracle,
@@ -197,48 +206,48 @@ pub fn lexer() -> impl Parser<char, Vec<SpannedToken>, Error = Simple<char>> {
         "abyss" => Token::Type(Type::Abyss),
         "boon" => Token::OmenLiteral(true),
         "hex" => Token::OmenLiteral(false),
-        _ => Token::Identifier(ident),
+        _ => Token::Identifier(ident.to_string()),
     });
 
     let multi_char_symbols = choice((
-        just("**=").to(Token::PowAetherAssign),
-        just("**").to(Token::DoubleStar),
-        just("^=").to(Token::PowArcanaAssign),
-        just("+=").to(Token::AddAssign),
-        just("-=").to(Token::SubAssign),
-        just("*=").to(Token::MulAssign),
-        just("/=").to(Token::DivAssign),
-        just("%=").to(Token::ModAssign),
-        just("=>").to(Token::FatArrow),
-        just("->").to(Token::Arrow),
-        just("||").to(Token::DoublePipe),
-        just("&&").to(Token::DoubleAmpersand),
-        just("==").to(Token::Equal),
-        just("!=").to(Token::NotEqual),
-        just("<=").to(Token::LessThanOrEqual),
-        just(">=").to(Token::GreaterThanOrEqual),
-        just("..=").to(Token::RangeInclusive),
-        just("..").to(Token::RangeExclusive),
+        just::<&str, _, LexerExtra<'src>>("**=").to(Token::PowAetherAssign),
+        just::<&str, _, LexerExtra<'src>>("**").to(Token::DoubleStar),
+        just::<&str, _, LexerExtra<'src>>("^=").to(Token::PowArcanaAssign),
+        just::<&str, _, LexerExtra<'src>>("+=").to(Token::AddAssign),
+        just::<&str, _, LexerExtra<'src>>("-=").to(Token::SubAssign),
+        just::<&str, _, LexerExtra<'src>>("*=").to(Token::MulAssign),
+        just::<&str, _, LexerExtra<'src>>("/=").to(Token::DivAssign),
+        just::<&str, _, LexerExtra<'src>>("%=").to(Token::ModAssign),
+        just::<&str, _, LexerExtra<'src>>("=>").to(Token::FatArrow),
+        just::<&str, _, LexerExtra<'src>>("->").to(Token::Arrow),
+        just::<&str, _, LexerExtra<'src>>("||").to(Token::DoublePipe),
+        just::<&str, _, LexerExtra<'src>>("&&").to(Token::DoubleAmpersand),
+        just::<&str, _, LexerExtra<'src>>("==").to(Token::Equal),
+        just::<&str, _, LexerExtra<'src>>("!=").to(Token::NotEqual),
+        just::<&str, _, LexerExtra<'src>>("<=").to(Token::LessThanOrEqual),
+        just::<&str, _, LexerExtra<'src>>(">=").to(Token::GreaterThanOrEqual),
+        just::<&str, _, LexerExtra<'src>>("..=").to(Token::RangeInclusive),
+        just::<&str, _, LexerExtra<'src>>("..").to(Token::RangeExclusive),
     ));
 
     let single_char_symbols = choice((
-        just('=').to(Token::Assign),
-        just('+').to(Token::Plus),
-        just('-').to(Token::Minus),
-        just('*').to(Token::Star),
-        just('/').to(Token::Slash),
-        just('%').to(Token::Percent),
-        just('^').to(Token::Caret),
-        just('<').to(Token::LessThan),
-        just('>').to(Token::GreaterThan),
-        just('!').to(Token::Bang),
-        just(';').to(Token::Semicolon),
-        just(':').to(Token::Colon),
-        just(',').to(Token::Comma),
-        just('(').to(Token::OpenParen),
-        just(')').to(Token::CloseParen),
-        just('{').to(Token::OpenBrace),
-        just('}').to(Token::CloseBrace),
+        just::<char, _, LexerExtra<'src>>('=').to(Token::Assign),
+        just::<char, _, LexerExtra<'src>>('+').to(Token::Plus),
+        just::<char, _, LexerExtra<'src>>('-').to(Token::Minus),
+        just::<char, _, LexerExtra<'src>>('*').to(Token::Star),
+        just::<char, _, LexerExtra<'src>>('/').to(Token::Slash),
+        just::<char, _, LexerExtra<'src>>('%').to(Token::Percent),
+        just::<char, _, LexerExtra<'src>>('^').to(Token::Caret),
+        just::<char, _, LexerExtra<'src>>('<').to(Token::LessThan),
+        just::<char, _, LexerExtra<'src>>('>').to(Token::GreaterThan),
+        just::<char, _, LexerExtra<'src>>('!').to(Token::Bang),
+        just::<char, _, LexerExtra<'src>>(';').to(Token::Semicolon),
+        just::<char, _, LexerExtra<'src>>(':').to(Token::Colon),
+        just::<char, _, LexerExtra<'src>>(',').to(Token::Comma),
+        just::<char, _, LexerExtra<'src>>('(').to(Token::OpenParen),
+        just::<char, _, LexerExtra<'src>>(')').to(Token::CloseParen),
+        just::<char, _, LexerExtra<'src>>('{').to(Token::OpenBrace),
+        just::<char, _, LexerExtra<'src>>('}').to(Token::CloseBrace),
     ));
 
     let token = choice((
@@ -249,10 +258,14 @@ pub fn lexer() -> impl Parser<char, Vec<SpannedToken>, Error = Simple<char>> {
         multi_char_symbols,
         single_char_symbols,
     ))
-    .map_with_span(|tok, span: std::ops::Range<usize>| (tok, SimpleSpan::from(span)));
+    .map_with(|tok, extra| {
+        let span: ChumskySpan<usize> = extra.span();
+        (tok, SimpleSpan::new(span.start(), span.end()))
+    });
 
     token
         .padded_by(crate::parser::helpers::abyss_whitespace())
         .repeated()
+        .collect()
         .then_ignore(end())
 }

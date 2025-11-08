@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use ariadne::{Color, Label, Report, ReportKind, Source};
-use chumsky::error::{Simple, SimpleReason};
+use chumsky::{
+    error::{Rich, RichReason},
+    span::Span as ChumskySpan,
+};
 
 use super::helpers::LineMap;
 use super::SimpleSpan;
@@ -14,48 +17,43 @@ pub struct ParserDiagnostic {
     pub help: Option<String>,
 }
 
-pub fn convert_simple_error<A, S>(
-    error: Simple<A, S>,
+pub fn convert_rich_error<'a, T, S>(
+    error: Rich<'a, T, S>,
     _map: &Arc<LineMap>,
     title: &str,
 ) -> ParserDiagnostic
 where
-    A: std::fmt::Display + Eq + std::hash::Hash,
-    S: Into<SimpleSpan<usize>> + Clone,
+    T: std::fmt::Display + Clone,
+    S: ChumskySpan<Context = (), Offset = usize> + Clone,
 {
     let label = match error.reason() {
-        SimpleReason::Unexpected => match error.found() {
+        RichReason::ExpectedFound { .. } => match error.found() {
             Some(found) => format!("Unexpected token `{found}`"),
             None => "Unexpected end of incantation".to_string(),
         },
-        SimpleReason::Unclosed { span, .. } => {
-            let span: SimpleSpan<usize> = span.clone().into();
-            format!(
-                "Spell fragment opened here but never closed at byte {}",
-                span.start()
-            )
+        RichReason::Custom(msg) => msg.clone(),
+    };
+
+    let expected: Vec<String> = match error.reason() {
+        RichReason::ExpectedFound { expected, .. } => {
+            expected.iter().map(|pat| pat.to_string()).collect()
         }
-        SimpleReason::Custom(msg) => msg.clone(),
+        RichReason::Custom(_) => Vec::new(),
     };
 
-    let expected = error
-        .expected()
-        .map(|exp| match exp {
-            Some(value) => format!("`{value}`"),
-            None => "`<end of incantation>`".to_string(),
-        })
-        .collect::<Vec<_>>();
-
-    let help = if !expected.is_empty() {
-        Some(format!("Perhaps you meant one of: {}", expected.join(", ")))
-    } else {
+    let help = if expected.is_empty() {
         None
+    } else {
+        Some(format!("Perhaps you meant one of: {}", expected.join(", ")))
     };
+
+    let span_source = error.span().clone();
+    let span = SimpleSpan::new(span_source.start(), span_source.end());
 
     ParserDiagnostic {
         title: title.to_string(),
         label,
-        span: error.span().into(),
+        span,
         help,
     }
 }
@@ -66,10 +64,11 @@ pub fn emit_diagnostics(
     diagnostics: &[ParserDiagnostic],
 ) -> Result<(), std::io::Error> {
     for diagnostic in diagnostics {
-        let mut report = Report::build(ReportKind::Error, source_id, diagnostic.span.start())
+        let span_range = diagnostic.span.into_range();
+        let mut report = Report::build(ReportKind::Error, (source_id, span_range.clone()))
             .with_message(&diagnostic.title)
             .with_label(
-                Label::new((source_id, diagnostic.span.start()..diagnostic.span.end()))
+                Label::new((source_id, span_range))
                     .with_message(diagnostic.label.clone())
                     .with_color(Color::Red),
             );

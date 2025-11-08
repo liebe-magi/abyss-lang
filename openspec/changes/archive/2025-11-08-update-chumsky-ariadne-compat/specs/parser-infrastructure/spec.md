@@ -1,8 +1,4 @@
-# parser-infrastructure Specification
-
-## Purpose
-TBD - created by archiving change migrate-parser-to-chumsky. Update Purpose after archive.
-## Requirements
+## MODIFIED Requirements
 ### Requirement: Parser uses chumsky combinators
 The system SHALL construct the AbySS AST by applying `chumsky` parser combinators defined in Rust code, compiled against the latest supported `chumsky 0.11` API and its lifetime-aware parser traits, replacing the legacy `pest` grammar and `build_ast` transformer.
 
@@ -21,12 +17,3 @@ The system SHALL format parse errors via an abstraction that renders `ariadne`-b
 - **WHEN** the parser encounters the syntax error
 - **THEN** it SHALL emit a diagnostic using the reporting abstraction that highlights the offending span, includes a themed title, and suggests adding the semicolon while passing a span type accepted by `ariadne::Report::build`
 - **AND** the abstraction SHALL avoid removed helpers such as `Simple::expected()` or the three-argument form of `Report::build`, ensuring diagnostics render without compilation warnings
-
-### Requirement: AST nodes capture precise source spans
-The system SHALL attach `LineInfo` derived from the new parser's spans to every AST node that previously carried line information.
-
-#### Scenario: Preserve line info for errors
-- **GIVEN** a script that triggers an evaluation-time type error referencing a specific line
-- **WHEN** the evaluator formats the error using `LineInfo`
-- **THEN** the reported line and column SHALL match the positions produced by the new parser
-

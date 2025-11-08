@@ -1,15 +1,25 @@
 use std::sync::Arc;
 
-use chumsky::prelude::*;
+use chumsky::{
+    error::Rich,
+    extra,
+    input::IterInput,
+    prelude::*,
+    recursive::{self, Direct},
+};
 
 use crate::ast::{AssignmentOp, ConditionalAssignment, LineInfo, Type, AST};
 
 use super::helpers::LineMap;
-use super::tokens::Token;
+use super::tokens::{SpannedToken, Token};
 use super::SimpleSpan;
 
-type ParserError = Simple<Token, SimpleSpan<usize>>;
-type Boxed<'a, T> = BoxedParser<'a, Token, T, ParserError>;
+type ParserInput<'src> = IterInput<std::vec::IntoIter<SpannedToken>, SimpleSpan<usize>>;
+type ParserError<'src> = Rich<'src, Token, SimpleSpan<usize>>;
+type ParserExtra<'src> = extra::Full<ParserError<'src>, (), ()>;
+type BoxedParser<'src, T> = chumsky::Boxed<'src, 'src, ParserInput<'src>, T, ParserExtra<'src>>;
+type RecursiveParser<'src, T> =
+    recursive::Recursive<Direct<'src, 'src, ParserInput<'src>, T, ParserExtra<'src>>>;
 type SpannedAst = (AST, SimpleSpan<usize>);
 
 #[derive(Clone)]
@@ -31,14 +41,12 @@ fn merge_span(a: SimpleSpan<usize>, b: SimpleSpan<usize>) -> SimpleSpan<usize> {
     SimpleSpan::new(a.start().min(b.start()), a.end().max(b.end()))
 }
 
-pub fn build_parser(
-    map: Arc<LineMap>,
-) -> impl Parser<Token, Vec<AST>, Error = ParserError> + Clone {
+pub fn build_parser<'src>(map: Arc<LineMap>) -> BoxedParser<'src, Vec<AST>> {
     let ctx = ParserContext { map };
 
     let ctx_for_recursive = ctx.clone();
 
-    let statement = recursive::<_, _, _, _, ParserError>(move |statement| {
+    let statement = recursive(|statement| {
         let ctx = ctx_for_recursive.clone();
 
         let block = block_parser(ctx.clone(), statement.clone());
@@ -46,26 +54,35 @@ pub fn build_parser(
         let body = statement_body_parser(ctx.clone(), expression.clone(), block.clone());
         let ctx_for_stmt = ctx.clone();
 
-        body.then(just(Token::Semicolon).map_with_span(|_, span: SimpleSpan<usize>| span))
-            .map(move |((ast, body_span), semi_span)| {
-                let total_span = merge_span(body_span, semi_span);
-                ctx_for_stmt.wrap_statement(ast, total_span)
-            })
-            .boxed()
-    });
+        body.then(just(Token::Semicolon).map_with(|_, extra| {
+            let span: SimpleSpan<usize> = extra.span();
+            span
+        }))
+        .map(move |((ast, body_span), semi_span)| {
+            let total_span = merge_span(body_span, semi_span);
+            ctx_for_stmt.wrap_statement(ast, total_span)
+        })
+        .boxed()
+    })
+    .boxed();
 
-    statement.clone().repeated().then_ignore(end()).boxed()
+    statement
+        .clone()
+        .repeated()
+        .collect::<Vec<AST>>()
+        .then_ignore(end())
+        .boxed()
 }
 
-fn block_parser<'a>(
+fn block_parser<'src>(
     ctx: ParserContext,
-    statement: Recursive<'a, Token, AST, ParserError>,
-) -> Boxed<'a, SpannedAst> {
+    statement: RecursiveParser<'src, AST>,
+) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_map = ctx.clone();
     just(Token::OpenBrace)
-        .map_with_span(|_, span: SimpleSpan<usize>| span)
-        .then(statement.clone().repeated())
-        .then(just(Token::CloseBrace).map_with_span(|_, span: SimpleSpan<usize>| span))
+        .map_with(|_, extra| extra.span())
+        .then(statement.clone().repeated().collect::<Vec<AST>>())
+        .then(just(Token::CloseBrace).map_with(|_, extra| extra.span()))
         .map(move |((open_span, statements), close_span)| {
             let span = SimpleSpan::new(open_span.start(), close_span.end());
             let info = ctx_for_map.info(span);
@@ -74,11 +91,11 @@ fn block_parser<'a>(
         .boxed()
 }
 
-fn expression_parser<'a>(
+fn expression_parser<'src>(
     ctx: ParserContext,
-    block: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, SpannedAst> {
-    recursive::<_, _, _, _, ParserError>(move |expression| {
+    block: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
+    recursive(|expression: RecursiveParser<'src, SpannedAst>| {
         let ctx = ctx.clone();
         let block = block.clone();
         let expr = expression.clone().boxed();
@@ -89,11 +106,11 @@ fn expression_parser<'a>(
     .boxed()
 }
 
-fn statement_body_parser<'a>(
+fn statement_body_parser<'src>(
     ctx: ParserContext,
-    expression: Boxed<'a, SpannedAst>,
-    block: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, SpannedAst> {
+    expression: BoxedParser<'src, SpannedAst>,
+    block: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
     choice((
         forge_parser(ctx.clone(), expression.clone()),
         engrave_parser(ctx.clone(), block.clone()),
@@ -107,10 +124,10 @@ fn statement_body_parser<'a>(
     .boxed()
 }
 
-fn forge_parser<'a>(
+fn forge_parser<'src>(
     ctx: ParserContext,
-    expression: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, SpannedAst> {
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_map = ctx.clone();
     let morph_flag = just(Token::Morph)
         .to(true)
@@ -118,11 +135,11 @@ fn forge_parser<'a>(
         .map(|flag| flag.unwrap_or(false));
 
     just(Token::Forge)
-        .map_with_span(|_, span: SimpleSpan<usize>| span)
+        .map_with(|_, extra| extra.span())
         .then(morph_flag)
         .then(
             select! { Token::Identifier(name) => name }
-                .map_with_span(|name, span: SimpleSpan<usize>| (name, span)),
+                .map_with(|name, extra| (name, extra.span())),
         )
         .then_ignore(just(Token::Colon))
         .then(type_parser())
@@ -150,15 +167,19 @@ fn forge_parser<'a>(
         .boxed()
 }
 
-fn engrave_parser<'a>(ctx: ParserContext, block: Boxed<'a, SpannedAst>) -> Boxed<'a, SpannedAst> {
+fn engrave_parser<'src>(
+    ctx: ParserContext,
+    block: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_map = ctx.clone();
 
     let params = engrave_param_parser(ctx.clone())
         .separated_by(just(Token::Comma))
+        .collect::<Vec<_>>()
         .or_not();
 
     just(Token::Engrave)
-        .map_with_span(|_, span: SimpleSpan<usize>| span)
+        .map_with(|_, extra| extra.span())
         .then(select! { Token::Identifier(name) => name })
         .then_ignore(just(Token::OpenParen))
         .then(params)
@@ -186,16 +207,21 @@ fn engrave_parser<'a>(ctx: ParserContext, block: Boxed<'a, SpannedAst>) -> Boxed
         .boxed()
 }
 
-fn unveil_parser<'a>(
+fn unveil_parser<'src>(
     ctx: ParserContext,
-    expression: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, SpannedAst> {
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_map = ctx.clone();
     just(Token::Unveil)
-        .map_with_span(|_, span: SimpleSpan<usize>| span)
+        .map_with(|_, extra| extra.span())
         .then_ignore(just(Token::OpenParen))
-        .then(expression.separated_by(just(Token::Comma)).at_least(1))
-        .then(just(Token::CloseParen).map_with_span(|_, span: SimpleSpan<usize>| span))
+        .then(
+            expression
+                .separated_by(just(Token::Comma))
+                .at_least(1)
+                .collect::<Vec<_>>(),
+        )
+        .then(just(Token::CloseParen).map_with(|_, extra| extra.span()))
         .map(move |((unveil_span, args), close_span)| {
             let span = SimpleSpan::new(unveil_span.start(), close_span.end());
             let info = ctx_for_map.info(span);
@@ -205,13 +231,13 @@ fn unveil_parser<'a>(
         .boxed()
 }
 
-fn reveal_parser<'a>(
+fn reveal_parser<'src>(
     ctx: ParserContext,
-    expression: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, SpannedAst> {
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_map = ctx.clone();
     just(Token::Reveal)
-        .map_with_span(|_, span: SimpleSpan<usize>| span)
+        .map_with(|_, extra| extra.span())
         .then(expression.or_not())
         .map(move |(reveal_span, maybe_expr)| {
             let span = maybe_expr
@@ -227,20 +253,21 @@ fn reveal_parser<'a>(
         .boxed()
 }
 
-fn orbit_parser<'a>(
+fn orbit_parser<'src>(
     ctx: ParserContext,
-    expression: Boxed<'a, SpannedAst>,
-    block: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, SpannedAst> {
+    expression: BoxedParser<'src, SpannedAst>,
+    block: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_map = ctx.clone();
     let params = orbit_param_parser(ctx.clone(), expression.clone())
         .separated_by(just(Token::Comma))
         .at_least(1)
+        .collect::<Vec<_>>()
         .delimited_by(just(Token::OpenParen), just(Token::CloseParen))
         .or_not();
 
     just(Token::Orbit)
-        .map_with_span(|_, span: SimpleSpan<usize>| span)
+        .map_with(|_, extra| extra.span())
         .then(params)
         .then(block)
         .map(move |((orbit_span, params_opt), (body_ast, body_span))| {
@@ -258,52 +285,65 @@ fn orbit_parser<'a>(
         .boxed()
 }
 
-fn orbit_flow_parser<'a>(ctx: ParserContext) -> Boxed<'a, SpannedAst> {
+fn orbit_flow_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedAst> {
     let ctx_resume = ctx.clone();
-    let ident = select! { Token::Identifier(name) => name }
-        .map_with_span(|name, span: SimpleSpan<usize>| (name, span));
+    let ident: BoxedParser<'src, (String, SimpleSpan<usize>)> = select! {
+        Token::Identifier(name) => name
+    }
+    .map_with(|name, extra| (name, extra.span()))
+    .boxed();
 
     let resume = just(Token::Resume)
-        .map_with_span(|_, span: SimpleSpan<usize>| span)
-        .then(ident.or_not())
-        .map(move |(resume_span, maybe_ident)| {
-            let span = maybe_ident
-                .as_ref()
-                .map(|(_, id_span)| SimpleSpan::new(resume_span.start(), id_span.end()))
-                .unwrap_or(resume_span);
-            let info = ctx_resume.info(span);
-            (
-                AST::Resume(maybe_ident.map(|(name, _)| name), info.clone()),
-                span,
-            )
-        });
+        .map_with(|_, extra| extra.span())
+        .then(ident.clone().or_not())
+        .map(
+            move |(resume_span, maybe_ident): (
+                SimpleSpan<usize>,
+                Option<(String, SimpleSpan<usize>)>,
+            )| {
+                let span = maybe_ident
+                    .as_ref()
+                    .map(|(_, id_span)| SimpleSpan::new(resume_span.start(), id_span.end()))
+                    .unwrap_or(resume_span);
+                let info = ctx_resume.info(span);
+                (
+                    AST::Resume(maybe_ident.map(|(name, _)| name), info.clone()),
+                    span,
+                )
+            },
+        );
 
     let ctx_eject = ctx;
     let eject = just(Token::Eject)
-        .map_with_span(|_, span: SimpleSpan<usize>| span)
+        .map_with(|_, extra| extra.span())
         .then(ident.or_not())
-        .map(move |(eject_span, maybe_ident)| {
-            let span = maybe_ident
-                .as_ref()
-                .map(|(_, id_span)| SimpleSpan::new(eject_span.start(), id_span.end()))
-                .unwrap_or(eject_span);
-            let info = ctx_eject.info(span);
-            (
-                AST::Eject(maybe_ident.map(|(name, _)| name), info.clone()),
-                span,
-            )
-        });
+        .map(
+            move |(eject_span, maybe_ident): (
+                SimpleSpan<usize>,
+                Option<(String, SimpleSpan<usize>)>,
+            )| {
+                let span = maybe_ident
+                    .as_ref()
+                    .map(|(_, id_span)| SimpleSpan::new(eject_span.start(), id_span.end()))
+                    .unwrap_or(eject_span);
+                let info = ctx_eject.info(span);
+                (
+                    AST::Eject(maybe_ident.map(|(name, _)| name), info.clone()),
+                    span,
+                )
+            },
+        );
 
     resume.or(eject).boxed()
 }
 
-fn assignment_parser<'a>(
+fn assignment_parser<'src>(
     ctx: ParserContext,
-    expression: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, SpannedAst> {
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_map = ctx.clone();
-    let ident = select! { Token::Identifier(name) => name }
-        .map_with_span(|name, span: SimpleSpan<usize>| (name, span));
+    let ident =
+        select! { Token::Identifier(name) => name }.map_with(|name, extra| (name, extra.span()));
 
     let op = choice((
         just(Token::Assign),
@@ -315,7 +355,7 @@ fn assignment_parser<'a>(
         just(Token::PowArcanaAssign),
         just(Token::PowAetherAssign),
     ))
-    .map_with_span(|token, span: SimpleSpan<usize>| (token, span));
+    .map_with(|token, extra| (token, extra.span()));
 
     ident
         .then(op)
@@ -352,16 +392,17 @@ fn assignment_op_from_token(token: Token) -> AssignmentOp {
     }
 }
 
-fn oracle_expr_parser<'a>(
+fn oracle_expr_parser<'src>(
     ctx: ParserContext,
-    expression: Boxed<'a, SpannedAst>,
-    block: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, SpannedAst> {
+    expression: BoxedParser<'src, SpannedAst>,
+    block: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_cond = ctx.clone();
 
     let assignments = conditional_assignment_parser(ctx.clone(), expression.clone())
         .separated_by(just(Token::Comma))
         .at_least(1)
+        .collect::<Vec<_>>()
         .map(|pairs| {
             pairs
                 .into_iter()
@@ -377,6 +418,7 @@ fn oracle_expr_parser<'a>(
         .clone()
         .separated_by(just(Token::Comma))
         .at_least(1)
+        .collect::<Vec<_>>()
         .map(|exprs| {
             exprs
                 .into_iter()
@@ -401,11 +443,11 @@ fn oracle_expr_parser<'a>(
     let branch = oracle_branch_parser(ctx.clone(), expression.clone(), block.clone());
 
     just(Token::Oracle)
-        .map_with_span(|_, span: SimpleSpan<usize>| span)
+        .map_with(|_, extra| extra.span())
         .then(conditional)
         .then_ignore(just(Token::OpenBrace))
-        .then(branch.repeated())
-        .then(just(Token::CloseBrace).map_with_span(|_, span: SimpleSpan<usize>| span))
+        .then(branch.repeated().collect::<Vec<SpannedAst>>())
+        .then(just(Token::CloseBrace).map_with(|_, extra| extra.span()))
         .map(
             move |(((oracle_span, conditional_opt), branches), close_span)| {
                 let span = SimpleSpan::new(oracle_span.start(), close_span.end());
@@ -435,10 +477,10 @@ fn oracle_expr_parser<'a>(
         .boxed()
 }
 
-fn conditional_assignment_parser<'a>(
+fn conditional_assignment_parser<'src>(
     _ctx: ParserContext,
-    expression: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, (String, AST)> {
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, (String, AST)> {
     select! { Token::Identifier(name) => name }
         .then_ignore(just(Token::Assign))
         .then(expression)
@@ -446,15 +488,15 @@ fn conditional_assignment_parser<'a>(
         .boxed()
 }
 
-fn oracle_branch_parser<'a>(
+fn oracle_branch_parser<'src>(
     ctx: ParserContext,
-    expression: Boxed<'a, SpannedAst>,
-    block: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, SpannedAst> {
+    expression: BoxedParser<'src, SpannedAst>,
+    block: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_stmt = ctx.clone();
 
     let single_statement = statement_body_parser(ctx.clone(), expression.clone(), block.clone())
-        .then(just(Token::Semicolon).map_with_span(|_, span: SimpleSpan<usize>| span))
+        .then(just(Token::Semicolon).map_with(|_, extra| extra.span()))
         .map(move |((ast, body_span), semi_span)| {
             let span = merge_span(body_span, semi_span);
             let stmt = ctx_for_stmt.wrap_statement(ast, span);
@@ -481,21 +523,22 @@ fn oracle_branch_parser<'a>(
         .boxed()
 }
 
-fn pattern_parser<'a>(
+fn pattern_parser<'src>(
     ctx: ParserContext,
-    expression: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, (Vec<AST>, SimpleSpan<usize>)> {
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, (Vec<AST>, SimpleSpan<usize>)> {
     let wildcard = select! { Token::Identifier(name) if name == "_" => () }
-        .map_with_span(|_, span: SimpleSpan<usize>| (Vec::new(), span));
+        .map_with(|_, extra| (Vec::new(), extra.span()));
 
     let list = just(Token::OpenParen)
-        .map_with_span(|_, span: SimpleSpan<usize>| span)
+        .map_with(|_, extra| extra.span())
         .then(
             pattern_element_parser(ctx.clone(), expression)
                 .separated_by(just(Token::Comma))
-                .at_least(1),
+                .at_least(1)
+                .collect::<Vec<_>>(),
         )
-        .then(just(Token::CloseParen).map_with_span(|_, span: SimpleSpan<usize>| span))
+        .then(just(Token::CloseParen).map_with(|_, extra| extra.span()))
         .map(|((open_span, elements), close_span)| {
             let span = SimpleSpan::new(open_span.start(), close_span.end());
             (elements, span)
@@ -504,24 +547,29 @@ fn pattern_parser<'a>(
     wildcard.or(list).boxed()
 }
 
-fn pattern_element_parser<'a>(
+fn pattern_element_parser<'src>(
     ctx: ParserContext,
-    expression: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, AST> {
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, AST> {
     let ctx_for_wild = ctx.clone();
-    let dont_care = select! { Token::Identifier(name) if name == "_" => () }.map_with_span(
-        move |_, span: SimpleSpan<usize>| AST::OracleDontCareItem(ctx_for_wild.info(span)),
-    );
+    let dont_care =
+        select! { Token::Identifier(name) if name == "_" => () }.map_with(move |_, extra| {
+            let span = extra.span();
+            AST::OracleDontCareItem(ctx_for_wild.info(span))
+        });
 
     let expr = expression.map(|(ast, _)| ast);
 
     dont_care.or(expr).boxed()
 }
 
-fn orbit_param_parser<'a>(ctx: ParserContext, expression: Boxed<'a, SpannedAst>) -> Boxed<'a, AST> {
+fn orbit_param_parser<'src>(
+    ctx: ParserContext,
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, AST> {
     let ctx_for_map = ctx.clone();
     select! { Token::Identifier(name) => name }
-        .map_with_span(|name, span| (name, span))
+        .map_with(|name, extra| (name, extra.span()))
         .then_ignore(just(Token::Assign))
         .then(range_expr_parser(ctx.clone(), expression))
         .map(
@@ -540,10 +588,10 @@ fn orbit_param_parser<'a>(ctx: ParserContext, expression: Boxed<'a, SpannedAst>)
         .boxed()
 }
 
-fn range_expr_parser<'a>(
+fn range_expr_parser<'src>(
     _ctx: ParserContext,
-    expression: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, (AST, AST, String, SimpleSpan<usize>)> {
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, (AST, AST, String, SimpleSpan<usize>)> {
     let op = choice((
         just(Token::RangeInclusive).to(String::from("..=")),
         just(Token::RangeExclusive).to(String::from("..")),
@@ -560,10 +608,10 @@ fn range_expr_parser<'a>(
         .boxed()
 }
 
-fn or_expr_parser<'a>(
+fn or_expr_parser<'src>(
     ctx: ParserContext,
-    expression: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, SpannedAst> {
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_map = ctx.clone();
     let and_expr = and_expr_parser(ctx, expression);
 
@@ -572,7 +620,8 @@ fn or_expr_parser<'a>(
         .then(
             just(Token::DoublePipe)
                 .ignore_then(and_expr.clone())
-                .repeated(),
+                .repeated()
+                .collect::<Vec<_>>(),
         )
         .map(move |(first, rest)| {
             rest.into_iter().fold(first, |left, right| {
@@ -587,10 +636,10 @@ fn or_expr_parser<'a>(
         .boxed()
 }
 
-fn and_expr_parser<'a>(
+fn and_expr_parser<'src>(
     ctx: ParserContext,
-    expression: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, SpannedAst> {
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_map = ctx.clone();
     let not_expr = not_expr_parser(ctx, expression);
 
@@ -599,7 +648,8 @@ fn and_expr_parser<'a>(
         .then(
             just(Token::DoubleAmpersand)
                 .ignore_then(not_expr.clone())
-                .repeated(),
+                .repeated()
+                .collect::<Vec<_>>(),
         )
         .map(move |(first, rest)| {
             rest.into_iter().fold(first, |left, right| {
@@ -614,14 +664,15 @@ fn and_expr_parser<'a>(
         .boxed()
 }
 
-fn not_expr_parser<'a>(
+fn not_expr_parser<'src>(
     ctx: ParserContext,
-    expression: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, SpannedAst> {
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_map = ctx.clone();
     just(Token::Bang)
-        .map_with_span(|_, span: SimpleSpan<usize>| span)
+        .map_with(|_, extra| extra.span())
         .repeated()
+        .collect::<Vec<_>>()
         .then(comp_expr_parser(ctx, expression))
         .map(move |(nots, mut current)| {
             for span in nots.into_iter().rev() {
@@ -637,10 +688,10 @@ fn not_expr_parser<'a>(
         .boxed()
 }
 
-fn comp_expr_parser<'a>(
+fn comp_expr_parser<'src>(
     ctx: ParserContext,
-    expression: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, SpannedAst> {
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_map = ctx.clone();
     let add_expr = add_expr_parser(ctx, expression);
 
@@ -687,10 +738,10 @@ fn comp_expr_parser<'a>(
         .boxed()
 }
 
-fn add_expr_parser<'a>(
+fn add_expr_parser<'src>(
     ctx: ParserContext,
-    expression: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, SpannedAst> {
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_map = ctx.clone();
     let mul_expr = mul_expr_parser(ctx, expression);
 
@@ -699,7 +750,8 @@ fn add_expr_parser<'a>(
         .then(
             choice((just(Token::Plus), just(Token::Minus)))
                 .then(mul_expr.clone())
-                .repeated(),
+                .repeated()
+                .collect::<Vec<_>>(),
         )
         .map(move |(first, rest)| {
             rest.into_iter().fold(first, |left, (op_token, right)| {
@@ -716,10 +768,10 @@ fn add_expr_parser<'a>(
         .boxed()
 }
 
-fn mul_expr_parser<'a>(
+fn mul_expr_parser<'src>(
     ctx: ParserContext,
-    expression: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, SpannedAst> {
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_map = ctx.clone();
     let pow_expr = pow_expr_parser(ctx, expression);
 
@@ -728,7 +780,8 @@ fn mul_expr_parser<'a>(
         .then(
             choice((just(Token::Star), just(Token::Slash), just(Token::Percent)))
                 .then(pow_expr.clone())
-                .repeated(),
+                .repeated()
+                .collect::<Vec<_>>(),
         )
         .map(move |(first, rest)| {
             rest.into_iter().fold(first, |left, (op_token, right)| {
@@ -746,10 +799,10 @@ fn mul_expr_parser<'a>(
         .boxed()
 }
 
-fn pow_expr_parser<'a>(
+fn pow_expr_parser<'src>(
     ctx: ParserContext,
-    expression: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, SpannedAst> {
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_map = ctx.clone();
     let factor = factor_parser(ctx, expression);
 
@@ -758,7 +811,8 @@ fn pow_expr_parser<'a>(
         .then(
             choice((just(Token::DoubleStar), just(Token::Caret)))
                 .then(factor.clone())
-                .repeated(),
+                .repeated()
+                .collect::<Vec<_>>(),
         )
         .map(move |(first, rest)| {
             rest.into_iter().fold(first, |left, (op_token, right)| {
@@ -779,10 +833,10 @@ fn pow_expr_parser<'a>(
         .boxed()
 }
 
-fn factor_parser<'a>(
+fn factor_parser<'src>(
     ctx: ParserContext,
-    expression: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, SpannedAst> {
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
     choice((
         trans_parser(ctx.clone(), expression.clone()),
         summon_parser(ctx.clone()),
@@ -794,18 +848,18 @@ fn factor_parser<'a>(
     .boxed()
 }
 
-fn trans_parser<'a>(
+fn trans_parser<'src>(
     ctx: ParserContext,
-    expression: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, SpannedAst> {
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_map = ctx.clone();
     just(Token::Trans)
-        .map_with_span(|_, span: SimpleSpan<usize>| span)
+        .map_with(|_, extra| extra.span())
         .then_ignore(just(Token::OpenParen))
         .then(expression.clone())
         .then_ignore(just(Token::As))
         .then(type_parser())
-        .then(just(Token::CloseParen).map_with_span(|_, span: SimpleSpan<usize>| span))
+        .then(just(Token::CloseParen).map_with(|_, extra| extra.span()))
         .map(
             move |(((trans_span, expr_node), (target_type, _)), close_span)| {
                 let span = SimpleSpan::new(trans_span.start(), close_span.end());
@@ -819,15 +873,17 @@ fn trans_parser<'a>(
         .boxed()
 }
 
-fn summon_parser<'a>(ctx: ParserContext) -> Boxed<'a, SpannedAst> {
+fn summon_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_map = ctx.clone();
     just(Token::Summon)
-        .map_with_span(|_, span: SimpleSpan<usize>| span)
+        .map_with(|_, extra| extra.span())
         .then_ignore(just(Token::OpenParen))
-        .then(select! { Token::Rune(value) => value }.map_with_span(|value, span| (value, span)))
+        .then(
+            select! { Token::Rune(value) => value }.map_with(|value, extra| (value, extra.span())),
+        )
         .then_ignore(just(Token::Comma))
         .then(type_parser())
-        .then(just(Token::CloseParen).map_with_span(|_, span: SimpleSpan<usize>| span))
+        .then(just(Token::CloseParen).map_with(|_, extra| extra.span()))
         .map(move |(((summon_span, (prompt, _)), (ty, _)), close_span)| {
             let span = SimpleSpan::new(summon_span.start(), close_span.end());
             let info = ctx_for_map.info(span);
@@ -836,16 +892,21 @@ fn summon_parser<'a>(ctx: ParserContext) -> Boxed<'a, SpannedAst> {
         .boxed()
 }
 
-fn func_call_parser<'a>(
+fn func_call_parser<'src>(
     ctx: ParserContext,
-    expression: Boxed<'a, SpannedAst>,
-) -> Boxed<'a, SpannedAst> {
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_map = ctx.clone();
     select! { Token::Identifier(name) => name }
-        .map_with_span(|name, span| (name, span))
-        .then(just(Token::OpenParen).map_with_span(|_, span: SimpleSpan<usize>| span))
-        .then(expression.separated_by(just(Token::Comma)).or_not())
-        .then(just(Token::CloseParen).map_with_span(|_, span: SimpleSpan<usize>| span))
+        .map_with(|name, extra| (name, extra.span()))
+        .then(just(Token::OpenParen).map_with(|_, extra| extra.span()))
+        .then(
+            expression
+                .separated_by(just(Token::Comma))
+                .collect::<Vec<_>>()
+                .or_not(),
+        )
+        .then(just(Token::CloseParen).map_with(|_, extra| extra.span()))
         .map(
             move |((((name, name_span), _open_span), args_opt), close_span)| {
                 let span = SimpleSpan::new(name_span.start(), close_span.end());
@@ -868,27 +929,31 @@ fn func_call_parser<'a>(
         .boxed()
 }
 
-fn literal_parser<'a>(ctx: ParserContext) -> Boxed<'a, SpannedAst> {
+fn literal_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedAst> {
     let ctx_omen = ctx.clone();
-    let omen = select! { Token::OmenLiteral(value) => value }.map_with_span(move |value, span| {
+    let omen = select! { Token::OmenLiteral(value) => value }.map_with(move |value, extra| {
+        let span = extra.span();
         let info = ctx_omen.info(span);
         (AST::Omen(value, info), span)
     });
 
     let ctx_arcana = ctx.clone();
-    let arcana = select! { Token::Arcana(value) => value }.map_with_span(move |value, span| {
+    let arcana = select! { Token::Arcana(value) => value }.map_with(move |value, extra| {
+        let span = extra.span();
         let info = ctx_arcana.info(span);
         (AST::Arcana(value, info), span)
     });
 
     let ctx_aether = ctx.clone();
-    let aether = select! { Token::Aether(value) => value }.map_with_span(move |value, span| {
+    let aether = select! { Token::Aether(value) => value }.map_with(move |value, extra| {
+        let span = extra.span();
         let info = ctx_aether.info(span);
         (AST::Aether(value.into_inner(), info), span)
     });
 
     let ctx_rune = ctx;
-    let rune = select! { Token::Rune(value) => value }.map_with_span(move |value, span| {
+    let rune = select! { Token::Rune(value) => value }.map_with(move |value, extra| {
+        let span = extra.span();
         let info = ctx_rune.info(span);
         (AST::Rune(value, info), span)
     });
@@ -896,20 +961,21 @@ fn literal_parser<'a>(ctx: ParserContext) -> Boxed<'a, SpannedAst> {
     choice((omen, arcana, aether, rune)).boxed()
 }
 
-fn identifier_node<'a>(ctx: ParserContext) -> Boxed<'a, SpannedAst> {
+fn identifier_node<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_map = ctx.clone();
     select! { Token::Identifier(name) => name }
-        .map_with_span(move |name, span| {
+        .map_with(move |name, extra| {
+            let span = extra.span();
             let info = ctx_for_map.info(span);
             (AST::Var(name, info), span)
         })
         .boxed()
 }
 
-fn engrave_param_parser<'a>(ctx: ParserContext) -> Boxed<'a, AST> {
+fn engrave_param_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, AST> {
     let ctx_for_map = ctx.clone();
     select! { Token::Identifier(name) => name }
-        .map_with_span(|name, span| (name, span))
+        .map_with(|name, extra| (name, extra.span()))
         .then_ignore(just(Token::Colon))
         .then(type_parser())
         .map(move |((name, name_span), (ty, ty_span))| {
@@ -924,8 +990,8 @@ fn engrave_param_parser<'a>(ctx: ParserContext) -> Boxed<'a, AST> {
         .boxed()
 }
 
-fn type_parser<'a>() -> Boxed<'a, (Type, SimpleSpan<usize>)> {
+fn type_parser<'src>() -> BoxedParser<'src, (Type, SimpleSpan<usize>)> {
     select! { Token::Type(ty) => ty }
-        .map_with_span(|ty, span| (ty, span))
+        .map_with(|ty, extra| (ty, extra.span()))
         .boxed()
 }

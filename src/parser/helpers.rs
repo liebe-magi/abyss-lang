@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-use chumsky::prelude::*;
-use chumsky::text;
+use chumsky::{error::Rich, extra, prelude::*, span::SimpleSpan as ChumskySpan, text};
 
 use crate::ast::LineInfo;
 
@@ -42,30 +41,11 @@ impl LineMap {
     }
 }
 
-/// Produces a parser that skips AbySS whitespace and comments.
-pub fn abyss_whitespace() -> impl Parser<char, (), Error = Simple<char>> + Clone {
-    let spaces = text::whitespace().at_least(1).ignored();
+type LexerExtra<'src> = extra::Err<Rich<'src, char, ChumskySpan<usize>>>;
 
-    let line_comment = just('/')
-        .ignore_then(just('/'))
-        .ignore_then(filter(|c| *c != '\n').repeated())
-        .then_ignore(just('\n').or_not())
-        .ignored();
-
-    let block_comment = just('/')
-        .ignore_then(just('*'))
-        .ignore_then(take_until(just("*/")))
-        .then_ignore(just("*/"))
-        .ignored();
-
-    spaces
-        .or(line_comment)
-        .or(block_comment)
-        .repeated()
-        .at_least(1)
-        .to(())
-        .or_not()
-        .to(())
+/// Produces a parser that skips AbySS whitespace.
+pub fn abyss_whitespace<'src>() -> impl Parser<'src, &'src str, (), LexerExtra<'src>> + Clone {
+    text::whitespace::<_, LexerExtra<'src>>().to(())
 }
 
 /// Helper to attach line info to AST nodes.

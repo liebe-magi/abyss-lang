@@ -32,6 +32,28 @@ AbySS currently relies on a `pest`-authored PEG grammar (`src/abyss.pest`) that 
 5. Replace the original `parse` entry point, delete `abyss.pest`, and excise `pest` dependencies.
 6. Wire up `ariadne`-powered diagnostics in the CLI and REPL, then run the full test suite.
 
+## Grammar Mapping
+- `statements` / `statement` (legacy PEG) → `build_parser` + `statement` recursive combinator in `grammar.rs`.
+- `block` → `block_parser`, returning `AST::Block` with merged span info.
+- `forge_var` / `assignment` → `forge_parser` and `assignment_parser`, emitting `AST::VarAssign` and `AST::Assignment` with `AssignmentOp` mapping.
+- `engrave` → `engrave_parser`, building `AST::Engrave` with parameters and optional return type.
+- `func_call` / expression towers → `expression_parser` composition (`or_expr_parser`, `and_expr_parser`, etc.) culminating in `atom_parser`.
+- `oracle_expr` → `oracle_expr_parser`, including conditional bindings and branch handling via `oracle_branch_parser`.
+- `orbit` / `orbit_flow` → `orbit_parser` and `orbit_flow_parser`, covering loop parameters plus `resume`/`eject` forms.
+- Literals (`arcana`, `aether`, `rune`, `omen`) and identifiers → token layer (`tokens.rs`) feeding `literal_parser` helpers in `grammar.rs`.
+
+## Test Coverage Inventory
+- `tests/test_calc.rs`: arithmetic precedence, assignment operators, literal parsing for `arcana` and `aether`.
+- `tests/test_comp.rs`: comparison operators and mixed-type comparisons.
+- `tests/test_engrave.rs`: function declaration, invocation, recursion, and string handling.
+- `tests/test_examples.rs`: end-to-end execution of `examples/hello.aby` and `examples/fibonacci.aby`.
+- `tests/test_forge.rs`: declarative vs mutable bindings, redeclaration errors, and morph semantics.
+- `tests/test_logical.rs`: boolean logic combinations and precedence with arithmetic.
+- `tests/test_oracle.rs`: pattern and boolean oracles, nested conditionals, and assignments inside oracles.
+- `tests/test_orbit.rs`: looping constructs, multi-parameter ranges, `resume`, and `eject` control flow.
+- `tests/test_rune.rs`: string literals, concatenation, and `trans` behaviour with runes.
+- `tests/test_type.rs`: explicit casting across primitive types.
+
 ## Decisions on Prior Open Questions
 - Rollout will switch wholesale to the `chumsky` parser once the test suite passes; no temporary Cargo feature gate will be introduced.
 - Structured (JSON) diagnostics are out of scope for this change and will be tracked as a future enhancement after the themed `ariadne` reports land.

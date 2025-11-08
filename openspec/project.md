@@ -8,7 +8,8 @@ AbySS is a custom, magic-themed scripting language with its own interpreter, for
 
 ## Tech Stack
 - Rust stable toolchain (edition 2021) for the interpreter, CLI, and library code.
-- `pest` 2.7 with `pest_derive` for grammar-driven parsing (`src/abyss.pest`).
+- `chumsky` 0.9 for parser combinators and incremental-friendly grammar definitions.
+- `ariadne` 0.3 for themed diagnostic rendering.
 - `clap` 4 for the multi-command CLI interface (`cast`, `invoke`, `align`).
 - `rustyline` 17 for the REPL editor and history management.
 - `colored` 3 for terminal styling and diagnostics.
@@ -23,7 +24,7 @@ AbySS is a custom, magic-themed scripting language with its own interpreter, for
 - Keep user-facing strings thematic ("spell casting" vocabulary) but concise; centralise repeated text in helper functions where possible.
 
 ### Architecture Patterns
-- **Front-end pipeline**: `parser::parse` (Pest grammar) → `parser::build_ast` → `eval::evaluate`. AST definitions live in `ast.rs`; evaluation state is stored in `env::Environment`.
+- **Front-end pipeline**: `parser::parse` (`chumsky` combinators) → `eval::evaluate`. AST definitions live in `ast.rs`; evaluation state is stored in `env::Environment`.
 - **Interpreter**: `start_interpreter` in `main.rs` powers the REPL, orchestrating input buffering, brace balancing, AST inspection (debug mode), and evaluation.
 - **Formatter**: `format::format_ast` pretty-prints AST nodes for both CLI formatting and REPL output capture.
 - **Library/CLI split**: Core language functionality remains in `abyss_lang` so editor tooling and tests can consume the same APIs as the CLI.
@@ -49,12 +50,12 @@ AbySS is a custom, magic-themed scripting language with its own interpreter, for
 
 ## Important Constraints
 - Keep the interpreter single-threaded and deterministic; evaluation depends on sequential state in `Environment`.
-- Preserve backwards compatibility with existing grammar in `src/abyss.pest` unless a proposal is approved via OpenSpec.
+- Preserve backwards compatibility with the published language grammar unless a proposal is approved via OpenSpec.
 - CLI must run on macOS, Linux, and Windows terminals; avoid platform-specific assumptions beyond standard path handling.
 - Avoid introducing heavy dependencies; current binary footprint should stay small for quick installs via `cargo install`.
 - User-facing commands (`cast`, `invoke`, `align`) must remain stable because they are referenced in published documentation and the VS Code extension.
 
 ## External Dependencies
-- Crates: `clap`, `colored`, `dirs`, `pest`, `pest_derive`, `rustyline` (all declared in `Cargo.toml`).
+- Crates: `ariadne`, `chumsky`, `clap`, `colored`, `dirs`, `ordered-float`, `rustyline` (all declared in `Cargo.toml`).
 - Tooling: `cargo llvm-cov` with `llvm-tools-preview` for coverage; `cargo fmt`/`cargo clippy` for linting.
 - Services: GitHub Actions workflow `build.yml` for CI; crates.io for binary distribution; VS Code extension `abyss-codex-familiar` for editor integration.

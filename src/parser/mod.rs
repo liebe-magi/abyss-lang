@@ -11,13 +11,12 @@ pub use diagnostics::{emit_diagnostics, ParserDiagnostic};
 
 use std::sync::Arc;
 
-use chumsky::Parser;
-use chumsky::Stream;
+use chumsky::{input::IterInput, Parser};
 use ordered_float::OrderedFloat;
 
 use crate::ast::AST;
 
-use diagnostics::convert_simple_error;
+use diagnostics::convert_rich_error;
 use grammar::build_parser;
 pub struct ParseOutcome {
     pub ast: Vec<AST>,
@@ -29,11 +28,11 @@ pub fn parse(source: &str) -> ParseOutcome {
 
     let scrubbed_source = scrub_comments_preserve_layout(source);
 
-    let (maybe_tokens, lex_errors) = lexer().parse_recovery(scrubbed_source.as_str());
+    let (maybe_tokens, lex_errors) = lexer().parse(scrubbed_source.as_str()).into_output_errors();
 
     let mut diagnostics: Vec<ParserDiagnostic> = lex_errors
         .into_iter()
-        .map(|err| convert_simple_error(err, &map, "Incantation unravelled at lexing stage"))
+        .map(|err| convert_rich_error(err, &map, "Incantation unravelled at lexing stage"))
         .collect();
 
     let tokens = match maybe_tokens {
@@ -47,15 +46,15 @@ pub fn parse(source: &str) -> ParseOutcome {
     };
 
     let len = source.len();
-    let token_stream = Stream::from_iter(SimpleSpan::new(len, len), tokens.iter().cloned());
+    let token_input = IterInput::new(tokens.into_iter(), SimpleSpan::new(len, len));
 
     let parser = build_parser(map.clone());
-    let (maybe_ast, parse_errors) = parser.parse_recovery(token_stream);
+    let (maybe_ast, parse_errors) = parser.parse(token_input).into_output_errors();
 
     diagnostics.extend(
         parse_errors
             .into_iter()
-            .map(|err| convert_simple_error(err, &map, "Spell error: Incantation failed")),
+            .map(|err| convert_rich_error(err, &map, "Spell error: Incantation failed")),
     );
 
     let ast = maybe_ast.unwrap_or_default();

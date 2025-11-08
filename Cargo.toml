@@ -17,7 +17,7 @@ clap = { version = "4.0", features = ["derive"] }
 colored = "3.0.0"
 dirs = "6.0.0"
 rustyline = "17.0.0"
-ordered-float = "3"
+ordered-float = "5"
 
 [[bin]]
 name = "abyss"

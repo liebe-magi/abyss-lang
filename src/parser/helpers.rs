@@ -59,47 +59,47 @@ pub fn scrub_comments_preserve_layout(source: &str) -> String {
     let mut chars = source.chars().peekable();
 
     while let Some(ch) = chars.next() {
-        if ch == '/' {
-            if let Some(&next) = chars.peek() {
-                if next == '/' {
-                    // Single-line comment: consume until newline, keep newline intact.
-                    result.push(' '); // replace first '/'
-                    chars.next(); // consume second '/'
-                    result.push(' ');
+        if ch == '/'
+            && let Some(&next) = chars.peek()
+        {
+            if next == '/' {
+                // Single-line comment: consume until newline, keep newline intact.
+                result.push(' '); // replace first '/'
+                chars.next(); // consume second '/'
+                result.push(' ');
 
-                    while let Some(&c) = chars.peek() {
-                        chars.next();
-                        if c == '\n' {
-                            result.push('\n');
-                            break;
-                        }
+                while let Some(&c) = chars.peek() {
+                    chars.next();
+                    if c == '\n' {
+                        result.push('\n');
+                        break;
+                    }
+                    result.push(' ');
+                }
+
+                continue;
+            } else if next == '*' {
+                // Block comment: consume until closing */ while preserving newlines.
+                result.push(' '); // first '/'
+                chars.next(); // consume '*'
+                result.push(' ');
+
+                let mut prev = '\0';
+                for c in chars.by_ref() {
+                    if c == '\n' {
+                        result.push('\n');
+                    } else {
                         result.push(' ');
                     }
 
-                    continue;
-                } else if next == '*' {
-                    // Block comment: consume until closing */ while preserving newlines.
-                    result.push(' '); // first '/'
-                    chars.next(); // consume '*'
-                    result.push(' ');
-
-                    let mut prev = '\0';
-                    for c in chars.by_ref() {
-                        if c == '\n' {
-                            result.push('\n');
-                        } else {
-                            result.push(' ');
-                        }
-
-                        if prev == '*' && c == '/' {
-                            break;
-                        }
-
-                        prev = c;
+                    if prev == '*' && c == '/' {
+                        break;
                     }
 
-                    continue;
+                    prev = c;
                 }
+
+                continue;
             }
         }
 

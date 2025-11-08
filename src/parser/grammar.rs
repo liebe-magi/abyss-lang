@@ -8,11 +8,11 @@ use chumsky::{
     recursive::{self, Direct},
 };
 
-use crate::ast::{AssignmentOp, ConditionalAssignment, LineInfo, Type, AST};
+use crate::ast::{AST, AssignmentOp, ConditionalAssignment, LineInfo, Type};
 
+use super::SimpleSpan;
 use super::helpers::LineMap;
 use super::tokens::{SpannedToken, Token};
-use super::SimpleSpan;
 
 type ParserInput<'src> = IterInput<std::vec::IntoIter<SpannedToken>, SimpleSpan<usize>>;
 type ParserError<'src> = Rich<'src, Token, SimpleSpan<usize>>;

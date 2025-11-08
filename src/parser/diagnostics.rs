@@ -6,8 +6,8 @@ use chumsky::{
     span::Span as ChumskySpan,
 };
 
-use super::helpers::LineMap;
 use super::SimpleSpan;
+use super::helpers::LineMap;
 
 #[derive(Debug, Clone)]
 pub struct ParserDiagnostic {

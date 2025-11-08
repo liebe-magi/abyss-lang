@@ -1,4 +1,4 @@
-use crate::ast::{AssignmentOp, ConditionalAssignment, LineInfo, Type, AST};
+use crate::ast::{AST, AssignmentOp, ConditionalAssignment, LineInfo, Type};
 use crate::env::{Environment, Function, Value};
 use colored::*;
 use std::{fmt, io::Write};
@@ -259,7 +259,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                     return Err(EvalError::InvalidOperation(
                         "VarAssign operation requires a valid type!".to_string(),
                         line_info.clone(),
-                    ))
+                    ));
                 }
             };
             env.set_var(
@@ -306,7 +306,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                                 return Err(EvalError::InvalidOperation(
                                     format!("Unsupported operation for variable {}", name),
                                     line_info.clone(),
-                                ))
+                                ));
                             }
                         };
                         env.update_var(
@@ -329,7 +329,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                                 return Err(EvalError::InvalidOperation(
                                     format!("Unsupported operation for variable {}", name),
                                     line_info.clone(),
-                                ))
+                                ));
                             }
                         };
                         env.update_var(
@@ -347,7 +347,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                                 return Err(EvalError::InvalidOperation(
                                     format!("Unsupported operation for variable {}", name),
                                     line_info.clone(),
-                                ))
+                                ));
                             }
                         };
                         env.update_var(name, Value::Rune(new_value), Type::Rune, line_info.clone())
@@ -500,7 +500,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                             return Err(EvalError::InvalidOperation(
                                 format!("Unsupported type in oracle conditional: {:?}", result),
                                 line_info.clone(),
-                            ))
+                            ));
                         }
                     }
                     Ok(())
@@ -562,7 +562,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                                         "Oracle branch pattern type must match conditional type"
                                             .to_string(),
                                         line_info.clone(),
-                                    ))
+                                    ));
                                 }
                             }
                         }
@@ -763,7 +763,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                         return Err(EvalError::InvalidOperation(
                             format!("Expected EngraveParam in function definition: {}", name),
                             line_info.clone(),
-                        ))
+                        ));
                     }
                 };
                 let value = match (evaluated_arg, param_type) {
@@ -775,7 +775,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                         return Err(EvalError::TypeError(
                             format!("Type mismatch for parameter {}", name),
                             line_info.clone(),
-                        ))
+                        ));
                     }
                 };
                 env.set_var(

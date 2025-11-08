@@ -1,6 +1,6 @@
 use abyss_lang::{
     env::Environment,
-    eval::{display_error_with_source, evaluate, EvalError, EvalResult},
+    eval::{EvalError, EvalResult, display_error_with_source, evaluate},
     parser::{emit_diagnostics, parse},
 };
 

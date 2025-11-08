@@ -1,15 +1,15 @@
 use abyss_lang::{
     env::Environment,
-    eval::{display_error_with_source, evaluate, EvalError, EvalResult},
+    eval::{EvalError, EvalResult, display_error_with_source, evaluate},
     format::format_ast,
-    parser::{emit_diagnostics, parse, ParserDiagnostic},
+    parser::{ParserDiagnostic, emit_diagnostics, parse},
 };
 use clap::{Parser, Subcommand};
 use colored::*;
+use rustyline::Editor;
 use rustyline::config::Configurer;
 use rustyline::error::ReadlineError;
 use rustyline::history::FileHistory;
-use rustyline::Editor;
 use std::fs;
 use std::path::PathBuf;
 

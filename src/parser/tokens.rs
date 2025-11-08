@@ -159,8 +159,19 @@ pub fn lexer() -> impl Parser<char, Vec<SpannedToken>, Error = Simple<char>> {
         Token::Arcana(number.parse::<i64>().unwrap())
     });
 
+    let escape = just('\\').ignore_then(
+        one_of(r#""ntr\"#).map(|c| match c {
+            '"' => '"',
+            'n' => '\n',
+            't' => '\t',
+            'r' => '\r',
+            '\\' => '\\',
+            other => other, // fallback: just use the char as is
+        })
+    );
+    let rune_char = escape.or(filter(|c| *c != '"' && *c != '\\'));
     let rune = just('"')
-        .ignore_then(filter(|c| *c != '"').repeated().collect::<String>())
+        .ignore_then(rune_char.repeated().collect::<String>())
         .then_ignore(just('"'))
         .map(Token::Rune);
 

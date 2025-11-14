@@ -18,8 +18,16 @@ pub fn native_unveil(
             EvalResult::Aether(n) => Ok(n.to_string()),
             EvalResult::Rune(s) => Ok(s.replace("\\n", "\n")),
             EvalResult::Abyss => Ok("".to_string()),
-            _ => Err(EvalError::InvalidOperation(
-                "Unsupported type passed to unveil()".to_string(),
+            EvalResult::Revealed(_) => Err(EvalError::InvalidOperation(
+                "Cannot unveil a Revealed value (control flow construct)".to_string(),
+                line.clone(),
+            )),
+            EvalResult::Resume(_) => Err(EvalError::InvalidOperation(
+                "Cannot unveil a Resume value (control flow construct)".to_string(),
+                line.clone(),
+            )),
+            EvalResult::Eject(_) => Err(EvalError::InvalidOperation(
+                "Cannot unveil an Eject value (control flow construct)".to_string(),
                 line.clone(),
             )),
         })

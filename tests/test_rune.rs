@@ -153,3 +153,19 @@ fn test_trans_with_assignment_operator() {
         Err(e) => panic!("Error: {:?}", e),
     }
 }
+
+#[test]
+fn test_unveil_no_args_error() {
+    let input = r#"unveil();"#;
+    match test_base(input) {
+        Ok(_) => panic!("Expected an error for unveil() with no arguments"),
+        Err(e) => {
+            let error_msg = format!("{:?}", e);
+            assert!(
+                error_msg.contains("unveil() requires at least 1 argument"),
+                "Expected error message about requiring at least 1 argument, got: {}",
+                error_msg
+            );
+        }
+    }
+}

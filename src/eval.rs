@@ -729,6 +729,17 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                     let params = function.params.clone();
                     env.push_scope();
 
+                    if evaluated_args.len() != params.len() {
+                        return Err(EvalError::InvalidOperation(
+                            format!(
+                                "Function '{}' expected {} arguments but got {}.",
+                                name,
+                                params.len(),
+                                evaluated_args.len()
+                            ),
+                            line_info.clone(),
+                        ));
+                    }
                     for (evaluated_arg, param) in evaluated_args.into_iter().zip(params.iter()) {
                         let (param_name, param_type) = match param {
                             AST::EngraveParam {

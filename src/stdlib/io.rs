@@ -6,6 +6,13 @@ pub fn native_unveil(
     args: Vec<EvalResult>,
     line: Option<LineInfo>,
 ) -> Result<EvalResult, EvalError> {
+    if args.is_empty() {
+        return Err(EvalError::InvalidOperation(
+            "unveil() requires at least 1 argument".to_string(),
+            line,
+        ));
+    }
+
     let outputs: Result<Vec<String>, EvalError> = args
         .iter()
         .map(|result| match result {

@@ -1,6 +1,6 @@
 mod test_base;
 
-use abyss_lang::eval::EvalResult;
+use abyss_lang::eval::{EvalError, EvalResult};
 use test_base::test_base;
 
 #[test]
@@ -151,5 +151,23 @@ fn test_trans_with_assignment_operator() {
             assert!(matches!(results[2], EvalResult::Rune(ref s) if s == "answer: 42"))
         }
         Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_unveil_no_args_error() {
+    let input = r#"unveil();"#;
+    match test_base(input) {
+        Err(e) => match e.downcast_ref::<EvalError>() {
+            Some(EvalError::InvalidOperation(msg, _)) => {
+                assert!(
+                    msg.contains("unveil() requires at least 1 argument"),
+                    "Expected error message about requiring at least 1 argument, got: {}",
+                    msg
+                );
+            }
+            _ => panic!("Expected an InvalidOperation error"),
+        },
+        Ok(_) => panic!("Expected an error for unveil() with no arguments"),
     }
 }

@@ -152,13 +152,6 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
             false => "hex".to_string(),
         },
         AST::Abyss(_) => "abyss".to_string(),
-        AST::Unveil(args, _) => format!(
-            "unveil({})",
-            args.iter()
-                .map(|arg| format_ast(arg, indent_level))
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
         AST::Trans(value, var_type, _) => {
             let type_str = match var_type {
                 Type::Arcana => "arcana",
@@ -323,15 +316,6 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
                 .collect::<Vec<_>>()
                 .join(", ");
             format!("{}({})", name, args_str)
-        }
-        AST::Summon(prompt, var_type, _) => {
-            let type_str = match var_type {
-                Type::Arcana => "arcana",
-                Type::Aether => "aether",
-                Type::Rune => "rune",
-                _ => "",
-            };
-            format!("summon({}, {})", prompt, type_str)
         }
         AST::Comment(text, _) => text.clone(),
         _ => format!("Not implemented: {:?}", ast),

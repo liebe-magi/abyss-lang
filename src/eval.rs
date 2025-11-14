@@ -1,7 +1,7 @@
 use crate::ast::{AST, AssignmentOp, ConditionalAssignment, LineInfo, Type};
-use crate::env::{Environment, Function, Value};
+use crate::env::{Callable, EngravedFunction, Environment, Value};
 use colored::*;
-use std::{fmt, io::Write};
+use std::fmt;
 
 /// Represents the result of an evaluation in the interpreter.
 #[derive(Debug)]
@@ -384,31 +384,6 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                 line_info.clone(),
             )),
         },
-        AST::Unveil(args, _line_info) => {
-            let outputs: Result<Vec<String>, EvalError> = args
-                .iter()
-                .map(|arg| evaluate(arg, env))
-                .collect::<Result<Vec<EvalResult>, EvalError>>()?
-                .iter()
-                .map(|result| match result {
-                    EvalResult::Omen(b) => match b {
-                        true => Ok("boon".to_string()),
-                        false => Ok("hex".to_string()),
-                    },
-                    EvalResult::Arcana(n) => Ok(n.to_string()),
-                    EvalResult::Aether(n) => Ok(n.to_string()),
-                    EvalResult::Rune(s) => Ok(s.replace("\\n", "\n")),
-                    EvalResult::Abyss => Ok("".to_string()),
-                    _ => Err(EvalError::InvalidOperation(
-                        "Unsupported type in unveil statement".to_string(),
-                        None,
-                    )),
-                })
-                .collect();
-            let output_str = outputs?.join("");
-            println!("{}", output_str);
-            Ok(EvalResult::Abyss)
-        }
         AST::Trans(expr, target_type, line_info) => {
             let value = evaluate(expr, env)?;
             match target_type {
@@ -723,14 +698,14 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
             body,
             line_info,
         } => {
-            let function = Function {
+            let function = EngravedFunction {
                 name: name.clone(),
                 params: params.clone(),
                 return_type: return_type.clone(),
                 body: body.clone(),
                 line_info: line_info.clone(),
             };
-            env.set_function(name.clone(), function);
+            env.set_function(name.clone(), Callable::Engraved(function));
             Ok(EvalResult::Abyss)
         }
         AST::FuncCall {
@@ -738,13 +713,10 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
             args,
             line_info,
         } => {
-            let function = {
-                env.get_function(name)
-                    .ok_or_else(|| EvalError::UndefinedVariable(name.clone(), line_info.clone()))?
-            }
-            .clone();
-
-            let params = function.params.clone();
+            let callable = env
+                .get_function(name)
+                .ok_or_else(|| EvalError::UndefinedVariable(name.clone(), line_info.clone()))?
+                .clone();
 
             let mut evaluated_args = Vec::new();
             for arg in args {
@@ -752,92 +724,65 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                 evaluated_args.push(evaluated_arg);
             }
 
-            env.push_scope();
+            match (callable, evaluated_args) {
+                (Callable::Engraved(function), evaluated_args) => {
+                    let params = function.params.clone();
+                    env.push_scope();
 
-            for (evaluated_arg, param) in evaluated_args.into_iter().zip(params.iter()) {
-                let (name, param_type) = match param {
-                    AST::EngraveParam {
-                        name, param_type, ..
-                    } => (name, param_type),
-                    _ => {
-                        return Err(EvalError::InvalidOperation(
-                            format!("Expected EngraveParam in function definition: {}", name),
+                    for (evaluated_arg, param) in evaluated_args.into_iter().zip(params.iter()) {
+                        let (param_name, param_type) = match param {
+                            AST::EngraveParam {
+                                name, param_type, ..
+                            } => (name, param_type),
+                            _ => {
+                                return Err(EvalError::InvalidOperation(
+                                    format!(
+                                        "Expected EngraveParam in function definition: {}",
+                                        name
+                                    ),
+                                    line_info.clone(),
+                                ));
+                            }
+                        };
+                        let value = match (evaluated_arg, param_type) {
+                            (EvalResult::Arcana(n), Type::Arcana) => Value::Arcana(n),
+                            (EvalResult::Aether(n), Type::Aether) => Value::Aether(n),
+                            (EvalResult::Rune(s), Type::Rune) => Value::Rune(s),
+                            (EvalResult::Omen(b), Type::Omen) => Value::Omen(b),
+                            _ => {
+                                return Err(EvalError::TypeError(
+                                    format!("Type mismatch for parameter {}", param_name),
+                                    line_info.clone(),
+                                ));
+                            }
+                        };
+                        env.set_var(
+                            param_name.to_string(),
+                            value,
+                            param_type.clone(),
+                            false,
                             line_info.clone(),
-                        ));
+                        );
                     }
-                };
-                let value = match (evaluated_arg, param_type) {
-                    (EvalResult::Arcana(n), Type::Arcana) => Value::Arcana(n),
-                    (EvalResult::Aether(n), Type::Aether) => Value::Aether(n),
-                    (EvalResult::Rune(s), Type::Rune) => Value::Rune(s),
-                    (EvalResult::Omen(b), Type::Omen) => Value::Omen(b),
-                    _ => {
-                        return Err(EvalError::TypeError(
-                            format!("Type mismatch for parameter {}", name),
-                            line_info.clone(),
-                        ));
+
+                    let result = evaluate(&function.body, env)?;
+                    env.pop_scope();
+
+                    match (result, function.return_type) {
+                        (EvalResult::Arcana(n), Type::Arcana) => Ok(EvalResult::Arcana(n)),
+                        (EvalResult::Aether(n), Type::Aether) => Ok(EvalResult::Aether(n)),
+                        (EvalResult::Rune(s), Type::Rune) => Ok(EvalResult::Rune(s)),
+                        (EvalResult::Omen(b), Type::Omen) => Ok(EvalResult::Omen(b)),
+                        (EvalResult::Abyss, Type::Abyss) => Ok(EvalResult::Abyss),
+                        _ => Err(EvalError::TypeError(
+                            format!("Type mismatch for return value of function {}", name),
+                            function.line_info.clone(),
+                        )),
                     }
-                };
-                env.set_var(
-                    name.to_string(),
-                    value,
-                    param_type.clone(),
-                    false,
-                    line_info.clone(),
-                );
-            }
-
-            let result = evaluate(&function.body, env)?;
-
-            env.pop_scope();
-
-            match (result, function.return_type) {
-                (EvalResult::Arcana(n), Type::Arcana) => Ok(EvalResult::Arcana(n)),
-                (EvalResult::Aether(n), Type::Aether) => Ok(EvalResult::Aether(n)),
-                (EvalResult::Rune(s), Type::Rune) => Ok(EvalResult::Rune(s)),
-                (EvalResult::Omen(b), Type::Omen) => Ok(EvalResult::Omen(b)),
-                (EvalResult::Abyss, Type::Abyss) => Ok(EvalResult::Abyss),
-                _ => Err(EvalError::TypeError(
-                    format!("Type mismatch for return value of function {}", name),
-                    function.line_info.clone(),
-                )),
-            }
-        }
-        AST::Summon(prompt, var_type, line_info) => {
-            print!("{}", prompt.trim_matches('"'));
-            std::io::stdout().flush().map_err(|_| {
-                EvalError::InvalidOperation("Failed to flush stdout".to_string(), line_info.clone())
-            })?;
-            let mut input = String::new();
-            std::io::stdin().read_line(&mut input).map_err(|_| {
-                EvalError::InvalidOperation("Failed to read input".to_string(), line_info.clone())
-            })?;
-            match var_type {
-                Type::Arcana => input
-                    .trim()
-                    .parse::<i64>()
-                    .map(EvalResult::Arcana)
-                    .map_err(|_| {
-                        EvalError::InvalidOperation(
-                            "Failed to parse input as Arcana".to_string(),
-                            line_info.clone(),
-                        )
-                    }),
-                Type::Aether => input
-                    .trim()
-                    .parse::<f64>()
-                    .map(EvalResult::Aether)
-                    .map_err(|_| {
-                        EvalError::InvalidOperation(
-                            "Failed to parse input as Aether".to_string(),
-                            line_info.clone(),
-                        )
-                    }),
-                Type::Rune => Ok(EvalResult::Rune(input.trim().to_string())),
-                _ => Err(EvalError::InvalidOperation(
-                    "Unsupported type for summon".to_string(),
-                    line_info.clone(),
-                )),
+                }
+                (Callable::Builtin(function), evaluated_args) => {
+                    (function.func)(evaluated_args, line_info.clone())
+                }
             }
         }
         AST::Comment(_, _) => Ok(EvalResult::Abyss),

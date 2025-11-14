@@ -1,6 +1,29 @@
 use crate::ast::{AST, LineInfo, Type};
-use crate::eval::EvalError;
+use crate::eval::{EvalError, EvalResult};
 use std::collections::HashMap;
+
+pub type BuiltinFunc = fn(Vec<EvalResult>, Option<LineInfo>) -> Result<EvalResult, EvalError>;
+
+#[derive(Debug, Clone)]
+pub enum Callable {
+    Engraved(EngravedFunction),
+    Builtin(BuiltinFunction),
+}
+
+#[derive(Debug, Clone)]
+pub struct EngravedFunction {
+    pub name: String,
+    pub params: Vec<AST>,
+    pub return_type: Type,
+    pub body: Box<AST>,
+    pub line_info: Option<LineInfo>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BuiltinFunction {
+    pub name: String,
+    pub func: BuiltinFunc,
+}
 
 /// Stores information about a variable, including its value, type, and mutability.
 #[derive(Debug, Clone)]
@@ -11,22 +34,12 @@ pub struct VarInfo {
     pub line_info: Option<LineInfo>,
 }
 
-/// Represents a function in the environment, including its name, parameters, return type, body, and line information.
-#[derive(Debug, Clone)]
-pub struct Function {
-    pub name: String,
-    pub params: Vec<AST>,
-    pub return_type: Type,
-    pub body: Box<AST>,
-    pub line_info: Option<LineInfo>,
-}
-
-/// Manages variable and function scopes in the execution environment.
-/// This includes handling both global and local scopes.
+/// Manages variable and function scopes in the execution environment, including
+/// both the global scope and any nested local scopes.
 #[derive(Debug, Clone)]
 pub struct Environment {
     scopes: Vec<HashMap<String, VarInfo>>, // Variable scopes
-    function_scopes: Vec<HashMap<String, Function>>, // Function scopes
+    function_scopes: Vec<HashMap<String, Callable>>, // Function scopes
 }
 
 impl Environment {
@@ -118,20 +131,31 @@ impl Environment {
     }
 
     /// Registers a function in the current scope, associating it with its name.
-    pub fn set_function(&mut self, name: String, function: Function) {
+    pub fn set_function(&mut self, name: String, function: Callable) {
         if let Some(current_scope) = self.function_scopes.last_mut() {
             current_scope.insert(name, function);
         }
     }
 
     /// Retrieves a function by name from the environment, searching from the most recent scope to the global scope.
-    pub fn get_function(&self, name: &str) -> Option<&Function> {
+    pub fn get_function(&self, name: &str) -> Option<&Callable> {
         for scope in self.function_scopes.iter().rev() {
             if let Some(function) = scope.get(name) {
                 return Some(function);
             }
         }
         None
+    }
+
+    pub fn extend_functions<I>(&mut self, functions: I)
+    where
+        I: IntoIterator<Item = (String, Callable)>,
+    {
+        if let Some(scope) = self.function_scopes.last_mut() {
+            for (name, callable) in functions {
+                scope.insert(name, callable);
+            }
+        }
     }
 }
 

@@ -114,7 +114,6 @@ fn statement_body_parser<'src>(
     choice((
         forge_parser(ctx.clone(), expression.clone()),
         engrave_parser(ctx.clone(), block.clone()),
-        unveil_parser(ctx.clone(), expression.clone()),
         reveal_parser(ctx.clone(), expression.clone()),
         orbit_parser(ctx.clone(), expression.clone(), block.clone()),
         orbit_flow_parser(ctx.clone()),
@@ -204,30 +203,6 @@ fn engrave_parser<'src>(
                 )
             },
         )
-        .boxed()
-}
-
-fn unveil_parser<'src>(
-    ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
-    let ctx_for_map = ctx.clone();
-    just(Token::Unveil)
-        .map_with(|_, extra| extra.span())
-        .then_ignore(just(Token::OpenParen))
-        .then(
-            expression
-                .separated_by(just(Token::Comma))
-                .at_least(1)
-                .collect::<Vec<_>>(),
-        )
-        .then(just(Token::CloseParen).map_with(|_, extra| extra.span()))
-        .map(move |((unveil_span, args), close_span)| {
-            let span = SimpleSpan::new(unveil_span.start(), close_span.end());
-            let info = ctx_for_map.info(span);
-            let items = args.into_iter().map(|(ast, _)| ast).collect();
-            (AST::Unveil(items, info.clone()), span)
-        })
         .boxed()
 }
 
@@ -839,7 +814,6 @@ fn factor_parser<'src>(
 ) -> BoxedParser<'src, SpannedAst> {
     choice((
         trans_parser(ctx.clone(), expression.clone()),
-        summon_parser(ctx.clone()),
         literal_parser(ctx.clone()),
         func_call_parser(ctx.clone(), expression.clone()),
         identifier_node(ctx.clone()),
@@ -870,25 +844,6 @@ fn trans_parser<'src>(
                 )
             },
         )
-        .boxed()
-}
-
-fn summon_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedAst> {
-    let ctx_for_map = ctx.clone();
-    just(Token::Summon)
-        .map_with(|_, extra| extra.span())
-        .then_ignore(just(Token::OpenParen))
-        .then(
-            select! { Token::Rune(value) => value }.map_with(|value, extra| (value, extra.span())),
-        )
-        .then_ignore(just(Token::Comma))
-        .then(type_parser())
-        .then(just(Token::CloseParen).map_with(|_, extra| extra.span()))
-        .map(move |(((summon_span, (prompt, _)), (ty, _)), close_span)| {
-            let span = SimpleSpan::new(summon_span.start(), close_span.end());
-            let info = ctx_for_map.info(span);
-            (AST::Summon(prompt, ty, info.clone()), span)
-        })
         .boxed()
 }
 

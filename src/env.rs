@@ -147,6 +147,10 @@ impl Environment {
         None
     }
 
+    /// Registers multiple functions in the current scope at once.
+    ///
+    /// This method takes an iterator of (name, function) pairs and inserts them
+    /// into the current function scope, providing a convenient way to batch-register functions.
     pub fn extend_functions<I>(&mut self, functions: I)
     where
         I: IntoIterator<Item = (String, Callable)>,

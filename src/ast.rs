@@ -51,7 +51,6 @@ pub enum AST {
         line_info: Option<LineInfo>,
     },
     Var(String, Option<LineInfo>),
-    Unveil(Vec<AST>, Option<LineInfo>),
     Trans(Box<AST>, Type, Option<LineInfo>),
     Reveal(Box<AST>, Option<LineInfo>),
     Oracle {
@@ -99,7 +98,6 @@ pub enum AST {
         args: Vec<AST>,
         line_info: Option<LineInfo>,
     },
-    Summon(String, Type, Option<LineInfo>),
 }
 
 /// Represents a conditional assignment within an oracle statement.

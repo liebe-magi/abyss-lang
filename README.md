@@ -424,18 +424,18 @@ unveil("x + 42 = ", x + 42);
 In the example above, the second `unveil` statement prints both the string `"x + 42 = "` and the result of the expression `x + 42` on the same line.
 
 For input, AbySS provides the `summon` function to read user input during script execution.
-The `summon` function takes a prompt message and an expected type as arguments.
+The `summon` function takes a prompt message, always returns a `rune`, and callers can use `trans` to convert it into other types when needed.
 
-- `summon`: Represents the act of calling forth something from the user, summon is used for standard input operations. You can specify a prompt and the type of input expected (e.g., `arcana`, `aether`, `rune`).
+- `summon`: Represents the act of calling forth something from the user, summon is used for standard input operations. Provide a prompt rune, and use `trans` to coerce the response into `arcana` or `aether` when numerical input is required.
 
 ```abyss
-forge name: rune = summon("Input your name: ", rune);
-forge age: arcana = summon("Input your age: ", arcana);
+forge name: rune = summon("Input your name: ");
+forge age: arcana = trans(summon("Input your age: ") as arcana);
 unveil("Hello, ", name, "! You are ", age, " years old.");
 ```
 
 In this example, the user is prompted to enter their name and age.
-The inputs are then stored in the `name` and `age` variables, and both are printed using `unveil`.
+The string inputs are stored directly for `name`, while `age` is converted from the returned rune into an `arcana` using `trans` before being printed with `unveil`.
 
 ## **VSCode Extension**
 

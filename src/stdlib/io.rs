@@ -19,7 +19,7 @@ pub fn native_unveil(
             EvalResult::Rune(s) => Ok(s.replace("\\n", "\n")),
             EvalResult::Abyss => Ok("".to_string()),
             _ => Err(EvalError::InvalidOperation(
-                "Unsupported type in unveil statement".to_string(),
+                "Unsupported type passed to unveil()".to_string(),
                 line.clone(),
             )),
         })

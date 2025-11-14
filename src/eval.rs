@@ -725,22 +725,22 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
             }
 
             match (callable, evaluated_args) {
-                (Callable::Engraved(function), evaluated_args) => {
+                (Callable::Engraved(function), eval_args) => {
                     let params = function.params.clone();
                     env.push_scope();
 
-                    if evaluated_args.len() != params.len() {
+                    if eval_args.len() != params.len() {
                         return Err(EvalError::InvalidOperation(
                             format!(
                                 "Function '{}' expected {} arguments but got {}.",
                                 name,
                                 params.len(),
-                                evaluated_args.len()
+                                eval_args.len()
                             ),
                             line_info.clone(),
                         ));
                     }
-                    for (evaluated_arg, param) in evaluated_args.into_iter().zip(params.iter()) {
+                    for (evaluated_arg, param) in eval_args.into_iter().zip(params.iter()) {
                         let (param_name, param_type) = match param {
                             AST::EngraveParam {
                                 name, param_type, ..
@@ -791,8 +791,8 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                         )),
                     }
                 }
-                (Callable::Builtin(function), evaluated_args) => {
-                    (function.func)(evaluated_args, line_info.clone())
+                (Callable::Builtin(function), eval_args) => {
+                    (function.func)(eval_args, line_info.clone())
                 }
             }
         }

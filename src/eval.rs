@@ -764,7 +764,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
             }
 
             let final_index_value = evaluate(index, env)?;
-            let new_value = eval_result_to_value_any(evaluate(value, env)?);
+            let new_value = eval_result_to_value_checked(evaluate(value, env)?, line_info.clone())?;
 
             let var_info = env.get_var_mut(&base_name).ok_or_else(|| {
                 EvalError::UndefinedVariable(base_name.clone(), line_info.clone())

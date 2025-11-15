@@ -1,3 +1,4 @@
+mod artifacts;
 mod collections;
 mod expressions;
 mod result;

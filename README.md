@@ -14,6 +14,7 @@ AbySS (Advanced-scripting by Symbolic Syntax) is a programming language designed
 - **Interactive Spellcasting**: AbySS supports interactive scripting through an interpreter, allowing real-time execution and feedback.
 - **Structured Sorcery**: AbySS encourages structured programming, combining the flexibility of scripting with the rigor of structured code.
 - **Arcane Collections**: Native `scroll`, `lexicon`, and `materia` types provide first-class list/dictionary semantics plus built-in rituals for inspecting and mutating data.
+- **Artifact Structs**: Declare `artifact` schemas to craft strongly typed records with literal instantiation, nested fields, and guarded mutation rules.
 - **Rust-native Parser & Diagnostics**: The compiler core uses `chumsky` combinators paired with `ariadne` to provide resilient parsing and AbySS-themed error messages.
 - **VSCode Extension**: Syntax highlighting, code completion, and snippets are available through the [AbySS Codex Familiar](https://github.com/liebe-magi/abyss-codex-familiar) VSCode extension.
 
@@ -29,6 +30,7 @@ AbySS (Advanced-scripting by Symbolic Syntax) is a programming language designed
   - [Loops](#loops)
   - [Functions](#functions)
   - [Collections](#collections)
+    - [Artifacts](#artifacts)
   - [Input/Output](#inputoutput)
 - [VSCode Extension](#vscode-extension)
 - [Roadmap](#roadmap)
@@ -77,6 +79,12 @@ To run a `.aby` script file, use the following command:
 abyss invoke <script.aby>
 ```
 
+Sample programs live under `examples/`. For instance, run the artifact demo to see struct literals, nested fields, and formatter output in action:
+
+```bash
+abyss invoke examples/artifact.aby
+```
+
 ### **Formatting Code**
 
 AbySS provides a built-in code formatter that helps maintain consistent code style across your scripts. To format your `.aby` scripts, use the following command:
@@ -113,6 +121,7 @@ AbySS supports the following primitive types:
 - **scroll**: Ordered collections that can mix any element types.
 - **lexicon**: Rune-keyed dictionaries for structured data.
 - **materia**: A dynamically typed slot that can store any runtime value.
+- **artifact**: Custom structs you define with `artifact Name { field: Type; }`, enforcing field presence, types, and read/write rules.
 
 ```abyss
 forge x: arcana = 10;
@@ -132,6 +141,7 @@ forge essence: materia = 99;
 - `scroll`: Modeled after arcane parchment rolls, scroll values are indexed by arcana and preserve insertion order, making them ideal for spell queues or mixed data payloads.
 - `lexicon`: Inspired by grimoires and dictionaries, lexicon values map rune keys to arbitrary entries and allow quick lookups by string-like identifiers.
 - `materia`: Named after alchemical prime matter, materia variables willingly hold any type; they are perfect for staging data before you know its final shape or when writing polymorphic helpers.
+- `artifact`: Formalizes bespoke records. Declare a schema once and instantiate typed literals anywhere, with the evaluator ensuring every required field is provided exactly once and that nested fields honor their declared types.
 
 ### **Type Casting**
 
@@ -462,6 +472,37 @@ unveil(contents(ledger)); // ["beta"]
 
 These rituals operate on runtime `EvalResult`s directly, so you can pass nested scrolls or lexicons without additional boilerplate.
 
+### **Artifacts**
+
+Artifacts bring statically typed records to AbySS. Use the `artifact` keyword to declare a schema, list each field with its type, then instantiate the struct with literal syntax that mirrors the definition. Field access uses dot notation, and mutation requires the owning value to be declared with `morph`.
+
+```abyss
+artifact Stats {
+    hp: arcana;
+    max_hp: arcana;
+};
+
+artifact Player {
+    name: rune;
+    stats: Stats;
+};
+
+forge morph hero: Player = Player {
+    name: "Kaia",
+    stats: Stats { hp: 90, max_hp: 120 }
+};
+
+hero.stats.hp = hero.stats.hp - 15;
+unveil(hero);
+```
+
+Key guarantees:
+- All declared fields must appear exactly once in literal form, and types are checked recursively.
+- Nested structs can be composed freely, enabling ergonomic data modeling without ad-hoc lexicon juggling.
+- Attempting to mutate through an immutable binding raises a runtime diagnostic, helping you reason about ownership boundaries.
+
+Artifacts print in a deterministic, formatter-friendly layout, so structured dumps remain readable during debugging sessions.
+
 ### **Input/Output**
 
 For output, AbySS uses the `unveil` function to print values to the console.
@@ -503,7 +544,7 @@ To install the extension, search for "[AbySS Codex Familiar](https://marketplace
 ### **Roadmap**
 
 - **Collection Types**: ✅ Scroll, lexicon, and materia shipped with literal syntax, indexing, and stdlib rituals.
-- **Struct Implementation**: Enable the definition and use of custom data structures (TBD).
+- **Struct Implementation**: ✅ Artifact schemas, literals, and field mutation rules are available with formatter/runtime support.
 - **Generics Introduction**: Introduce generics to allow functions and data structures to be more flexible and reusable with different types (TBD).
 - **Module System**: Introduce the ability to import functions and variables from other files (TBD).
 - **Error Handling**: Implement robust error handling (TBD).

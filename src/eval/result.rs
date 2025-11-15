@@ -1,5 +1,5 @@
 use crate::ast::LineInfo;
-use crate::env::Value;
+use crate::env::{ArtifactHandle, Value};
 use colored::*;
 use std::fmt;
 
@@ -7,6 +7,7 @@ use std::fmt;
 #[derive(Debug, Clone)]
 pub enum EvalResult {
     Data(Value),
+    Artifact(ArtifactHandle),
     Revealed(Box<EvalResult>),
     Resume(Option<String>),
     Eject(Option<String>),
@@ -19,6 +20,10 @@ impl EvalResult {
 
     pub fn data(value: Value) -> Self {
         EvalResult::Data(value)
+    }
+
+    pub fn artifact(handle: ArtifactHandle) -> Self {
+        EvalResult::Artifact(handle)
     }
 }
 

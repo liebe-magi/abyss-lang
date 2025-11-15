@@ -49,6 +49,7 @@ pub struct VarInfo {
 pub struct Environment {
     scopes: Vec<HashMap<String, VarInfo>>, // Variable scopes
     function_scopes: Vec<HashMap<String, Callable>>, // Function scopes
+    artifact_scopes: Vec<HashMap<String, ArtifactSchema>>, // Artifact schemas per scope
 }
 
 impl Environment {
@@ -57,6 +58,7 @@ impl Environment {
         Environment {
             scopes: vec![HashMap::new()],
             function_scopes: vec![HashMap::new()],
+            artifact_scopes: vec![HashMap::new()],
         }
     }
 
@@ -64,12 +66,14 @@ impl Environment {
     pub fn push_scope(&mut self) {
         self.scopes.push(HashMap::new());
         self.function_scopes.push(HashMap::new());
+        self.artifact_scopes.push(HashMap::new());
     }
 
     /// Pops the most recent scope off the stack, discarding the current local environment.
     pub fn pop_scope(&mut self) {
         self.scopes.pop();
         self.function_scopes.pop();
+        self.artifact_scopes.pop();
     }
 
     /// Sets a variable in the current scope, specifying its name, value, type, and whether it's mutable.
@@ -182,6 +186,35 @@ impl Environment {
             }
         }
     }
+
+    pub fn define_artifact(&mut self, schema: ArtifactSchema) -> Result<(), EvalError> {
+        if let Some(scope) = self.artifact_scopes.last_mut() {
+            if scope.contains_key(&schema.name) {
+                return Err(EvalError::InvalidOperation(
+                    format!("Artifact {} is already defined in this scope", schema.name),
+                    schema.line_info.clone(),
+                ));
+            }
+            scope.insert(schema.name.clone(), schema);
+        }
+        Ok(())
+    }
+
+    pub fn get_artifact(&self, name: &str) -> Option<&ArtifactSchema> {
+        for scope in self.artifact_scopes.iter().rev() {
+            if let Some(schema) = scope.get(name) {
+                return Some(schema);
+            }
+        }
+        None
+    }
+
+    pub fn artifact_defined_in_current_scope(&self, name: &str) -> bool {
+        self.artifact_scopes
+            .last()
+            .map(|scope| scope.contains_key(name))
+            .unwrap_or(false)
+    }
 }
 
 impl Default for Environment {
@@ -201,4 +234,37 @@ pub enum Value {
     Abyss,
     Scroll(Rc<RefCell<Vec<Value>>>),
     Lexicon(Rc<RefCell<HashMap<String, Value>>>),
+    Artifact(ArtifactHandle),
 }
+
+#[derive(Debug, Clone)]
+pub struct ArtifactSchema {
+    pub name: String,
+    pub fields: Vec<ArtifactFieldSchema>,
+    pub line_info: Option<LineInfo>,
+}
+
+impl ArtifactSchema {
+    pub fn field(&self, name: &str) -> Option<&ArtifactFieldSchema> {
+        self.fields.iter().find(|field| field.name == name)
+    }
+
+    pub fn field_names(&self) -> Vec<String> {
+        self.fields.iter().map(|field| field.name.clone()).collect()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ArtifactFieldSchema {
+    pub name: String,
+    pub field_type: Type,
+}
+
+#[derive(Debug, Clone)]
+pub struct ArtifactValue {
+    pub type_name: String,
+    pub fields: HashMap<String, Value>,
+    pub field_order: Vec<String>,
+}
+
+pub type ArtifactHandle = Rc<RefCell<ArtifactValue>>;

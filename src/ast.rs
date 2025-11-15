@@ -117,6 +117,34 @@ pub enum AST {
         value: Box<AST>,
         line_info: Option<LineInfo>,
     },
+    ArtifactDef {
+        name: String,
+        fields: Vec<ArtifactField>,
+        line_info: Option<LineInfo>,
+    },
+    ArtifactLiteral {
+        type_name: String,
+        fields: Vec<(String, AST)>,
+        line_info: Option<LineInfo>,
+    },
+    FieldAccess {
+        target: Box<AST>,
+        field: String,
+        line_info: Option<LineInfo>,
+    },
+    FieldAssignment {
+        target: Box<AST>,
+        field: String,
+        value: Box<AST>,
+        line_info: Option<LineInfo>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct ArtifactField {
+    pub name: String,
+    pub field_type: Type,
+    pub line_info: Option<LineInfo>,
 }
 
 /// Represents a conditional assignment within an oracle statement.
@@ -138,6 +166,7 @@ pub enum Type {
     Scroll,
     Lexicon,
     Materia,
+    Artifact(String),
 }
 
 /// Represents an assignment operation.

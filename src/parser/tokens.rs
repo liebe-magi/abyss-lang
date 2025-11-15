@@ -18,6 +18,7 @@ pub enum Token {
     Reveal,
     Trans,
     As,
+    Artifact,
     Identifier(String),
     Type(Type),
     OmenLiteral(bool),
@@ -61,6 +62,7 @@ pub enum Token {
     CloseBracket,
     RangeInclusive,
     RangeExclusive,
+    Dot,
 }
 
 pub type SpannedToken = (Token, SimpleSpan<usize>);
@@ -78,6 +80,7 @@ impl fmt::Display for Token {
             Token::Reveal => write!(f, "reveal"),
             Token::Trans => write!(f, "trans"),
             Token::As => write!(f, "as"),
+            Token::Artifact => write!(f, "artifact"),
             Token::Identifier(name) => write!(f, "identifier `{name}`"),
             Token::Type(ty) => write!(f, "type `{ty:?}`"),
             Token::OmenLiteral(true) => write!(f, "boon"),
@@ -122,6 +125,7 @@ impl fmt::Display for Token {
             Token::CloseBracket => write!(f, "]"),
             Token::RangeInclusive => write!(f, "..="),
             Token::RangeExclusive => write!(f, ".."),
+            Token::Dot => write!(f, "."),
         }
     }
 }
@@ -197,6 +201,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<SpannedToken>, LexerExt
         "reveal" => Token::Reveal,
         "trans" => Token::Trans,
         "as" => Token::As,
+        "artifact" => Token::Artifact,
         "arcana" => Token::Type(Type::Arcana),
         "aether" => Token::Type(Type::Aether),
         "rune" => Token::Type(Type::Rune),
@@ -251,6 +256,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<SpannedToken>, LexerExt
         just::<char, _, LexerExtra<'src>>('}').to(Token::CloseBrace),
         just::<char, _, LexerExtra<'src>>('[').to(Token::OpenBracket),
         just::<char, _, LexerExtra<'src>>(']').to(Token::CloseBracket),
+        just::<char, _, LexerExtra<'src>>('.').to(Token::Dot),
     ));
 
     let token = choice((

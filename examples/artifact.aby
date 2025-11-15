@@ -1,0 +1,25 @@
+// Demonstrates artifact definitions, literals, and field updates.
+artifact Stats {
+    hp: arcana;
+    max_hp: arcana;
+};
+
+artifact Player {
+    name: rune;
+    stats: Stats;
+};
+
+engrave report(hero: Player) -> abyss {
+    unveil("Status: ");
+    unveil(hero);
+    reveal;
+};
+
+forge morph hero: Player = Player {
+    name: "Kaia",
+    stats: Stats { hp: 90, max_hp: 120 }
+};
+
+report(hero);
+hero.stats.hp = hero.stats.hp - 15;
+report(hero);

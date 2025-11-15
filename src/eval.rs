@@ -196,6 +196,50 @@ fn convert_to_typed_value(
     }
 }
 
+/// Extract an Arcana value from an EvalResult for use in compound assignments
+fn extract_arcana(result: &EvalResult, line_info: &Option<LineInfo>) -> Result<i64, EvalError> {
+    match result {
+        EvalResult::Arcana(v) => Ok(*v),
+        _ => Err(EvalError::TypeError(
+            "Expected arcana value".to_string(),
+            line_info.clone(),
+        )),
+    }
+}
+
+/// Extract an Aether value from an EvalResult for use in compound assignments
+fn extract_aether(result: &EvalResult, line_info: &Option<LineInfo>) -> Result<f64, EvalError> {
+    match result {
+        EvalResult::Aether(v) => Ok(*v),
+        _ => Err(EvalError::TypeError(
+            "Expected aether value".to_string(),
+            line_info.clone(),
+        )),
+    }
+}
+
+/// Extract a Rune value from an EvalResult for use in compound assignments
+fn extract_rune(result: EvalResult, line_info: &Option<LineInfo>) -> Result<String, EvalError> {
+    match result {
+        EvalResult::Rune(v) => Ok(v),
+        _ => Err(EvalError::TypeError(
+            "Expected rune value".to_string(),
+            line_info.clone(),
+        )),
+    }
+}
+
+/// Extract an Omen value from an EvalResult for use in compound assignments
+fn extract_omen(result: &EvalResult, line_info: &Option<LineInfo>) -> Result<bool, EvalError> {
+    match result {
+        EvalResult::Omen(v) => Ok(*v),
+        _ => Err(EvalError::TypeError(
+            "Expected omen value".to_string(),
+            line_info.clone(),
+        )),
+    }
+}
+
 fn expect_arcana_index(
     index: &EvalResult,
     line_info: &Option<LineInfo>,
@@ -508,89 +552,28 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                     (Value::Arcana(current), Type::Arcana) => {
                         let new_value = match op {
                             AssignmentOp::AddAssign => {
-                                *current
-                                    + match evaluated_value {
-                                        EvalResult::Arcana(v) => v,
-                                        _ => {
-                                            return Err(EvalError::TypeError(
-                                                "Expected arcana value".to_string(),
-                                                line_info.clone(),
-                                            ));
-                                        }
-                                    }
+                                *current + extract_arcana(&evaluated_value, line_info)?
                             }
                             AssignmentOp::SubAssign => {
-                                *current
-                                    - match evaluated_value {
-                                        EvalResult::Arcana(v) => v,
-                                        _ => {
-                                            return Err(EvalError::TypeError(
-                                                "Expected arcana value".to_string(),
-                                                line_info.clone(),
-                                            ));
-                                        }
-                                    }
+                                *current - extract_arcana(&evaluated_value, line_info)?
                             }
                             AssignmentOp::MulAssign => {
-                                *current
-                                    * match evaluated_value {
-                                        EvalResult::Arcana(v) => v,
-                                        _ => {
-                                            return Err(EvalError::TypeError(
-                                                "Expected arcana value".to_string(),
-                                                line_info.clone(),
-                                            ));
-                                        }
-                                    }
+                                *current * extract_arcana(&evaluated_value, line_info)?
                             }
                             AssignmentOp::DivAssign => {
-                                *current
-                                    / match evaluated_value {
-                                        EvalResult::Arcana(v) => v,
-                                        _ => {
-                                            return Err(EvalError::TypeError(
-                                                "Expected arcana value".to_string(),
-                                                line_info.clone(),
-                                            ));
-                                        }
-                                    }
+                                *current / extract_arcana(&evaluated_value, line_info)?
                             }
                             AssignmentOp::ModAssign => {
-                                *current
-                                    % match evaluated_value {
-                                        EvalResult::Arcana(v) => v,
-                                        _ => {
-                                            return Err(EvalError::TypeError(
-                                                "Expected arcana value".to_string(),
-                                                line_info.clone(),
-                                            ));
-                                        }
-                                    }
+                                *current % extract_arcana(&evaluated_value, line_info)?
                             }
                             AssignmentOp::PowArcanaAssign => {
-                                let exponent = match evaluated_value {
-                                    EvalResult::Arcana(v) => v,
-                                    _ => {
-                                        return Err(EvalError::TypeError(
-                                            "Expected arcana value".to_string(),
-                                            line_info.clone(),
-                                        ));
-                                    }
-                                };
+                                let exponent = extract_arcana(&evaluated_value, line_info)?;
                                 if exponent < 0 {
                                     return Err(EvalError::NegativeExponent(line_info.clone()));
                                 }
                                 current.pow(exponent as u32)
                             }
-                            AssignmentOp::Assign => match evaluated_value {
-                                EvalResult::Arcana(v) => v,
-                                _ => {
-                                    return Err(EvalError::TypeError(
-                                        "Expected arcana value".to_string(),
-                                        line_info.clone(),
-                                    ));
-                                }
-                            },
+                            AssignmentOp::Assign => extract_arcana(&evaluated_value, line_info)?,
                             _ => {
                                 return Err(EvalError::InvalidOperation(
                                     format!("Unsupported operation for variable {}", name),
@@ -601,15 +584,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                         *current = new_value;
                     }
                     (Value::Aether(current), Type::Aether) => {
-                        let operand = match evaluated_value {
-                            EvalResult::Aether(v) => v,
-                            _ => {
-                                return Err(EvalError::TypeError(
-                                    "Expected aether value".to_string(),
-                                    line_info.clone(),
-                                ));
-                            }
-                        };
+                        let operand = extract_aether(&evaluated_value, line_info)?;
                         let new_value = match op {
                             AssignmentOp::AddAssign => *current + operand,
                             AssignmentOp::SubAssign => *current - operand,
@@ -629,24 +604,11 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                     }
                     (Value::Rune(current), Type::Rune) => match op {
                         AssignmentOp::AddAssign => {
-                            if let EvalResult::Rune(rhs) = evaluated_value {
-                                current.push_str(&rhs);
-                            } else {
-                                return Err(EvalError::TypeError(
-                                    "Expected rune value".to_string(),
-                                    line_info.clone(),
-                                ));
-                            }
+                            let rhs = extract_rune(evaluated_value, line_info)?;
+                            current.push_str(&rhs);
                         }
                         AssignmentOp::Assign => {
-                            if let EvalResult::Rune(rhs) = evaluated_value {
-                                *current = rhs;
-                            } else {
-                                return Err(EvalError::TypeError(
-                                    "Expected rune value".to_string(),
-                                    line_info.clone(),
-                                ));
-                            }
+                            *current = extract_rune(evaluated_value, line_info)?;
                         }
                         _ => {
                             return Err(EvalError::InvalidOperation(
@@ -662,14 +624,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                                 line_info.clone(),
                             ));
                         }
-                        if let EvalResult::Omen(rhs) = evaluated_value {
-                            *current = rhs;
-                        } else {
-                            return Err(EvalError::TypeError(
-                                "Expected omen value".to_string(),
-                                line_info.clone(),
-                            ));
-                        }
+                        *current = extract_omen(&evaluated_value, line_info)?;
                     }
                     (Value::Abyss, Type::Abyss) => {
                         if !matches!(op, AssignmentOp::Assign) {

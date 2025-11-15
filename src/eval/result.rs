@@ -1,21 +1,25 @@
 use crate::ast::LineInfo;
+use crate::env::Value;
 use colored::*;
-use std::collections::HashMap;
 use std::fmt;
 
 /// Represents the result of an evaluation in the interpreter.
 #[derive(Debug, Clone)]
 pub enum EvalResult {
-    Omen(bool),
-    Arcana(i64),
-    Aether(f64),
-    Rune(String),
-    Abyss,
-    Scroll(Vec<EvalResult>),
-    Lexicon(HashMap<String, EvalResult>),
+    Data(Value),
     Revealed(Box<EvalResult>),
     Resume(Option<String>),
     Eject(Option<String>),
+}
+
+impl EvalResult {
+    pub fn abyss() -> Self {
+        EvalResult::Data(Value::Abyss)
+    }
+
+    pub fn data(value: Value) -> Self {
+        EvalResult::Data(value)
+    }
 }
 
 /// Represents possible errors that can occur during evaluation.

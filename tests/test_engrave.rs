@@ -1,7 +1,7 @@
 mod test_base;
 
 use abyss_lang::eval::EvalResult;
-use test_base::test_base;
+use test_base::{Value, test_base};
 
 #[test]
 fn test_simple_function() {
@@ -17,7 +17,7 @@ fn test_simple_function() {
 
     match test_base(input) {
         Ok(results) => {
-            if let EvalResult::Arcana(result_abyss) = results[2] {
+            if let EvalResult::Data(Value::Arcana(result_abyss)) = results[2] {
                 assert_eq!(result_rust, result_abyss);
             } else {
                 panic!("Expected Arcana result");
@@ -41,8 +41,8 @@ fn test_function_with_strings() {
 
     match test_base(input) {
         Ok(results) => {
-            if let EvalResult::Rune(message_abyss) = &results[2] {
-                assert_eq!(message_rust, *message_abyss);
+            if let EvalResult::Data(Value::Rune(message_abyss)) = &results[2] {
+                assert_eq!(message_rust.as_str(), message_abyss.as_ref());
             } else {
                 panic!("Expected Rune result");
             }
@@ -65,7 +65,7 @@ fn test_function_with_floats() {
 
     match test_base(input) {
         Ok(results) => {
-            if let EvalResult::Aether(result_abyss) = results[2] {
+            if let EvalResult::Data(Value::Aether(result_abyss)) = results[2] {
                 assert_eq!(result_rust, result_abyss);
             } else {
                 panic!("Expected Aether result");
@@ -92,7 +92,7 @@ fn test_function_with_boon_hex() {
 
     match test_base(input) {
         Ok(results) => {
-            if let EvalResult::Omen(result_abyss) = results[2] {
+            if let EvalResult::Data(Value::Omen(result_abyss)) = results[2] {
                 assert_eq!(result_rust, result_abyss);
             } else {
                 panic!("Expected Omen result");
@@ -121,7 +121,7 @@ fn test_nested_function_calls() {
 
     match test_base(input) {
         Ok(results) => {
-            if let EvalResult::Arcana(result_abyss) = results[3] {
+            if let EvalResult::Data(Value::Arcana(result_abyss)) = results[3] {
                 assert_eq!(result_rust, result_abyss);
             } else {
                 panic!("Expected Arcana result");
@@ -146,7 +146,7 @@ fn test_function_with_no_arguments() {
 
     match test_base(input) {
         Ok(results) => {
-            if let EvalResult::Arcana(result_abyss) = results[2] {
+            if let EvalResult::Data(Value::Arcana(result_abyss)) = results[2] {
                 assert_eq!(result_rust, result_abyss);
             } else {
                 panic!("Expected Arcana result");
@@ -174,7 +174,7 @@ fn test_function_with_recursive_calls() {
 
     match test_base(input) {
         Ok(results) => {
-            if let EvalResult::Arcana(result_abyss) = results[2] {
+            if let EvalResult::Data(Value::Arcana(result_abyss)) = results[2] {
                 assert_eq!(result_rust, result_abyss);
             } else {
                 panic!("Expected Arcana result");

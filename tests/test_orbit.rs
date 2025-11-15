@@ -1,7 +1,7 @@
 mod test_base;
 
 use abyss_lang::eval::EvalResult;
-use test_base::test_base;
+use test_base::{Value, test_base};
 
 #[test]
 fn test_simple_orbit() {
@@ -20,7 +20,7 @@ fn test_simple_orbit() {
 
     match test_base(input) {
         Ok(results) => {
-            if let EvalResult::Arcana(sum_abyss) = results[2] {
+            if let EvalResult::Data(Value::Arcana(sum_abyss)) = results[2] {
                 assert_eq!(sum_rust, sum_abyss);
             } else {
                 panic!("Expected Arcana result");
@@ -53,7 +53,7 @@ fn test_orbit_with_nested_orbit() {
     // AbySSでの評価
     match test_base(input) {
         Ok(results) => {
-            if let EvalResult::Arcana(sum_abyss) = results[2] {
+            if let EvalResult::Data(Value::Arcana(sum_abyss)) = results[2] {
                 assert_eq!(sum_rust, sum_abyss);
             } else {
                 panic!("Expected Arcana result");
@@ -90,7 +90,7 @@ fn test_orbit_with_resume() {
     // AbySSでの評価
     match test_base(input) {
         Ok(results) => {
-            if let EvalResult::Arcana(sum_abyss) = results[2] {
+            if let EvalResult::Data(Value::Arcana(sum_abyss)) = results[2] {
                 assert_eq!(sum_rust, sum_abyss);
             } else {
                 panic!("Expected Arcana result");
@@ -125,7 +125,7 @@ fn test_orbit_with_eject() {
     // AbySSでの評価
     match test_base(input) {
         Ok(results) => {
-            if let EvalResult::Arcana(sum_abyss) = results[2] {
+            if let EvalResult::Data(Value::Arcana(sum_abyss)) = results[2] {
                 assert_eq!(sum_rust, sum_abyss);
             } else {
                 panic!("Expected Arcana result");
@@ -164,7 +164,7 @@ fn test_orbit_with_eject_outer_loop() {
     // AbySSでの評価
     match test_base(input) {
         Ok(results) => {
-            if let EvalResult::Arcana(sum_abyss) = results[2] {
+            if let EvalResult::Data(Value::Arcana(sum_abyss)) = results[2] {
                 assert_eq!(sum_rust, sum_abyss);
             } else {
                 panic!("Expected Arcana result");
@@ -199,7 +199,7 @@ fn test_orbit_with_resume_outer_loop() {
     // AbySSでの評価
     match test_base(input) {
         Ok(results) => {
-            if let EvalResult::Arcana(sum_abyss) = results[2] {
+            if let EvalResult::Data(Value::Arcana(sum_abyss)) = results[2] {
                 assert_eq!(sum_rust, sum_abyss);
             } else {
                 panic!("Expected Arcana result");
@@ -234,7 +234,7 @@ fn test_infinite_orbit_with_eject() {
     // AbySSでの評価
     match test_base(input) {
         Ok(results) => {
-            if let EvalResult::Arcana(count_abyss) = results[2] {
+            if let EvalResult::Data(Value::Arcana(count_abyss)) = results[2] {
                 assert_eq!(count_rust, count_abyss);
             } else {
                 panic!("Expected Arcana result");

@@ -1,9 +1,8 @@
-use crate::ast::{AST, AssignmentOp, ConditionalAssignment, Type};
+use crate::ast::{AST, AssignmentOp, ConditionalAssignment, LineInfo, Type};
 use crate::env::{Callable, EngravedFunction, Environment, Value};
+use std::rc::Rc;
 
-use super::collections::{
-    collect_index_chain, expect_arcana_index, expect_rune_key, resolve_nested_value_mut,
-};
+use super::collections::{collect_index_chain, expect_arcana_index, expect_rune_key};
 use super::expressions::try_evaluate_expression;
 use super::result::{EvalError, EvalResult};
 use super::values::{
@@ -71,7 +70,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                 *is_morph,
                 line_info.clone(),
             );
-            Ok(EvalResult::Abyss)
+            Ok(EvalResult::abyss())
         }
         AST::Assignment {
             name,
@@ -144,11 +143,14 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                     }
                     (Value::Rune(current), Type::Rune) => match op {
                         AssignmentOp::AddAssign => {
-                            let rhs = extract_rune(evaluated_value, line_info)?;
-                            current.push_str(&rhs);
+                            let rhs = extract_rune(&evaluated_value, line_info)?;
+                            let mut new_value = current.as_ref().clone();
+                            new_value.push_str(&rhs);
+                            *current = Rc::new(new_value);
                         }
                         AssignmentOp::Assign => {
-                            *current = extract_rune(evaluated_value, line_info)?;
+                            let rhs = extract_rune(&evaluated_value, line_info)?;
+                            *current = Rc::new(rhs);
                         }
                         _ => {
                             return Err(EvalError::InvalidOperation(
@@ -173,7 +175,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                                 line_info.clone(),
                             ));
                         }
-                        if !matches!(evaluated_value, EvalResult::Abyss) {
+                        if !matches!(evaluated_value, EvalResult::Data(Value::Abyss)) {
                             return Err(EvalError::TypeError(
                                 "Expected abyss value".to_string(),
                                 line_info.clone(),
@@ -221,7 +223,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                     }
                 }
 
-                Ok(EvalResult::Abyss)
+                Ok(EvalResult::abyss())
             } else {
                 Err(EvalError::UndefinedVariable(
                     name.clone(),
@@ -261,14 +263,15 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                 ));
             }
 
-            let mut current_value = &mut var_info.value;
+            let mut resolved_target = var_info.value.clone();
             for idx in &evaluated_indices {
-                current_value = resolve_nested_value_mut(current_value, idx, line_info)?;
+                resolved_target = clone_indexed_child(&resolved_target, idx, line_info)?;
             }
 
-            match current_value {
-                Value::Scroll(items) => {
+            match resolved_target {
+                Value::Scroll(handle) => {
                     let idx = expect_arcana_index(&final_index_value, line_info)?;
+                    let mut items = handle.borrow_mut();
                     if idx >= items.len() {
                         return Err(EvalError::InvalidOperation(
                             format!("Index {} is out of bounds for scroll", idx),
@@ -277,8 +280,9 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                     }
                     items[idx] = new_value;
                 }
-                Value::Lexicon(entries) => {
+                Value::Lexicon(handle) => {
                     let key = expect_rune_key(&final_index_value, line_info)?;
+                    let mut entries = handle.borrow_mut();
                     entries.insert(key, new_value);
                 }
                 _ => {
@@ -289,7 +293,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                 }
             }
 
-            Ok(EvalResult::Abyss)
+            Ok(EvalResult::abyss())
         }
         AST::Oracle {
             is_match,
@@ -303,37 +307,37 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                 |conditional: &ConditionalAssignment| -> Result<(), EvalError> {
                     let result = evaluate(&conditional.expression, env)?;
                     match result {
-                        EvalResult::Arcana(n) => env.set_var(
+                        EvalResult::Data(Value::Arcana(n)) => env.set_var(
                             conditional.variable.clone(),
                             Value::Arcana(n),
                             Type::Arcana,
                             false,
                             line_info.clone(),
                         ),
-                        EvalResult::Aether(n) => env.set_var(
+                        EvalResult::Data(Value::Aether(n)) => env.set_var(
                             conditional.variable.clone(),
                             Value::Aether(n),
                             Type::Aether,
                             false,
                             line_info.clone(),
                         ),
-                        EvalResult::Rune(ref s) => env.set_var(
+                        EvalResult::Data(Value::Rune(rune)) => env.set_var(
                             conditional.variable.clone(),
-                            Value::Rune(s.clone()),
+                            Value::Rune(rune.clone()),
                             Type::Rune,
                             false,
                             line_info.clone(),
                         ),
-                        EvalResult::Omen(b) => env.set_var(
+                        EvalResult::Data(Value::Omen(b)) => env.set_var(
                             conditional.variable.clone(),
                             Value::Omen(b),
                             Type::Omen,
                             false,
                             line_info.clone(),
                         ),
-                        _ => {
+                        other => {
                             return Err(EvalError::InvalidOperation(
-                                format!("Unsupported type in oracle conditional: {:?}", result),
+                                format!("Unsupported type in oracle conditional: {:?}", other),
                                 line_info.clone(),
                             ));
                         }
@@ -368,25 +372,37 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                             let conditional_result = evaluate(&conditionals[idx].expression, env)?;
 
                             match (conditional_result, pattern_result) {
-                                (EvalResult::Arcana(cond_n), EvalResult::Arcana(pat_n)) => {
+                                (
+                                    EvalResult::Data(Value::Arcana(cond_n)),
+                                    EvalResult::Data(Value::Arcana(pat_n)),
+                                ) => {
                                     if cond_n != pat_n {
                                         matched = false;
                                         break;
                                     }
                                 }
-                                (EvalResult::Aether(cond_n), EvalResult::Aether(pat_n)) => {
+                                (
+                                    EvalResult::Data(Value::Aether(cond_n)),
+                                    EvalResult::Data(Value::Aether(pat_n)),
+                                ) => {
                                     if (cond_n - pat_n).abs() >= f64::EPSILON {
                                         matched = false;
                                         break;
                                     }
                                 }
-                                (EvalResult::Rune(cond_s), EvalResult::Rune(pat_s)) => {
+                                (
+                                    EvalResult::Data(Value::Rune(cond_s)),
+                                    EvalResult::Data(Value::Rune(pat_s)),
+                                ) => {
                                     if cond_s != pat_s {
                                         matched = false;
                                         break;
                                     }
                                 }
-                                (EvalResult::Omen(cond_b), EvalResult::Omen(pat_b)) => {
+                                (
+                                    EvalResult::Data(Value::Omen(cond_b)),
+                                    EvalResult::Data(Value::Omen(pat_b)),
+                                ) => {
                                     if cond_b != pat_b {
                                         matched = false;
                                         break;
@@ -403,9 +419,26 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                         }
                         matched
                     } else {
-                        pattern.iter().all(|pattern| {
-                            matches!(evaluate(pattern, env), Ok(EvalResult::Omen(true)))
-                        })
+                        let mut all_true = true;
+                        for pattern_expr in pattern {
+                            match evaluate(pattern_expr, env)? {
+                                EvalResult::Data(Value::Omen(true)) => continue,
+                                EvalResult::Data(Value::Omen(false)) => {
+                                    all_true = false;
+                                    break;
+                                }
+                                other => {
+                                    return Err(EvalError::InvalidOperation(
+                                        format!(
+                                            "Oracle guard must evaluate to an omen, found {:?}",
+                                            other
+                                        ),
+                                        line_info.clone(),
+                                    ));
+                                }
+                            }
+                        }
+                        all_true
                     };
 
                     if matched {
@@ -423,14 +456,14 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
             }
 
             env.pop_scope();
-            Ok(EvalResult::Abyss)
+            Ok(EvalResult::abyss())
         }
         AST::Reveal(expr, _line_info) => {
             let result = evaluate(expr, env)?;
             Ok(EvalResult::Revealed(Box::new(result)))
         }
         AST::Block(statements, _line_info) => {
-            let mut last_result = EvalResult::Abyss;
+            let mut last_result = EvalResult::abyss();
             for statement in statements {
                 let result = evaluate(statement, env)?;
 
@@ -444,7 +477,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
             }
             Ok(last_result)
         }
-        AST::OracleDontCareItem(_line_info) => Ok(EvalResult::Omen(true)),
+        AST::OracleDontCareItem(_line_info) => Ok(EvalResult::data(Value::Omen(true))),
         AST::Orbit {
             params,
             body,
@@ -465,7 +498,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                     env.pop_scope();
                 }
 
-                Ok(EvalResult::Abyss)
+                Ok(EvalResult::abyss())
             } else if let AST::OrbitParam {
                 name,
                 start,
@@ -477,71 +510,65 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                 let start_value = evaluate(start, env)?;
                 let end_value = evaluate(end, env)?;
 
-                if let (EvalResult::Arcana(start_num), EvalResult::Arcana(end_num)) =
-                    (start_value, end_value)
-                {
-                    let range = start_num..end_num + if op == ".." { 0 } else { 1 };
+                let start_num = extract_arcana(&start_value, line_info)?;
+                let end_num = extract_arcana(&end_value, line_info)?;
 
-                    for value in range {
-                        env.push_scope();
+                let range = start_num..end_num + if op == ".." { 0 } else { 1 };
 
-                        env.set_var(
-                            name.clone(),
-                            Value::Arcana(value),
-                            Type::Arcana,
-                            true,
-                            line_info.clone(),
-                        );
+                for value in range {
+                    env.push_scope();
 
-                        let remaining_params = params[1..].to_vec();
-                        let result = if remaining_params.is_empty() {
-                            evaluate(body.as_ref(), env)?
-                        } else {
-                            evaluate(
-                                &AST::Orbit {
-                                    params: remaining_params,
-                                    body: body.clone(),
-                                    line_info: line_info.clone(),
-                                },
-                                env,
-                            )?
-                        };
-
-                        match result {
-                            EvalResult::Resume(identifier) => {
-                                if let Some(id) = identifier {
-                                    if id == *name {
-                                        continue;
-                                    } else {
-                                        env.pop_scope();
-                                        return Ok(EvalResult::Resume(Some(id)));
-                                    }
-                                }
-                                continue;
-                            }
-                            EvalResult::Eject(identifier) => {
-                                if let Some(id) = identifier {
-                                    if id == *name {
-                                        break;
-                                    } else {
-                                        env.pop_scope();
-                                        return Ok(EvalResult::Eject(Some(id)));
-                                    }
-                                }
-                                break;
-                            }
-                            _ => {}
-                        }
-
-                        env.pop_scope();
-                    }
-                    Ok(EvalResult::Abyss)
-                } else {
-                    Err(EvalError::TypeError(
-                        format!("Orbit parameter must be of type Arcana: {}", name),
+                    env.set_var(
+                        name.clone(),
+                        Value::Arcana(value),
+                        Type::Arcana,
+                        true,
                         line_info.clone(),
-                    ))
+                    );
+
+                    let remaining_params = params[1..].to_vec();
+                    let result = if remaining_params.is_empty() {
+                        evaluate(body.as_ref(), env)?
+                    } else {
+                        evaluate(
+                            &AST::Orbit {
+                                params: remaining_params,
+                                body: body.clone(),
+                                line_info: line_info.clone(),
+                            },
+                            env,
+                        )?
+                    };
+
+                    match result {
+                        EvalResult::Resume(identifier) => {
+                            if let Some(id) = identifier {
+                                if id == *name {
+                                    continue;
+                                } else {
+                                    env.pop_scope();
+                                    return Ok(EvalResult::Resume(Some(id)));
+                                }
+                            }
+                            continue;
+                        }
+                        EvalResult::Eject(identifier) => {
+                            if let Some(id) = identifier {
+                                if id == *name {
+                                    break;
+                                } else {
+                                    env.pop_scope();
+                                    return Ok(EvalResult::Eject(Some(id)));
+                                }
+                            }
+                            break;
+                        }
+                        _ => {}
+                    }
+
+                    env.pop_scope();
                 }
+                Ok(EvalResult::abyss())
             } else {
                 Err(EvalError::InvalidOperation(
                     "Expected OrbitParam in Orbit".to_string(),
@@ -566,12 +593,45 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                 line_info: line_info.clone(),
             };
             env.set_function(name.clone(), Callable::Engraved(function));
-            Ok(EvalResult::Abyss)
+            Ok(EvalResult::abyss())
         }
-        AST::Comment(_, _) => Ok(EvalResult::Abyss),
+        AST::Comment(_, _) => Ok(EvalResult::abyss()),
         _ => Err(EvalError::InvalidOperation(
             format!("Unsupported operation: {:?}", ast),
             None,
+        )),
+    }
+}
+
+fn clone_indexed_child(
+    value: &Value,
+    index: &EvalResult,
+    line_info: &Option<LineInfo>,
+) -> Result<Value, EvalError> {
+    match value {
+        Value::Scroll(handle) => {
+            let idx = expect_arcana_index(index, line_info)?;
+            let borrowed = handle.borrow();
+            borrowed.get(idx).cloned().ok_or_else(|| {
+                EvalError::InvalidOperation(
+                    format!("Index {} is out of bounds for scroll", idx),
+                    line_info.clone(),
+                )
+            })
+        }
+        Value::Lexicon(handle) => {
+            let key = expect_rune_key(index, line_info)?;
+            let borrowed = handle.borrow();
+            borrowed.get(&key).cloned().ok_or_else(|| {
+                EvalError::InvalidOperation(
+                    format!("Lexicon key '{}' does not exist", key),
+                    line_info.clone(),
+                )
+            })
+        }
+        _ => Err(EvalError::InvalidOperation(
+            "Cannot index into non-collection value".to_string(),
+            line_info.clone(),
         )),
     }
 }

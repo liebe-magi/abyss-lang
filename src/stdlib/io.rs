@@ -1,9 +1,11 @@
 use crate::ast::LineInfo;
+use crate::env::{CallArg, Environment};
 use crate::eval::{EvalError, EvalResult};
 use std::io::{self, Write};
 
 pub fn native_unveil(
-    args: Vec<EvalResult>,
+    _env: &mut Environment,
+    args: Vec<CallArg>,
     line: Option<LineInfo>,
 ) -> Result<EvalResult, EvalError> {
     if args.is_empty() {
@@ -15,29 +17,7 @@ pub fn native_unveil(
 
     let outputs: Result<Vec<String>, EvalError> = args
         .iter()
-        .map(|result| match result {
-            EvalResult::Omen(b) => Ok(if *b {
-                "boon".to_string()
-            } else {
-                "hex".to_string()
-            }),
-            EvalResult::Arcana(n) => Ok(n.to_string()),
-            EvalResult::Aether(n) => Ok(n.to_string()),
-            EvalResult::Rune(s) => Ok(s.replace("\\n", "\n")),
-            EvalResult::Abyss => Ok("".to_string()),
-            EvalResult::Revealed(_) => Err(EvalError::InvalidOperation(
-                "Cannot unveil a Revealed value (control flow construct)".to_string(),
-                line.clone(),
-            )),
-            EvalResult::Resume(_) => Err(EvalError::InvalidOperation(
-                "Cannot unveil a Resume value (control flow construct)".to_string(),
-                line.clone(),
-            )),
-            EvalResult::Eject(_) => Err(EvalError::InvalidOperation(
-                "Cannot unveil an Eject value (control flow construct)".to_string(),
-                line.clone(),
-            )),
-        })
+        .map(|arg| format_eval_result(&arg.value, &line))
         .collect();
 
     let output_str = outputs?.join("");
@@ -46,7 +26,8 @@ pub fn native_unveil(
 }
 
 pub fn native_summon(
-    args: Vec<EvalResult>,
+    _env: &mut Environment,
+    args: Vec<CallArg>,
     line: Option<LineInfo>,
 ) -> Result<EvalResult, EvalError> {
     if args.len() != 1 {
@@ -56,7 +37,7 @@ pub fn native_summon(
         ));
     }
 
-    let prompt = match &args[0] {
+    let prompt = match &args[0].value {
         EvalResult::Rune(s) => s,
         _ => {
             return Err(EvalError::TypeError(
@@ -77,4 +58,41 @@ pub fn native_summon(
     })?;
 
     Ok(EvalResult::Rune(input.trim().to_string()))
+}
+
+fn format_eval_result(value: &EvalResult, line: &Option<LineInfo>) -> Result<String, EvalError> {
+    match value {
+        EvalResult::Omen(b) => Ok(if *b { "boon" } else { "hex" }.to_string()),
+        EvalResult::Arcana(n) => Ok(n.to_string()),
+        EvalResult::Aether(n) => Ok(n.to_string()),
+        EvalResult::Rune(s) => Ok(s.replace("\\n", "\n")),
+        EvalResult::Abyss => Ok(String::new()),
+        EvalResult::Scroll(items) => {
+            let parts: Result<Vec<String>, EvalError> = items
+                .iter()
+                .map(|item| format_eval_result(item, line))
+                .collect();
+            Ok(format!("[{}]", parts?.join(", ")))
+        }
+        EvalResult::Lexicon(entries) => {
+            let mut pieces = Vec::new();
+            for (key, value) in entries {
+                let formatted_value = format_eval_result(value, line)?;
+                pieces.push(format!("\"{}\": {}", key, formatted_value));
+            }
+            Ok(format!("{{{}}}", pieces.join(", ")))
+        }
+        EvalResult::Revealed(_) => Err(EvalError::InvalidOperation(
+            "Cannot unveil a Revealed value (control flow construct)".to_string(),
+            line.clone(),
+        )),
+        EvalResult::Resume(_) => Err(EvalError::InvalidOperation(
+            "Cannot unveil a Resume value (control flow construct)".to_string(),
+            line.clone(),
+        )),
+        EvalResult::Eject(_) => Err(EvalError::InvalidOperation(
+            "Cannot unveil an Eject value (control flow construct)".to_string(),
+            line.clone(),
+        )),
+    }
 }

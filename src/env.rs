@@ -2,7 +2,14 @@ use crate::ast::{AST, LineInfo, Type};
 use crate::eval::{EvalError, EvalResult};
 use std::collections::HashMap;
 
-pub type BuiltinFunc = fn(Vec<EvalResult>, Option<LineInfo>) -> Result<EvalResult, EvalError>;
+pub type BuiltinFunc =
+    fn(&mut Environment, Vec<CallArg>, Option<LineInfo>) -> Result<EvalResult, EvalError>;
+
+#[derive(Debug)]
+pub struct CallArg {
+    pub value: EvalResult,
+    pub var_name: Option<String>,
+}
 
 #[derive(Debug, Clone)]
 pub enum Callable {
@@ -95,6 +102,15 @@ impl Environment {
         None
     }
 
+    pub fn get_var_mut(&mut self, name: &str) -> Option<&mut VarInfo> {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(var_info) = scope.get_mut(name) {
+                return Some(var_info);
+            }
+        }
+        None
+    }
+
     /// Updates an existing variable's value in the environment if it is mutable and the types match.
     /// Returns an error if the variable is immutable, the types do not match, or the variable is not found.
     pub fn update_var(
@@ -113,7 +129,10 @@ impl Environment {
                     ));
                 }
 
-                if var_info.var_type != var_type {
+                if var_info.var_type != var_type
+                    && var_info.var_type != Type::Materia
+                    && var_type != Type::Materia
+                {
                     return Err(EvalError::InvalidOperation(
                         format!(
                             "Type mismatch: cannot assign {:?} to variable {} of type {:?}",
@@ -170,11 +189,14 @@ impl Default for Environment {
 }
 
 /// Represents the value stored in a variable, which can be a boolean (Omen), integer (Arcana),
-/// floating-point number (Aether), or string (Rune).
+/// floating-point number (Aether), string (Rune), list (Scroll), or map (Lexicon).
 #[derive(Debug, Clone)]
 pub enum Value {
     Omen(bool),
     Arcana(i64),
     Aether(f64),
     Rune(String),
+    Abyss,
+    Scroll(Vec<Value>),
+    Lexicon(HashMap<String, Value>),
 }

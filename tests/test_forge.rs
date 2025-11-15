@@ -72,8 +72,8 @@ fn test_forge_morph_type_mismatch() {
     ";
     match test_base(input) {
         Err(e) => match e.downcast_ref::<EvalError>() {
-            Some(EvalError::InvalidOperation(_, _)) => {}
-            _ => panic!("Expected an invalid operation error for type mismatch"),
+            Some(EvalError::TypeError(_, _)) => {}
+            _ => panic!("Expected a type error for mismatched assignment"),
         },
         Ok(_) => panic!("Expected an error for type mismatch with morph variable"),
     }

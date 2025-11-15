@@ -57,6 +57,8 @@ pub enum Token {
     CloseParen,
     OpenBrace,
     CloseBrace,
+    OpenBracket,
+    CloseBracket,
     RangeInclusive,
     RangeExclusive,
 }
@@ -116,6 +118,8 @@ impl fmt::Display for Token {
             Token::CloseParen => write!(f, ")"),
             Token::OpenBrace => write!(f, "{{"),
             Token::CloseBrace => write!(f, "}}"),
+            Token::OpenBracket => write!(f, "["),
+            Token::CloseBracket => write!(f, "]"),
             Token::RangeInclusive => write!(f, "..="),
             Token::RangeExclusive => write!(f, ".."),
         }
@@ -198,6 +202,9 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<SpannedToken>, LexerExt
         "rune" => Token::Type(Type::Rune),
         "omen" => Token::Type(Type::Omen),
         "abyss" => Token::Type(Type::Abyss),
+        "scroll" => Token::Type(Type::Scroll),
+        "lexicon" => Token::Type(Type::Lexicon),
+        "materia" => Token::Type(Type::Materia),
         "boon" => Token::OmenLiteral(true),
         "hex" => Token::OmenLiteral(false),
         _ => Token::Identifier(ident.to_string()),
@@ -242,6 +249,8 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<SpannedToken>, LexerExt
         just::<char, _, LexerExtra<'src>>(')').to(Token::CloseParen),
         just::<char, _, LexerExtra<'src>>('{').to(Token::OpenBrace),
         just::<char, _, LexerExtra<'src>>('}').to(Token::CloseBrace),
+        just::<char, _, LexerExtra<'src>>('[').to(Token::OpenBracket),
+        just::<char, _, LexerExtra<'src>>(']').to(Token::CloseBracket),
     ));
 
     let token = choice((

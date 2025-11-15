@@ -1,5 +1,18 @@
 use crate::ast::{AST, AssignmentOp, Type};
 
+fn type_keyword(var_type: &Type) -> &'static str {
+    match var_type {
+        Type::Arcana => "arcana",
+        Type::Aether => "aether",
+        Type::Rune => "rune",
+        Type::Omen => "omen",
+        Type::Abyss => "abyss",
+        Type::Scroll => "scroll",
+        Type::Lexicon => "lexicon",
+        Type::Materia => "materia",
+    }
+}
+
 /// Formats an AST node into a readable string with appropriate indentation.
 /// This function handles various types of AST nodes, applying formatting rules based on node type.
 /// It also manages operator precedence to ensure correct placement of parentheses.
@@ -26,6 +39,7 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
         AST::Mul(_, _, _) | AST::Div(_, _, _) | AST::Mod(_, _, _) => 60,
         AST::PowArcana(_, _, _) | AST::PowAether(_, _, _) => 70,
         AST::LogicalNot(_, _) => 80,
+        AST::IndexAccess { .. } => 90,
         _ => 100,
     };
 
@@ -97,17 +111,11 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
             is_morph,
             ..
         } => {
-            let type_str = match var_type {
-                Type::Arcana => "arcana",
-                Type::Aether => "aether",
-                Type::Rune => "rune",
-                _ => "",
-            };
             format!(
                 "forge {}{}: {} = {}",
                 if *is_morph { "morph " } else { "" },
                 name,
-                type_str,
+                type_keyword(var_type),
                 format_ast(value, indent_level)
             )
         }
@@ -153,13 +161,11 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
         },
         AST::Abyss(_) => "abyss".to_string(),
         AST::Trans(value, var_type, _) => {
-            let type_str = match var_type {
-                Type::Arcana => "arcana",
-                Type::Aether => "aether",
-                Type::Rune => "rune",
-                _ => "",
-            };
-            format!("trans({} as {})", format_ast(value, indent_level), type_str)
+            format!(
+                "trans({} as {})",
+                format_ast(value, indent_level),
+                type_keyword(var_type)
+            )
         }
         AST::Reveal(value, _) => {
             let val = format_ast(value, indent_level);
@@ -271,11 +277,8 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
             ..
         } => {
             let return_type_str = match return_type {
-                Type::Arcana => "arcana",
-                Type::Aether => "aether",
-                Type::Rune => "rune",
-                Type::Omen => "omen",
                 Type::Abyss => "",
+                _ => type_keyword(return_type),
             };
             let params_str = params
                 .iter()
@@ -301,13 +304,7 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
         AST::EngraveParam {
             name, param_type, ..
         } => {
-            let type_str = match param_type {
-                Type::Arcana => "arcana",
-                Type::Aether => "aether",
-                Type::Rune => "rune",
-                _ => "",
-            };
-            format!("{}: {}", name, type_str)
+            format!("{}: {}", name, type_keyword(param_type))
         }
         AST::FuncCall { name, args, .. } => {
             let args_str = args
@@ -317,6 +314,40 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
                 .join(", ");
             format!("{}({})", name, args_str)
         }
+        AST::ListLiteral { elements, .. } => {
+            let contents = elements
+                .iter()
+                .map(|elem| format_ast(elem, indent_level))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("[{}]", contents)
+        }
+        AST::MapLiteral { entries, .. } => {
+            let contents = entries
+                .iter()
+                .map(|(key, value)| format!("\"{}\": {}", key, format_ast(value, indent_level)))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{{{}}}", contents)
+        }
+        AST::IndexAccess { target, index, .. } => {
+            format!(
+                "{}[{}]",
+                format_ast(target, indent_level),
+                format_ast(index, indent_level)
+            )
+        }
+        AST::IndexAssignment {
+            target,
+            index,
+            value,
+            ..
+        } => format!(
+            "{}[{}] = {}",
+            format_ast(target, indent_level),
+            format_ast(index, indent_level),
+            format_ast(value, indent_level)
+        ),
         AST::Comment(text, _) => text.clone(),
         _ => format!("Not implemented: {:?}", ast),
     }

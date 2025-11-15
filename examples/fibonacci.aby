@@ -1,15 +1,12 @@
-// Print Fibonacci sequence up to n terms
+// Build the Fibonacci sequence inside a morph scroll and then unveil it
 
-forge n: arcana = 20;
-forge morph before: arcana = 0;
-forge morph current: arcana = 1;
+forge terms: arcana = 20;
+forge morph fibs: scroll = [0, 1];
 
-forge morph result: rune = trans(before as rune) + " " + trans(current as rune);
-
-orbit (i = 0..n-2) {
-    forge next: arcana = before + current;
-    result += " " + trans(next as rune);
-    before = current;
-    current = next;
+orbit (i = 2..terms) {
+    forge prev: arcana = fibs[i - 1];
+    forge before_prev: arcana = fibs[i - 2];
+    inscribe(fibs, prev + before_prev);
 };
-unveil(result);
+
+unveil("Fibonacci (", terms, " terms): ", fibs);

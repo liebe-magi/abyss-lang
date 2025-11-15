@@ -1,6 +1,5 @@
 use crate::ast::{LineInfo, Type};
 use crate::env::Value;
-use std::rc::Rc;
 
 use super::result::{EvalError, EvalResult};
 
@@ -100,10 +99,6 @@ pub(crate) fn convert_to_typed_value(
     }
 }
 
-fn rune_to_string(rc: &Rc<String>) -> String {
-    rc.as_ref().clone()
-}
-
 pub(crate) fn extract_arcana(
     result: &EvalResult,
     line_info: &Option<LineInfo>,
@@ -135,7 +130,7 @@ pub(crate) fn extract_rune(
     line_info: &Option<LineInfo>,
 ) -> Result<String, EvalError> {
     match result {
-        EvalResult::Data(Value::Rune(rc)) => Ok(rune_to_string(rc)),
+        EvalResult::Data(Value::Rune(rc)) => Ok(rc.as_ref().clone()),
         _ => Err(EvalError::TypeError(
             "Expected rune value".to_string(),
             line_info.clone(),

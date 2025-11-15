@@ -516,6 +516,7 @@ fn evaluate_engraved_function(
     }
 }
 
+/// Returns a human-readable type name for the given value, used for error reporting.
 fn describe_value(value: &Value) -> &'static str {
     match value {
         Value::Omen(_) => "omen",

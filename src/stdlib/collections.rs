@@ -220,7 +220,7 @@ fn result_to_value(
         )),
         EvalResult::Revealed(_) | EvalResult::Resume(_) | EvalResult::Eject(_) => {
             Err(EvalError::InvalidOperation(
-                format!("{}() cannot accept control-flow results", context),
+                format!("{} cannot accept control-flow results", context),
                 line.clone(),
             ))
         }

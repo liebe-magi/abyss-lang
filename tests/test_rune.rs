@@ -1,7 +1,7 @@
 mod test_base;
 
 use abyss_lang::eval::{EvalError, EvalResult};
-use test_base::test_base;
+use test_base::{Value, test_base};
 
 #[test]
 fn test_parse_rune() {
@@ -10,7 +10,7 @@ fn test_parse_rune() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Rune(s) => assert_eq!(s, "Hello, Abyss!"),
+                EvalResult::Data(Value::Rune(s)) => assert_eq!(s.as_ref(), "Hello, Abyss!"),
                 _ => panic!("Expected a string result"),
             }
         }
@@ -25,7 +25,9 @@ fn test_evaluate_rune_assign() {
         Ok(results) => {
             assert_eq!(results.len(), 2);
             match &results[1] {
-                EvalResult::Rune(s) => assert_eq!(s, "Hello World from Abyss!"),
+                EvalResult::Data(Value::Rune(s)) => {
+                    assert_eq!(s.as_ref(), "Hello World from Abyss!")
+                }
                 _ => panic!("Expected a string result"),
             }
         }
@@ -40,7 +42,7 @@ fn test_rune_concatenation() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Rune(s) => assert_eq!(s, "Hello, Abyss"),
+                EvalResult::Data(Value::Rune(s)) => assert_eq!(s.as_ref(), "Hello, Abyss"),
                 _ => panic!("Expected a concatenated string result"),
             }
         }
@@ -59,7 +61,7 @@ fn test_rune_concatenation_multiline() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Rune(s) => assert_eq!(s, "Hello, Abyss!"),
+                EvalResult::Data(Value::Rune(s)) => assert_eq!(s.as_ref(), "Hello, Abyss!"),
                 _ => panic!("Expected a concatenated string result"),
             }
         }
@@ -73,7 +75,7 @@ fn test_unveil_rune_1() {
     match test_base(input) {
         Ok(results) => {
             assert_eq!(results.len(), 1);
-            assert!(matches!(&results[0], EvalResult::Abyss));
+            assert!(matches!(&results[0], EvalResult::Data(Value::Abyss)));
         }
         Err(e) => panic!("Error: {:?}", e),
     }
@@ -89,9 +91,9 @@ fn test_unveil_rune_2() {
     match test_base(input) {
         Ok(results) => {
             assert_eq!(results.len(), 3);
-            assert!(matches!(&results[0], EvalResult::Abyss));
-            assert!(matches!(&results[1], EvalResult::Abyss));
-            assert!(matches!(&results[2], EvalResult::Abyss));
+            assert!(matches!(&results[0], EvalResult::Data(Value::Abyss)));
+            assert!(matches!(&results[1], EvalResult::Data(Value::Abyss)));
+            assert!(matches!(&results[2], EvalResult::Data(Value::Abyss)));
         }
         Err(e) => panic!("Error: {:?}", e),
     }
@@ -105,7 +107,7 @@ fn test_unveil_rune_3() {
     match test_base(input) {
         Ok(results) => {
             assert_eq!(results.len(), 1);
-            assert!(matches!(&results[0], EvalResult::Abyss));
+            assert!(matches!(&results[0], EvalResult::Data(Value::Abyss)));
         }
         Err(e) => panic!("Error: {:?}", e),
     }
@@ -119,7 +121,9 @@ fn test_trans_in_string_concatenation() {
     "#;
     match test_base(input) {
         Ok(results) => {
-            assert!(matches!(results[1], EvalResult::Rune(ref s) if s == "answer: 42"))
+            assert!(
+                matches!(results[1], EvalResult::Data(Value::Rune(ref s)) if s.as_ref() == "answer: 42")
+            )
         }
         Err(e) => panic!("Error: {:?}", e),
     }
@@ -133,7 +137,7 @@ fn test_trans_in_arithmetic_expression() {
     "#;
     match test_base(input) {
         Ok(results) => {
-            assert!(matches!(results[1], EvalResult::Arcana(50)))
+            assert!(matches!(results[1], EvalResult::Data(Value::Arcana(50))))
         }
         Err(e) => panic!("Error: {:?}", e),
     }
@@ -148,7 +152,9 @@ fn test_trans_with_assignment_operator() {
     "#;
     match test_base(input) {
         Ok(results) => {
-            assert!(matches!(results[2], EvalResult::Rune(ref s) if s == "answer: 42"))
+            assert!(
+                matches!(results[2], EvalResult::Data(Value::Rune(ref s)) if s.as_ref() == "answer: 42")
+            )
         }
         Err(e) => panic!("Error: {:?}", e),
     }

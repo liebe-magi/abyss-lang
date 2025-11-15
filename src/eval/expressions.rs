@@ -1,0 +1,530 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+
+use crate::ast::{AST, LineInfo, Type};
+use crate::env::{CallArg, Callable, EngravedFunction, Environment, Value};
+
+use super::collections::{expect_arcana_index, expect_rune_key};
+use super::result::{EvalError, EvalResult};
+use super::statements;
+use super::values::{convert_to_typed_value, eval_result_to_value_checked, value_to_eval_result};
+
+pub(crate) fn try_evaluate_expression(
+    ast: &AST,
+    env: &mut Environment,
+) -> Result<Option<EvalResult>, EvalError> {
+    let result = match ast {
+        AST::Omen(value, _) => return Ok(Some(EvalResult::data(Value::Omen(*value)))),
+        AST::Arcana(value, _) => return Ok(Some(EvalResult::data(Value::Arcana(*value)))),
+        AST::Aether(value, _) => return Ok(Some(EvalResult::data(Value::Aether(*value)))),
+        AST::Rune(value, _) => {
+            return Ok(Some(EvalResult::data(Value::Rune(Rc::new(value.clone())))));
+        }
+        AST::Abyss(_) => return Ok(Some(EvalResult::abyss())),
+        AST::ListLiteral {
+            elements,
+            line_info,
+        } => {
+            let mut evaluated = Vec::with_capacity(elements.len());
+            for element in elements {
+                evaluated.push(eval_result_to_value_checked(
+                    statements::evaluate(element, env)?,
+                    line_info.clone(),
+                )?);
+            }
+            EvalResult::data(Value::Scroll(Rc::new(RefCell::new(evaluated))))
+        }
+        AST::MapLiteral { entries, line_info } => {
+            let mut map = HashMap::new();
+            for (key, expr) in entries {
+                let value = eval_result_to_value_checked(
+                    statements::evaluate(expr, env)?,
+                    line_info.clone(),
+                )?;
+                map.insert(key.clone(), value);
+            }
+            EvalResult::data(Value::Lexicon(Rc::new(RefCell::new(map))))
+        }
+        AST::Add(left, right, line_info) => binary_numeric_op(
+            env,
+            left,
+            right,
+            line_info,
+            |l, r| l + r,
+            |l, r| l + r,
+            Some(|l: String, r: String| format!("{}{}", l, r)),
+        )?,
+        AST::Sub(left, right, line_info) => binary_numeric_op(
+            env,
+            left,
+            right,
+            line_info,
+            |l, r| l - r,
+            |l, r| l - r,
+            None,
+        )?,
+        AST::Mul(left, right, line_info) => binary_numeric_op(
+            env,
+            left,
+            right,
+            line_info,
+            |l, r| l * r,
+            |l, r| l * r,
+            None,
+        )?,
+        AST::Div(left, right, line_info) => binary_numeric_op(
+            env,
+            left,
+            right,
+            line_info,
+            |l, r| l / r,
+            |l, r| l / r,
+            None,
+        )?,
+        AST::Mod(left, right, line_info) => binary_numeric_op(
+            env,
+            left,
+            right,
+            line_info,
+            |l, r| l % r,
+            |l, r| l % r,
+            None,
+        )?,
+        AST::PowArcana(left, right, line_info) => match (
+            statements::evaluate(left, env)?,
+            statements::evaluate(right, env)?,
+        ) {
+            (EvalResult::Data(Value::Arcana(l)), EvalResult::Data(Value::Arcana(r))) => {
+                if r < 0 {
+                    return Err(EvalError::NegativeExponent(line_info.clone()));
+                }
+                EvalResult::data(Value::Arcana(l.pow(r as u32)))
+            }
+            _ => {
+                return Err(EvalError::InvalidOperation(
+                    "PowArcana operation requires two Arcana!".to_string(),
+                    line_info.clone(),
+                ));
+            }
+        },
+        AST::PowAether(left, right, line_info) => match (
+            statements::evaluate(left, env)?,
+            statements::evaluate(right, env)?,
+        ) {
+            (EvalResult::Data(Value::Aether(l)), EvalResult::Data(Value::Aether(r))) => {
+                EvalResult::data(Value::Aether(l.powf(r)))
+            }
+            _ => {
+                return Err(EvalError::InvalidOperation(
+                    "PowAether operation requires two Aether!".to_string(),
+                    line_info.clone(),
+                ));
+            }
+        },
+        AST::Equal(left, right, line_info) => compare_values(env, left, right, line_info, true)?,
+        AST::NotEqual(left, right, line_info) => {
+            compare_values(env, left, right, line_info, false)?
+        }
+        AST::LessThan(left, right, line_info) => {
+            order_values(env, left, right, line_info, |l, r| l < r)?
+        }
+        AST::LessThanOrEqual(left, right, line_info) => {
+            order_values(env, left, right, line_info, |l, r| l <= r)?
+        }
+        AST::GreaterThan(left, right, line_info) => {
+            order_values(env, left, right, line_info, |l, r| l > r)?
+        }
+        AST::GreaterThanOrEqual(left, right, line_info) => {
+            order_values(env, left, right, line_info, |l, r| l >= r)?
+        }
+        AST::LogicalAnd(left, right, line_info) => {
+            logical_op(env, left, right, line_info, |l, r| l && r)?
+        }
+        AST::LogicalOr(left, right, line_info) => {
+            logical_op(env, left, right, line_info, |l, r| l || r)?
+        }
+        AST::LogicalNot(expr, line_info) => {
+            let result = statements::evaluate(expr, env)?;
+            match result {
+                EvalResult::Data(Value::Omen(value)) => EvalResult::data(Value::Omen(!value)),
+                _ => {
+                    return Err(EvalError::InvalidOperation(
+                        "LogicalNot operation requires Omen!".to_string(),
+                        line_info.clone(),
+                    ));
+                }
+            }
+        }
+        AST::Var(name, line_info) => match env.get_var(name) {
+            Some(var_info) => value_to_eval_result(&var_info.value),
+            None => {
+                return Err(EvalError::UndefinedVariable(
+                    name.clone(),
+                    line_info.clone(),
+                ));
+            }
+        },
+        AST::Trans(expr, target_type, line_info) => {
+            let value = statements::evaluate(expr, env)?;
+            match target_type {
+                Type::Arcana => match value {
+                    EvalResult::Data(Value::Aether(n)) => EvalResult::data(Value::Arcana(n as i64)),
+                    EvalResult::Data(Value::Rune(s)) => s
+                        .as_ref()
+                        .parse::<i64>()
+                        .map(|parsed| EvalResult::data(Value::Arcana(parsed)))
+                        .map_err(|_| {
+                            EvalError::InvalidOperation(
+                                "Failed to convert Rune to Arcana".to_string(),
+                                line_info.clone(),
+                            )
+                        })?,
+                    _ => {
+                        return Err(EvalError::InvalidOperation(
+                            "Invalid cast to Arcana".to_string(),
+                            line_info.clone(),
+                        ));
+                    }
+                },
+                Type::Aether => match value {
+                    EvalResult::Data(Value::Arcana(n)) => EvalResult::data(Value::Aether(n as f64)),
+                    EvalResult::Data(Value::Rune(s)) => s
+                        .as_ref()
+                        .parse::<f64>()
+                        .map(|parsed| EvalResult::data(Value::Aether(parsed)))
+                        .map_err(|_| {
+                            EvalError::InvalidOperation(
+                                "Failed to convert Rune to Aether".to_string(),
+                                line_info.clone(),
+                            )
+                        })?,
+                    _ => {
+                        return Err(EvalError::InvalidOperation(
+                            "Invalid cast to Aether".to_string(),
+                            line_info.clone(),
+                        ));
+                    }
+                },
+                Type::Rune => match value {
+                    EvalResult::Data(Value::Arcana(n)) => {
+                        EvalResult::data(Value::Rune(Rc::new(n.to_string())))
+                    }
+                    EvalResult::Data(Value::Aether(n)) => {
+                        EvalResult::data(Value::Rune(Rc::new(n.to_string())))
+                    }
+                    _ => {
+                        return Err(EvalError::InvalidOperation(
+                            "Invalid cast to Rune".to_string(),
+                            line_info.clone(),
+                        ));
+                    }
+                },
+                Type::Omen => {
+                    return Err(EvalError::InvalidOperation(
+                        "Casting to Omen is not supported".to_string(),
+                        line_info.clone(),
+                    ));
+                }
+                _ => {
+                    return Err(EvalError::InvalidOperation(
+                        format!("Unsupported cast to type {:?}", target_type),
+                        line_info.clone(),
+                    ));
+                }
+            }
+        }
+        AST::IndexAccess {
+            target,
+            index,
+            line_info,
+        } => {
+            let collection = statements::evaluate(target, env)?;
+            let idx_value = statements::evaluate(index, env)?;
+            match collection {
+                EvalResult::Data(Value::Scroll(items)) => {
+                    let idx = expect_arcana_index(&idx_value, line_info)?;
+                    let borrowed = items.borrow();
+                    let value = borrowed.get(idx).cloned().ok_or_else(|| {
+                        EvalError::InvalidOperation(
+                            format!("Index {} is out of bounds for scroll", idx),
+                            line_info.clone(),
+                        )
+                    })?;
+                    EvalResult::data(value)
+                }
+                EvalResult::Data(Value::Lexicon(entries)) => {
+                    let key = expect_rune_key(&idx_value, line_info)?;
+                    let borrowed = entries.borrow();
+                    let value = borrowed.get(&key).cloned().ok_or_else(|| {
+                        EvalError::InvalidOperation(
+                            format!("Lexicon key '{}' does not exist", key),
+                            line_info.clone(),
+                        )
+                    })?;
+                    EvalResult::data(value)
+                }
+                _ => {
+                    return Err(EvalError::InvalidOperation(
+                        "Indexing is only supported for scroll or lexicon".to_string(),
+                        line_info.clone(),
+                    ));
+                }
+            }
+        }
+        AST::FuncCall {
+            name,
+            args,
+            line_info,
+        } => evaluate_function_call(env, name, args, line_info)?,
+        AST::OracleDontCareItem(_) => EvalResult::data(Value::Omen(true)),
+        _ => return Ok(None),
+    };
+
+    Ok(Some(result))
+}
+
+fn binary_numeric_op<TArc, TAether>(
+    env: &mut Environment,
+    left: &AST,
+    right: &AST,
+    line_info: &Option<LineInfo>,
+    arcana_op: TArc,
+    aether_op: TAether,
+    rune_op: Option<fn(String, String) -> String>,
+) -> Result<EvalResult, EvalError>
+where
+    TArc: FnOnce(i64, i64) -> i64,
+    TAether: FnOnce(f64, f64) -> f64,
+{
+    let left_result = statements::evaluate(left, env)?;
+    let right_result = statements::evaluate(right, env)?;
+
+    match (left_result, right_result) {
+        (EvalResult::Data(Value::Arcana(l)), EvalResult::Data(Value::Arcana(r))) => {
+            Ok(EvalResult::data(Value::Arcana(arcana_op(l, r))))
+        }
+        (EvalResult::Data(Value::Aether(l)), EvalResult::Data(Value::Aether(r))) => {
+            Ok(EvalResult::data(Value::Aether(aether_op(l, r))))
+        }
+        (EvalResult::Data(Value::Rune(l)), EvalResult::Data(Value::Rune(r)))
+            if rune_op.is_some() =>
+        {
+            let op = rune_op.unwrap();
+            Ok(EvalResult::data(Value::Rune(Rc::new(op(
+                l.as_ref().clone(),
+                r.as_ref().clone(),
+            )))))
+        }
+        _ => Err(EvalError::InvalidOperation(
+            "Operation requires compatible types".to_string(),
+            line_info.clone(),
+        )),
+    }
+}
+
+fn compare_values(
+    env: &mut Environment,
+    left: &AST,
+    right: &AST,
+    line_info: &Option<LineInfo>,
+    equality: bool,
+) -> Result<EvalResult, EvalError> {
+    let left_result = statements::evaluate(left, env)?;
+    let right_result = statements::evaluate(right, env)?;
+
+    let comparison = match (left_result, right_result) {
+        (EvalResult::Data(Value::Arcana(l)), EvalResult::Data(Value::Arcana(r))) => l == r,
+        (EvalResult::Data(Value::Aether(l)), EvalResult::Data(Value::Aether(r))) => {
+            (l - r).abs() < f64::EPSILON
+        }
+        (EvalResult::Data(Value::Rune(l)), EvalResult::Data(Value::Rune(r))) => l == r,
+        _ => {
+            return Err(EvalError::InvalidOperation(
+                "Comparison requires compatible types!".to_string(),
+                line_info.clone(),
+            ));
+        }
+    };
+
+    let result = if equality { comparison } else { !comparison };
+    Ok(EvalResult::data(Value::Omen(result)))
+}
+
+fn order_values<F>(
+    env: &mut Environment,
+    left: &AST,
+    right: &AST,
+    line_info: &Option<LineInfo>,
+    comparator: F,
+) -> Result<EvalResult, EvalError>
+where
+    F: FnOnce(f64, f64) -> bool,
+{
+    let left_result = statements::evaluate(left, env)?;
+    let right_result = statements::evaluate(right, env)?;
+
+    match (left_result, right_result) {
+        (EvalResult::Data(Value::Arcana(l)), EvalResult::Data(Value::Arcana(r))) => Ok(
+            EvalResult::data(Value::Omen(comparator(l as f64, r as f64))),
+        ),
+        (EvalResult::Data(Value::Aether(l)), EvalResult::Data(Value::Aether(r))) => {
+            Ok(EvalResult::data(Value::Omen(comparator(l, r))))
+        }
+        _ => Err(EvalError::InvalidOperation(
+            "Comparison requires numeric types!".to_string(),
+            line_info.clone(),
+        )),
+    }
+}
+
+fn logical_op<F>(
+    env: &mut Environment,
+    left: &AST,
+    right: &AST,
+    line_info: &Option<LineInfo>,
+    op: F,
+) -> Result<EvalResult, EvalError>
+where
+    F: FnOnce(bool, bool) -> bool,
+{
+    let left_result = statements::evaluate(left, env)?;
+    let right_result = statements::evaluate(right, env)?;
+
+    match (left_result, right_result) {
+        (EvalResult::Data(Value::Omen(l)), EvalResult::Data(Value::Omen(r))) => {
+            Ok(EvalResult::data(Value::Omen(op(l, r))))
+        }
+        _ => Err(EvalError::InvalidOperation(
+            "Logical operation requires two Omen!".to_string(),
+            line_info.clone(),
+        )),
+    }
+}
+
+fn evaluate_function_call(
+    env: &mut Environment,
+    name: &str,
+    args: &[AST],
+    line_info: &Option<LineInfo>,
+) -> Result<EvalResult, EvalError> {
+    let callable = match env.get_function(name) {
+        Some(func) => func.clone(),
+        None => {
+            return Err(EvalError::UndefinedVariable(
+                name.to_string(),
+                line_info.clone(),
+            ));
+        }
+    };
+
+    let mut evaluated_args = Vec::new();
+    for arg in args {
+        let evaluated_arg = statements::evaluate(arg, env)?;
+        let var_name = if let AST::Var(var_name, _) = arg {
+            Some(var_name.clone())
+        } else {
+            None
+        };
+        evaluated_args.push(CallArg {
+            value: evaluated_arg,
+            var_name,
+        });
+    }
+
+    match callable {
+        Callable::Engraved(function) => {
+            evaluate_engraved_function(env, evaluated_args, function, line_info)
+        }
+        Callable::Builtin(function) => (function.func)(env, evaluated_args, line_info.clone()),
+    }
+}
+
+fn evaluate_engraved_function(
+    env: &mut Environment,
+    evaluated_args: Vec<CallArg>,
+    function: EngravedFunction,
+    line_info: &Option<LineInfo>,
+) -> Result<EvalResult, EvalError> {
+    let eval_args: Vec<EvalResult> = evaluated_args.into_iter().map(|arg| arg.value).collect();
+    let params = function.params.clone();
+    env.push_scope();
+
+    if eval_args.len() != params.len() {
+        return Err(EvalError::InvalidOperation(
+            format!(
+                "Function '{}' expected {} arguments but got {}.",
+                function.name,
+                params.len(),
+                eval_args.len()
+            ),
+            line_info.clone(),
+        ));
+    }
+
+    for (evaluated_arg, param) in eval_args.into_iter().zip(params.iter()) {
+        let (param_name, param_type) = match param {
+            AST::EngraveParam {
+                name, param_type, ..
+            } => (name, param_type),
+            _ => {
+                return Err(EvalError::InvalidOperation(
+                    format!(
+                        "Expected EngraveParam in function definition: {}",
+                        function.name
+                    ),
+                    line_info.clone(),
+                ));
+            }
+        };
+        let value = convert_to_typed_value(evaluated_arg, param_type, line_info)?;
+        env.set_var(
+            param_name.to_string(),
+            value,
+            param_type.clone(),
+            false,
+            line_info.clone(),
+        );
+    }
+
+    let result = {
+        let evaluated = statements::evaluate(&function.body, env);
+        env.pop_scope();
+        evaluated?
+    };
+
+    let value = eval_result_to_value_checked(result, function.line_info.clone())?;
+
+    match (function.return_type.clone(), value) {
+        (Type::Arcana, Value::Arcana(v)) => Ok(EvalResult::data(Value::Arcana(v))),
+        (Type::Aether, Value::Aether(v)) => Ok(EvalResult::data(Value::Aether(v))),
+        (Type::Rune, Value::Rune(v)) => Ok(EvalResult::data(Value::Rune(v))),
+        (Type::Omen, Value::Omen(v)) => Ok(EvalResult::data(Value::Omen(v))),
+        (Type::Abyss, Value::Abyss) => Ok(EvalResult::data(Value::Abyss)),
+        (Type::Scroll, Value::Scroll(values)) => Ok(EvalResult::data(Value::Scroll(values))),
+        (Type::Lexicon, Value::Lexicon(entries)) => Ok(EvalResult::data(Value::Lexicon(entries))),
+        (Type::Materia, value) => Ok(EvalResult::data(value)),
+        (expected, actual) => Err(EvalError::TypeError(
+            format!(
+                "Type mismatch for return value of function {} (expected {:?}, got {:?})",
+                function.name,
+                expected,
+                describe_value(&actual)
+            ),
+            function.line_info.clone(),
+        )),
+    }
+}
+
+/// Returns a human-readable type name for the given value, used for error reporting.
+fn describe_value(value: &Value) -> &'static str {
+    match value {
+        Value::Omen(_) => "omen",
+        Value::Arcana(_) => "arcana",
+        Value::Aether(_) => "aether",
+        Value::Rune(_) => "rune",
+        Value::Abyss => "abyss",
+        Value::Scroll(_) => "scroll",
+        Value::Lexicon(_) => "lexicon",
+    }
+}

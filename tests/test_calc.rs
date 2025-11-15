@@ -1,7 +1,7 @@
 mod test_base;
 
 use abyss_lang::eval::{EvalError, EvalResult};
-use test_base::test_base;
+use test_base::{Value, test_base};
 
 #[test]
 fn test_parse_arcana_simple() {
@@ -10,7 +10,7 @@ fn test_parse_arcana_simple() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 123),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 123),
                 _ => panic!("Expected a number result"),
             }
         }
@@ -25,7 +25,7 @@ fn test_parse_arcana_leading_zeros() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 123),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 123),
                 _ => panic!("Expected a number result"),
             }
         }
@@ -40,7 +40,7 @@ fn test_parse_arcana_with_whitespace() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 123),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 123),
                 _ => panic!("Expected a number result"),
             }
         }
@@ -55,7 +55,7 @@ fn test_arcana_addition_simple() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 1 + 2),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 1 + 2),
                 _ => panic!("Expected a number result"),
             }
         }
@@ -70,7 +70,7 @@ fn test_arcana_addition_larger_numbers() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 123 + 456),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 123 + 456),
                 _ => panic!("Expected a number result"),
             }
         }
@@ -85,7 +85,7 @@ fn test_arcana_addition_multiple_terms() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 123 + 456 + 789),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 123 + 456 + 789),
                 _ => panic!("Expected a number result"),
             }
         }
@@ -100,7 +100,7 @@ fn test_arcana_subtraction_simple() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 10 - 3),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 10 - 3),
                 _ => panic!("Expected a number result"),
             }
         }
@@ -115,7 +115,7 @@ fn test_arcana_subtraction_multiple_terms() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 10 - 3 - 2),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 10 - 3 - 2),
                 _ => panic!("Expected a number result"),
             }
         }
@@ -130,7 +130,7 @@ fn test_arcana_multiplication_simple() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 6 * 7),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 6 * 7),
                 _ => panic!("Expected a number result"),
             }
         }
@@ -145,7 +145,7 @@ fn test_arcana_multiplication_multiple_terms() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 6 * 7 * 2),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 6 * 7 * 2),
                 _ => panic!("Expected a number result"),
             }
         }
@@ -160,7 +160,7 @@ fn test_arcana_division_simple() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 20 / 5),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 20 / 5),
                 _ => panic!("Expected a number result"),
             }
         }
@@ -175,7 +175,7 @@ fn test_arcana_division_multiple_terms() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 20 / 5 / 2),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 20 / 5 / 2),
                 _ => panic!("Expected a number result"),
             }
         }
@@ -190,7 +190,7 @@ fn test_arcana_combined_operations_simple() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 10 + 20 * 3 - 5 / 5),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 10 + 20 * 3 - 5 / 5),
                 _ => panic!("Expected a number result"),
             }
         }
@@ -205,7 +205,7 @@ fn test_arcana_combined_operations_with_parentheses_1() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, (10 + 20) * 3),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, (10 + 20) * 3),
                 _ => panic!("Expected a number result"),
             }
         }
@@ -220,7 +220,7 @@ fn test_arcana_combined_operations_with_parentheses_2() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 10 * (20 + 3) / 5),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 10 * (20 + 3) / 5),
                 _ => panic!("Expected a number result"),
             }
         }
@@ -235,7 +235,7 @@ fn test_arcana_combined_operations_complex_1() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, (10 + 20) / (5 - 3)),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, (10 + 20) / (5 - 3)),
                 _ => panic!("Expected a number result"),
             }
         }
@@ -250,7 +250,7 @@ fn test_arcana_combined_operations_complex_2() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, (1 + 2) / 3),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, (1 + 2) / 3),
                 _ => panic!("Expected a number result"),
             }
         }
@@ -265,7 +265,7 @@ fn test_arcana_combined_operations_complex_3() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 10 / (2 + 3)),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 10 / (2 + 3)),
                 _ => panic!("Expected a number result"),
             }
         }
@@ -279,7 +279,7 @@ fn test_arcana_assignment() {
     match test_base(input) {
         Ok(results) => {
             assert_eq!(results.len(), 1);
-            assert!(matches!(&results[0], EvalResult::Abyss));
+            assert!(matches!(&results[0], EvalResult::Data(Value::Abyss)));
         }
         Err(e) => panic!("Error: {:?}", e),
     }
@@ -292,7 +292,7 @@ fn test_arcana_variable_usage() {
         Ok(results) => {
             assert_eq!(results.len(), 2);
             match &results[1] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 10 + 5),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 10 + 5),
                 _ => panic!("Expected a number result"),
             }
         }
@@ -311,7 +311,7 @@ fn test_arcana_multiline_variable_usage() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 3 * 10 + 2 * 3),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 3 * 10 + 2 * 3),
                 _ => panic!("Expected a number result"),
             }
         }
@@ -326,7 +326,7 @@ fn test_arcana_exponentiation_simple() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 2_i64.pow(3)),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 2_i64.pow(3)),
                 _ => panic!("Expected an arcana (integer) result"),
             }
         }
@@ -341,7 +341,7 @@ fn test_arcana_exponentiation_zero_exponent() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 5_i64.pow(0)), // 結果は常に1
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 5_i64.pow(0)), // 結果は常に1
                 _ => panic!("Expected an arcana (integer) result"),
             }
         }
@@ -356,7 +356,7 @@ fn test_arcana_exponentiation_with_parentheses() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, (2_i64 + 1_i64).pow(3)),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, (2_i64 + 1_i64).pow(3)),
                 _ => panic!("Expected an arcana (integer) result"),
             }
         }
@@ -371,7 +371,7 @@ fn test_arcana_exponentiation_nested() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 3_i64.pow(4).pow(2)),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 3_i64.pow(4).pow(2)),
                 _ => panic!("Expected an arcana (integer) result"),
             }
         }
@@ -398,7 +398,7 @@ fn test_parse_aether_simple() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, 123.45),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 123.45),
                 _ => panic!("Expected a floating point number result"),
             }
         }
@@ -413,7 +413,7 @@ fn test_parse_aether_leading_zeros() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, 123.45),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 123.45),
                 _ => panic!("Expected a floating point number result"),
             }
         }
@@ -428,7 +428,7 @@ fn test_parse_aether_with_whitespace() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, 123.45),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 123.45),
                 _ => panic!("Expected a floating point number result"),
             }
         }
@@ -443,7 +443,7 @@ fn test_aether_addition_simple() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, 1.1 + 2.2),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 1.1 + 2.2),
                 _ => panic!("Expected a floating point number result"),
             }
         }
@@ -458,7 +458,7 @@ fn test_aether_addition_larger_numbers() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, 123.45 + 456.78),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 123.45 + 456.78),
                 _ => panic!("Expected a floating point number result"),
             }
         }
@@ -473,7 +473,7 @@ fn test_aether_addition_multiple_terms() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, 123.45 + 456.78 + 789.01),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 123.45 + 456.78 + 789.01),
                 _ => panic!("Expected a floating point number result"),
             }
         }
@@ -488,7 +488,7 @@ fn test_aether_subtraction_simple() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, 10.5 - 3.2),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 10.5 - 3.2),
                 _ => panic!("Expected a floating point number result"),
             }
         }
@@ -503,7 +503,7 @@ fn test_aether_subtraction_multiple_terms() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, 10.5 - 3.2 - 2.1),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 10.5 - 3.2 - 2.1),
                 _ => panic!("Expected a floating point number result"),
             }
         }
@@ -518,7 +518,7 @@ fn test_aether_multiplication_simple() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, 6.5 * 7.2),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 6.5 * 7.2),
                 _ => panic!("Expected a floating point number result"),
             }
         }
@@ -533,7 +533,7 @@ fn test_aether_multiplication_multiple_terms() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, 6.5 * 7.2 * 2.1),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 6.5 * 7.2 * 2.1),
                 _ => panic!("Expected a floating point number result"),
             }
         }
@@ -548,7 +548,7 @@ fn test_aether_division_simple() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, 20.5 / 5.1),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 20.5 / 5.1),
                 _ => panic!("Expected a floating point number result"),
             }
         }
@@ -563,7 +563,7 @@ fn test_aether_division_multiple_terms() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, 20.5 / 5.1 / 2.2),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 20.5 / 5.1 / 2.2),
                 _ => panic!("Expected a floating point number result"),
             }
         }
@@ -578,7 +578,7 @@ fn test_aether_combined_operations_simple() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, 10.5 + 20.2 * 3.1 - 5.5 / 5.0),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 10.5 + 20.2 * 3.1 - 5.5 / 5.0),
                 _ => panic!("Expected a floating point number result"),
             }
         }
@@ -593,7 +593,7 @@ fn test_aether_combined_operations_with_parentheses_1() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, (10.5 + 20.2) * 3.1),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, (10.5 + 20.2) * 3.1),
                 _ => panic!("Expected a floating point number result"),
             }
         }
@@ -608,7 +608,7 @@ fn test_aether_combined_operations_with_parentheses_2() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, 10.5 * (20.2 + 3.3) / 5.5),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 10.5 * (20.2 + 3.3) / 5.5),
                 _ => panic!("Expected a floating point number result"),
             }
         }
@@ -623,7 +623,7 @@ fn test_aether_combined_operations_complex_1() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, (10.5 + 20.2) / (5.5 - 3.1)),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, (10.5 + 20.2) / (5.5 - 3.1)),
                 _ => panic!("Expected a floating point number result"),
             }
         }
@@ -638,7 +638,7 @@ fn test_aether_combined_operations_complex_2() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, (1.5 + 2.5) / 3.0),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, (1.5 + 2.5) / 3.0),
                 _ => panic!("Expected a floating point number result"),
             }
         }
@@ -653,7 +653,7 @@ fn test_aether_combined_operations_complex_3() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, 10.5 / (2.5 + 3.5)),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 10.5 / (2.5 + 3.5)),
                 _ => panic!("Expected a floating point number result"),
             }
         }
@@ -667,7 +667,7 @@ fn test_aether_assignment() {
     match test_base(input) {
         Ok(results) => {
             assert_eq!(results.len(), 1);
-            assert!(matches!(&results[0], EvalResult::Abyss));
+            assert!(matches!(&results[0], EvalResult::Data(Value::Abyss)));
         }
         Err(e) => panic!("Error: {:?}", e),
     }
@@ -680,7 +680,7 @@ fn test_aether_variable_usage() {
         Ok(results) => {
             assert_eq!(results.len(), 2);
             match &results[1] {
-                EvalResult::Aether(n) => assert_eq!(*n, 10.5 + 5.5),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 10.5 + 5.5),
                 _ => panic!("Expected a floating point number result"),
             }
         }
@@ -699,7 +699,7 @@ fn test_aether_multiline_variable_usage() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Aether(n) => assert_eq!(*n, 3.0 * 10.5 + 2.0 * 3.5),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 3.0 * 10.5 + 2.0 * 3.5),
                 _ => panic!("Expected a floating point number result"),
             }
         }
@@ -714,7 +714,7 @@ fn test_aether_exponentiation_simple() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, 2.5_f64.powf(3.0)),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 2.5_f64.powf(3.0)),
                 _ => panic!("Expected an aether (floating point) result"),
             }
         }
@@ -729,7 +729,7 @@ fn test_aether_exponentiation_zero_exponent() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, 5.0_f64.powf(0.0)), // 結果は常に1.0
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 5.0_f64.powf(0.0)), // 結果は常に1.0
                 _ => panic!("Expected an aether (floating point) result"),
             }
         }
@@ -744,7 +744,7 @@ fn test_aether_exponentiation_with_parentheses() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, (1.5_f64 + 2.5_f64).powf(2.0)),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, (1.5_f64 + 2.5_f64).powf(2.0)),
                 _ => panic!("Expected an aether (floating point) result"),
             }
         }
@@ -759,7 +759,7 @@ fn test_aether_exponentiation_negative_exponent() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert!((*n - 1.0 / 4.2).abs() < 1e-9), // 負の指数もサポート
+                EvalResult::Data(Value::Aether(n)) => assert!((*n - 1.0 / 4.2).abs() < 1e-9), // 負の指数もサポート
                 _ => panic!("Expected an aether (floating point) result"),
             }
         }
@@ -774,7 +774,7 @@ fn test_aether_exponentiation_fractional_exponent() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, 9.0_f64.powf(0.5)), // 平方根
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 9.0_f64.powf(0.5)), // 平方根
                 _ => panic!("Expected an aether (floating point) result"),
             }
         }
@@ -789,7 +789,7 @@ fn test_arcana_modulus() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 10 % 3),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 10 % 3),
                 _ => panic!("Expected an Arcana result"),
             }
         }
@@ -804,7 +804,7 @@ fn test_arcana_modulus_negative() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, -10 % 3),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, -10 % 3),
                 _ => panic!("Expected an Arcana result"),
             }
         }
@@ -823,7 +823,7 @@ fn test_arcana_modulus_assignment() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 10 % 3),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 10 % 3),
                 _ => panic!("Expected an Arcana result after modulus assignment"),
             }
         }
@@ -838,7 +838,7 @@ fn test_aether_modulus() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert!((*n - (10.5 % 3.2)).abs() < 1e-9),
+                EvalResult::Data(Value::Aether(n)) => assert!((*n - (10.5 % 3.2)).abs() < 1e-9),
                 _ => panic!("Expected an Aether result"),
             }
         }
@@ -853,7 +853,7 @@ fn test_aether_modulus_negative() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert!((*n - (-10.5 % 3.2)).abs() < 1e-9),
+                EvalResult::Data(Value::Aether(n)) => assert!((*n - (-10.5 % 3.2)).abs() < 1e-9),
                 _ => panic!("Expected an Aether result"),
             }
         }
@@ -872,7 +872,7 @@ fn test_aether_modulus_assignment() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Aether(n) => assert!((*n - (10.5 % 3.2)).abs() < 1e-9),
+                EvalResult::Data(Value::Aether(n)) => assert!((*n - (10.5 % 3.2)).abs() < 1e-9),
                 _ => panic!("Expected an Aether result after modulus assignment"),
             }
         }
@@ -891,7 +891,7 @@ fn test_arcana_add_assign() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 10 + 5),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 10 + 5),
                 _ => panic!("Expected an Arcana result after add assignment"),
             }
         }
@@ -910,7 +910,7 @@ fn test_arcana_sub_assign() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 10 - 3),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 10 - 3),
                 _ => panic!("Expected an Arcana result after sub assignment"),
             }
         }
@@ -929,7 +929,7 @@ fn test_arcana_mul_assign() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 10 * 2),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 10 * 2),
                 _ => panic!("Expected an Arcana result after mul assignment"),
             }
         }
@@ -948,7 +948,7 @@ fn test_arcana_div_assign() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 10 / 2),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 10 / 2),
                 _ => panic!("Expected an Arcana result after div assignment"),
             }
         }
@@ -967,7 +967,7 @@ fn test_arcana_mod_assign() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 10 % 3),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 10 % 3),
                 _ => panic!("Expected an Arcana result after mod assignment"),
             }
         }
@@ -986,7 +986,7 @@ fn test_arcana_pow_assign() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 2_i64.pow(3)),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 2_i64.pow(3)),
                 _ => panic!("Expected an Arcana result after pow assignment"),
             }
         }
@@ -1005,7 +1005,7 @@ fn test_aether_add_assign() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Aether(n) => assert_eq!(*n, 10.5 + 5.5),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 10.5 + 5.5),
                 _ => panic!("Expected an Aether result after add assignment"),
             }
         }
@@ -1024,7 +1024,7 @@ fn test_aether_sub_assign() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Aether(n) => assert_eq!(*n, 10.5 - 3.0),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 10.5 - 3.0),
                 _ => panic!("Expected an Aether result after sub assignment"),
             }
         }
@@ -1043,7 +1043,7 @@ fn test_aether_mul_assign() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Aether(n) => assert_eq!(*n, 10.5 * 2.0),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 10.5 * 2.0),
                 _ => panic!("Expected an Aether result after mul assignment"),
             }
         }
@@ -1062,7 +1062,7 @@ fn test_aether_div_assign() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Aether(n) => assert_eq!(*n, 10.5 / 2.0),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 10.5 / 2.0),
                 _ => panic!("Expected an Aether result after div assignment"),
             }
         }
@@ -1081,7 +1081,7 @@ fn test_aether_mod_assign() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Aether(n) => assert_eq!(*n, 10.5 % 3.0),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 10.5 % 3.0),
                 _ => panic!("Expected an Aether result after mod assignment"),
             }
         }
@@ -1100,7 +1100,7 @@ fn test_aether_pow_assign() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Aether(n) => assert_eq!(*n, 2.0_f64.powf(3.0)),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 2.0_f64.powf(3.0)),
                 _ => panic!("Expected an Aether result after pow assignment"),
             }
         }

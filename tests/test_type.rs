@@ -1,7 +1,7 @@
 mod test_base;
 
 use abyss_lang::eval::EvalResult;
-use test_base::test_base;
+use test_base::{Value, test_base};
 
 #[test]
 fn test_cast_arcana_to_aether() {
@@ -10,7 +10,7 @@ fn test_cast_arcana_to_aether() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => assert_eq!(*n, 42.0),
+                EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 42.0),
                 _ => panic!("Expected an Aether result"),
             }
         }
@@ -25,7 +25,7 @@ fn test_cast_aether_to_arcana() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 3),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 3),
                 _ => panic!("Expected an Arcana result"),
             }
         }
@@ -40,7 +40,7 @@ fn test_cast_rune_to_aether() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Aether(n) => {
+                EvalResult::Data(Value::Aether(n)) => {
                     let expected = "3.14"
                         .parse::<f64>()
                         .expect("literal conversion should succeed");
@@ -60,7 +60,7 @@ fn test_cast_rune_to_arcana() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 123),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 123),
                 _ => panic!("Expected an Arcana result"),
             }
         }
@@ -75,7 +75,7 @@ fn test_cast_arcana_to_rune() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Rune(s) => assert_eq!(s, "123"),
+                EvalResult::Data(Value::Rune(s)) => assert_eq!(s.as_ref(), "123"),
                 _ => panic!("Expected a Rune result"),
             }
         }
@@ -90,7 +90,7 @@ fn test_cast_aether_to_rune() {
         Ok(results) => {
             assert_eq!(results.len(), 1);
             match &results[0] {
-                EvalResult::Rune(s) => assert_eq!(s, "3.14"),
+                EvalResult::Data(Value::Rune(s)) => assert_eq!(s.as_ref(), "3.14"),
                 _ => panic!("Expected a Rune result"),
             }
         }

@@ -4,6 +4,9 @@ use abyss_lang::{
     stdlib,
 };
 
+#[allow(unused_imports)]
+pub use abyss_lang::env::Value;
+
 pub fn test_base(input: &str) -> Result<Vec<EvalResult>, Box<dyn std::error::Error>> {
     let mut env = stdlib::create_global_environment();
     let outcome = parse(input);

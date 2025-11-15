@@ -1,6 +1,8 @@
 use crate::ast::LineInfo;
 use crate::env::{CallArg, Environment, Value};
 use crate::eval::{EvalError, EvalResult};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 pub fn measure(
     _env: &mut Environment,
@@ -14,9 +16,17 @@ pub fn measure(
         ));
     }
 
-    match &args[0].value {
-        EvalResult::Scroll(items) => Ok(EvalResult::Arcana(items.len() as i64)),
-        EvalResult::Lexicon(entries) => Ok(EvalResult::Arcana(entries.len() as i64)),
+    let value = result_to_value(
+        args.into_iter().next().expect("measure() arg").value,
+        &line,
+        "measure()",
+    )?;
+
+    match value {
+        Value::Scroll(items) => Ok(EvalResult::data(Value::Arcana(items.borrow().len() as i64))),
+        Value::Lexicon(entries) => Ok(EvalResult::data(Value::Arcana(
+            entries.borrow().len() as i64
+        ))),
         _ => Err(EvalError::TypeError(
             "measure() requires a scroll or lexicon".to_string(),
             line,
@@ -58,8 +68,9 @@ pub fn inscribe(
 
     match &mut var_info.value {
         Value::Scroll(items) => {
-            items.push(result_to_value(value_arg.value, &line, "inscribe()")?);
-            Ok(EvalResult::Abyss)
+            let value = result_to_value(value_arg.value, &line, "inscribe()")?;
+            items.borrow_mut().push(value);
+            Ok(EvalResult::abyss())
         }
         _ => Err(EvalError::TypeError(
             "inscribe() target must be a scroll".to_string(),
@@ -99,13 +110,13 @@ pub fn retract(
 
     match &mut var_info.value {
         Value::Scroll(items) => {
-            let value = items.pop().ok_or_else(|| {
+            let value = items.borrow_mut().pop().ok_or_else(|| {
                 EvalError::InvalidOperation(
                     "retract() cannot pop from an empty scroll".to_string(),
                     line.clone(),
                 )
             })?;
-            Ok(value_to_result(&value))
+            Ok(EvalResult::data(value))
         }
         _ => Err(EvalError::TypeError(
             "retract() target must be a scroll".to_string(),
@@ -130,8 +141,9 @@ pub fn expunge(
     let target = iter.next().expect("lexicon target should exist");
     let key_arg = iter.next().expect("key argument should exist");
 
-    let key = match key_arg.value {
-        EvalResult::Rune(s) => s,
+    let key_value = result_to_value(key_arg.value, &line, "expunge()")?;
+    let key = match key_value {
+        Value::Rune(rune) => rune.as_ref().clone(),
         _ => {
             return Err(EvalError::TypeError(
                 "expunge() key must be a rune".to_string(),
@@ -158,8 +170,8 @@ pub fn expunge(
 
     match &mut var_info.value {
         Value::Lexicon(entries) => {
-            entries.remove(&key);
-            Ok(EvalResult::Abyss)
+            entries.borrow_mut().remove(&key);
+            Ok(EvalResult::abyss())
         }
         _ => Err(EvalError::TypeError(
             "expunge() target must be a lexicon".to_string(),
@@ -180,13 +192,20 @@ pub fn contents(
         ));
     }
 
-    match &args[0].value {
-        EvalResult::Lexicon(entries) => {
-            let keys = entries
+    let value = result_to_value(
+        args.into_iter().next().expect("contents() arg").value,
+        &line,
+        "contents()",
+    )?;
+
+    match value {
+        Value::Lexicon(entries) => {
+            let keys: Vec<Value> = entries
+                .borrow()
                 .keys()
-                .map(|key| EvalResult::Rune(key.clone()))
+                .map(|key| Value::Rune(Rc::new(key.clone())))
                 .collect();
-            Ok(EvalResult::Scroll(keys))
+            Ok(EvalResult::data(Value::Scroll(Rc::new(RefCell::new(keys)))))
         }
         _ => Err(EvalError::TypeError(
             "contents() argument must be a lexicon".to_string(),
@@ -201,45 +220,12 @@ fn result_to_value(
     context: &str,
 ) -> Result<Value, EvalError> {
     match result {
-        EvalResult::Omen(b) => Ok(Value::Omen(b)),
-        EvalResult::Arcana(n) => Ok(Value::Arcana(n)),
-        EvalResult::Aether(n) => Ok(Value::Aether(n)),
-        EvalResult::Rune(s) => Ok(Value::Rune(s)),
-        EvalResult::Abyss => Ok(Value::Abyss),
-        EvalResult::Scroll(items) => Ok(Value::Scroll(
-            items
-                .into_iter()
-                .map(|item| result_to_value(item, line, context))
-                .collect::<Result<_, _>>()?,
-        )),
-        EvalResult::Lexicon(entries) => Ok(Value::Lexicon(
-            entries
-                .into_iter()
-                .map(|(k, v)| Ok((k, result_to_value(v, line, context)?)))
-                .collect::<Result<_, EvalError>>()?,
-        )),
+        EvalResult::Data(value) => Ok(value),
         EvalResult::Revealed(_) | EvalResult::Resume(_) | EvalResult::Eject(_) => {
             Err(EvalError::InvalidOperation(
                 format!("{} cannot accept control-flow results", context),
                 line.clone(),
             ))
         }
-    }
-}
-
-fn value_to_result(value: &Value) -> EvalResult {
-    match value {
-        Value::Omen(b) => EvalResult::Omen(*b),
-        Value::Arcana(n) => EvalResult::Arcana(*n),
-        Value::Aether(n) => EvalResult::Aether(*n),
-        Value::Rune(s) => EvalResult::Rune(s.clone()),
-        Value::Abyss => EvalResult::Abyss,
-        Value::Scroll(items) => EvalResult::Scroll(items.iter().map(value_to_result).collect()),
-        Value::Lexicon(entries) => EvalResult::Lexicon(
-            entries
-                .iter()
-                .map(|(k, v)| (k.clone(), value_to_result(v)))
-                .collect(),
-        ),
     }
 }

@@ -294,6 +294,10 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
                     "core"
                 };
                 param_strings.push(receiver.to_string());
+                debug_assert!(
+                    !params.is_empty(),
+                    "Artifact method with method_target must have at least one parameter (the receiver)"
+                );
                 iter.next();
             }
             for param in iter {

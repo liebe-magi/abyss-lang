@@ -8,4 +8,4 @@ Artifacts currently encapsulate data only. To let structs manage their own behav
 
 ## Impact
 - Affected specs: parser-infrastructure, evaluator-infrastructure
-- Affected code: `parser/tokens.rs`, `parser/grammar.rs`, AST definitions, environment registration for artifacts, evaluator call dispatch, stdlib scaffolding for future refactors.
+- Affected code: `parser/tokens.rs`, `parser/grammar.rs`, AST definitions, environment registration for artifacts, evaluator call dispatch, standard library scaffolding for future refactors.

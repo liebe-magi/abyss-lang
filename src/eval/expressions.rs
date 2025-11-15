@@ -512,9 +512,14 @@ fn evaluate_method_call(
     }
 
     let mut evaluated_args = Vec::with_capacity(args.len() + 1);
+    let receiver_var_name = if let AST::Var(var_name, _) = receiver {
+        Some(var_name.clone())
+    } else {
+        None
+    };
     evaluated_args.push(CallArg {
         value: EvalResult::Artifact(receiver_handle),
-        var_name: None,
+        var_name: receiver_var_name,
     });
 
     for arg in args {
@@ -706,6 +711,25 @@ fn evaluate_engraved_function(
     }
 }
 
+fn validate_artifact_type(
+    handle: Rc<RefCell<crate::env::ArtifactValue>>,
+    expected: &str,
+    line_info: &Option<LineInfo>,
+) -> Result<Value, EvalError> {
+    let actual = handle.borrow().type_name.clone();
+    if &actual == expected {
+        Ok(Value::Artifact(handle))
+    } else {
+        Err(EvalError::TypeError(
+            format!(
+                "Expected artifact of type {} but received {}",
+                expected, actual
+            ),
+            line_info.clone(),
+        ))
+    }
+}
+
 fn convert_morph_param_value(
     evaluated_arg: EvalResult,
     param_type: &Type,
@@ -713,33 +737,8 @@ fn convert_morph_param_value(
 ) -> Result<Value, EvalError> {
     match param_type {
         Type::Artifact(expected) => match evaluated_arg {
-            EvalResult::Artifact(handle) => {
-                let actual = handle.borrow().type_name.clone();
-                if &actual == expected {
-                    Ok(Value::Artifact(handle))
-                } else {
-                    Err(EvalError::TypeError(
-                        format!(
-                            "Expected artifact of type {} but received {}",
-                            expected, actual
-                        ),
-                        line_info.clone(),
-                    ))
-                }
-            }
-            EvalResult::Data(Value::Artifact(handle)) => {
-                let actual = handle.borrow().type_name.clone();
-                if &actual == expected {
-                    Ok(Value::Artifact(handle))
-                } else {
-                    Err(EvalError::TypeError(
-                        format!(
-                            "Expected artifact of type {} but received {}",
-                            expected, actual
-                        ),
-                        line_info.clone(),
-                    ))
-                }
+            EvalResult::Artifact(handle) | EvalResult::Data(Value::Artifact(handle)) => {
+                validate_artifact_type(handle, expected, line_info)
             }
             other => convert_to_typed_value(other, param_type, line_info),
         },

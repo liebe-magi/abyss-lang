@@ -235,6 +235,8 @@ fn forge_parser<'src>(
         .boxed()
 }
 
+/// Internal representation for parsed engrave parameters before AST node creation.
+/// Used during engrave parsing to distinguish receiver parameters from regular parameters.
 #[derive(Clone)]
 enum RawEngraveParam {
     Receiver {
@@ -244,6 +246,9 @@ enum RawEngraveParam {
     Param(AST),
 }
 
+/// Internal representation for engrave target classification.
+/// Used during engrave parsing to determine if the definition is a standalone function
+/// or an artifact method, enabling proper parameter validation and AST construction.
 enum EngraveTarget {
     Function {
         name: String,
@@ -277,12 +282,9 @@ fn method_receiver_parser<'src>() -> BoxedParser<'src, RawEngraveParam> {
 }
 
 fn core_keyword_span<'src>() -> BoxedParser<'src, SimpleSpan<usize>> {
-    choice((
-        just(Token::Core).map_with(|_, extra| extra.span()),
-        select! { Token::Identifier(name) if name == "core" => () }
-            .map_with(|_, extra| extra.span()),
-    ))
-    .boxed()
+    just(Token::Core)
+        .map_with(|_, extra| extra.span())
+        .boxed()
 }
 
 fn engrave_parser<'src>(
@@ -348,7 +350,7 @@ fn engrave_parser<'src>(
                                 RawEngraveParam::Receiver { span: recv_span, .. } => {
                                     return Err(Rich::custom(
                                         recv_span,
-                                        "`core` receiver syntax is only valid for artifact methods",
+                                        "The `core` parameter is reserved for artifact methods. Use a regular parameter name for standalone functions.",
                                     ));
                                 }
                             }
@@ -387,7 +389,7 @@ fn engrave_parser<'src>(
                                     if receiver_seen {
                                         return Err(Rich::custom(
                                             recv_span,
-                                            "`core` receiver may only be declared once at the start of the parameter list",
+                                            "The `core` receiver can only appear once in the parameter list",
                                         ));
                                     }
                                     if idx != 0 {

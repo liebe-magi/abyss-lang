@@ -58,7 +58,7 @@ pub fn inscribe(
 
     match &mut var_info.value {
         Value::Scroll(items) => {
-            items.push(result_to_value(value_arg.value, &line, "inscribe")?);
+            items.push(result_to_value(value_arg.value, &line, "inscribe()")?);
             Ok(EvalResult::Abyss)
         }
         _ => Err(EvalError::TypeError(

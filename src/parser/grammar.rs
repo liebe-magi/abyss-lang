@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use chumsky::{
@@ -8,7 +9,7 @@ use chumsky::{
     recursive::{self, Direct},
 };
 
-use crate::ast::{AST, AssignmentOp, ConditionalAssignment, LineInfo, Type};
+use crate::ast::{AST, ArtifactField, AssignmentOp, ConditionalAssignment, LineInfo, Type};
 
 use super::SimpleSpan;
 use super::helpers::LineMap;
@@ -113,16 +114,80 @@ fn statement_body_parser<'src>(
     block: BoxedParser<'src, SpannedAst>,
 ) -> BoxedParser<'src, SpannedAst> {
     choice((
+        artifact_def_parser(ctx.clone()),
         forge_parser(ctx.clone(), expression.clone()),
         engrave_parser(ctx.clone(), block.clone()),
         reveal_parser(ctx.clone(), expression.clone()),
         orbit_parser(ctx.clone(), expression.clone(), block.clone()),
         orbit_flow_parser(ctx.clone()),
         index_assignment_parser(ctx.clone(), expression.clone()),
+        field_assignment_parser(ctx.clone(), expression.clone()),
         assignment_parser(ctx.clone(), expression.clone()),
         expression,
     ))
     .boxed()
+}
+
+fn artifact_def_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedAst> {
+    let ctx_for_map = ctx.clone();
+    let ident =
+        select! { Token::Identifier(name) => name }.map_with(|name, extra| (name, extra.span()));
+
+    just(Token::Artifact)
+        .map_with(|_, extra| extra.span())
+        .then(ident)
+        .then(artifact_fields_parser(ctx.clone()))
+        .map(move |((artifact_span, (name, _)), (fields, body_span))| {
+            let span = SimpleSpan::new(artifact_span.start(), body_span.end());
+            let info = ctx_for_map.info(span);
+            (
+                AST::ArtifactDef {
+                    name,
+                    fields,
+                    line_info: info.clone(),
+                },
+                span,
+            )
+        })
+        .boxed()
+}
+
+fn artifact_fields_parser<'src>(
+    ctx: ParserContext,
+) -> BoxedParser<'src, (Vec<ArtifactField>, SimpleSpan<usize>)> {
+    let field = select! { Token::Identifier(name) => name }
+        .map_with(|name, extra| (name, extra.span()))
+        .then_ignore(just(Token::Colon))
+        .then(type_parser())
+        .then_ignore(just(Token::Semicolon));
+
+    just(Token::OpenBrace)
+        .map_with(|_, extra| extra.span())
+        .then(field.repeated().collect::<Vec<_>>())
+        .then(just(Token::CloseBrace).map_with(|_, extra| extra.span()))
+        .try_map(move |((open_span, raw_fields), close_span), _extra| {
+            let span = SimpleSpan::new(open_span.start(), close_span.end());
+            let mut seen: HashMap<String, SimpleSpan<usize>> = HashMap::new();
+            let mut fields = Vec::with_capacity(raw_fields.len());
+            for ((name, name_span), (field_type, type_span)) in raw_fields {
+                if let Some(previous_span) = seen.insert(name.clone(), name_span) {
+                    let dup_span = SimpleSpan::new(previous_span.start(), name_span.end());
+                    return Err(Rich::custom(
+                        dup_span,
+                        format!("Duplicate field `{name}` in artifact definition"),
+                    ));
+                }
+                let field_span = SimpleSpan::new(name_span.start(), type_span.end());
+                let info = ctx.info(field_span);
+                fields.push(ArtifactField {
+                    name,
+                    field_type,
+                    line_info: info,
+                });
+            }
+            Ok((fields, span))
+        })
+        .boxed()
 }
 
 fn forge_parser<'src>(
@@ -350,6 +415,40 @@ fn assignment_parser<'src>(
                     },
                     span,
                 )
+            },
+        )
+        .boxed()
+}
+
+fn field_assignment_parser<'src>(
+    ctx: ParserContext,
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
+    let ctx_for_map = ctx.clone();
+    expression
+        .clone()
+        .then_ignore(just(Token::Assign))
+        .then(expression)
+        .try_map(
+            move |((target_ast, target_span), (value_ast, value_span)), _extra| {
+                if let AST::FieldAccess { target, field, .. } = target_ast {
+                    let span = SimpleSpan::new(target_span.start(), value_span.end());
+                    let info = ctx_for_map.info(span);
+                    Ok((
+                        AST::FieldAssignment {
+                            target,
+                            field,
+                            value: Box::new(value_ast),
+                            line_info: info.clone(),
+                        },
+                        span,
+                    ))
+                } else {
+                    Err(Rich::custom(
+                        target_span,
+                        "Field assignment requires an artifact field target".to_string(),
+                    ))
+                }
             },
         )
         .boxed()
@@ -869,7 +968,7 @@ fn factor_parser<'src>(
     expression: BoxedParser<'src, SpannedAst>,
 ) -> BoxedParser<'src, SpannedAst> {
     let primary = primary_expr_parser(ctx.clone(), expression.clone());
-    apply_index_suffixes(ctx, expression, primary).boxed()
+    apply_postfix_suffixes(ctx, expression, primary).boxed()
 }
 
 fn primary_expr_parser<'src>(
@@ -880,6 +979,7 @@ fn primary_expr_parser<'src>(
         trans_parser(ctx.clone(), expression.clone()),
         list_literal_parser(ctx.clone(), expression.clone()),
         map_literal_parser(ctx.clone(), expression.clone()),
+        artifact_literal_parser(ctx.clone(), expression.clone()),
         literal_parser(ctx.clone()),
         func_call_parser(ctx.clone(), expression.clone()),
         identifier_node(ctx.clone()),
@@ -888,7 +988,12 @@ fn primary_expr_parser<'src>(
     .boxed()
 }
 
-fn apply_index_suffixes<'src>(
+enum PostfixSuffix {
+    Index((AST, SimpleSpan<usize>)),
+    Field((String, SimpleSpan<usize>)),
+}
+
+fn apply_postfix_suffixes<'src>(
     ctx: ParserContext,
     expression: BoxedParser<'src, SpannedAst>,
     base: BoxedParser<'src, SpannedAst>,
@@ -896,16 +1001,36 @@ fn apply_index_suffixes<'src>(
     let ctx_for_map = ctx.clone();
 
     base.then(
-        index_suffix_parser(ctx.clone(), expression)
+        postfix_suffix_parser(ctx.clone(), expression)
             .repeated()
             .collect::<Vec<_>>(),
     )
     .map(move |(current, suffixes)| {
-        suffixes.into_iter().fold(current, |acc, index_suffix| {
-            create_index_access(ctx_for_map.clone(), acc, index_suffix)
-        })
+        suffixes
+            .into_iter()
+            .fold(current, |acc, suffix| match suffix {
+                PostfixSuffix::Index(index_suffix) => {
+                    create_index_access(ctx_for_map.clone(), acc, index_suffix)
+                }
+                PostfixSuffix::Field(field_suffix) => {
+                    create_field_access(ctx_for_map.clone(), acc, field_suffix)
+                }
+            })
     })
     .boxed()
+}
+
+fn postfix_suffix_parser<'src>(
+    ctx: ParserContext,
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, PostfixSuffix> {
+    let index = index_suffix_parser(ctx.clone(), expression.clone()).map(PostfixSuffix::Index);
+
+    let field = just(Token::Dot)
+        .ignore_then(select! { Token::Identifier(name) => name })
+        .map_with(|name, extra| PostfixSuffix::Field((name, extra.span())));
+
+    choice((index, field)).boxed()
 }
 
 fn index_suffix_parser<'src>(
@@ -921,6 +1046,23 @@ fn index_suffix_parser<'src>(
             (index_ast, span)
         })
         .boxed()
+}
+
+fn create_field_access(
+    ctx: ParserContext,
+    current: SpannedAst,
+    field_suffix: (String, SimpleSpan<usize>),
+) -> SpannedAst {
+    let span = SimpleSpan::new(current.1.start(), field_suffix.1.end());
+    let info = ctx.info(span);
+    (
+        AST::FieldAccess {
+            target: Box::new(current.0),
+            field: field_suffix.0,
+            line_info: info,
+        },
+        span,
+    )
 }
 
 fn create_index_access(
@@ -1074,6 +1216,48 @@ fn map_literal_parser<'src>(
         .boxed()
 }
 
+fn artifact_literal_parser<'src>(
+    ctx: ParserContext,
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
+    let ctx_for_map = ctx.clone();
+    let entry = select! { Token::Identifier(name) => name }
+        .map_with(|name, extra| (name, extra.span()))
+        .then_ignore(just(Token::Colon))
+        .then(expression.clone());
+
+    select! { Token::Identifier(type_name) => type_name }
+        .map_with(|type_name, extra| (type_name, extra.span()))
+        .then(just(Token::OpenBrace).map_with(|_, extra| extra.span()))
+        .then(
+            entry
+                .separated_by(just(Token::Comma))
+                .collect::<Vec<_>>()
+                .or_not(),
+        )
+        .then(just(Token::CloseBrace).map_with(|_, extra| extra.span()))
+        .map(
+            move |((((type_name, type_span), _open_span), maybe_fields), close_span)| {
+                let span = SimpleSpan::new(type_span.start(), close_span.end());
+                let info = ctx_for_map.info(span);
+                let fields = maybe_fields
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|((field, _), (value_ast, _))| (field, value_ast))
+                    .collect();
+                (
+                    AST::ArtifactLiteral {
+                        type_name,
+                        fields,
+                        line_info: info.clone(),
+                    },
+                    span,
+                )
+            },
+        )
+        .boxed()
+}
+
 fn literal_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedAst> {
     let ctx_omen = ctx.clone();
     let omen = select! { Token::OmenLiteral(value) => value }.map_with(move |value, extra| {
@@ -1136,7 +1320,10 @@ fn engrave_param_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, AST> {
 }
 
 fn type_parser<'src>() -> BoxedParser<'src, (Type, SimpleSpan<usize>)> {
-    select! { Token::Type(ty) => ty }
-        .map_with(|ty, extra| (ty, extra.span()))
-        .boxed()
+    choice((
+        select! { Token::Type(ty) => ty }.map_with(|ty, extra| (ty, extra.span())),
+        select! { Token::Identifier(name) => name }
+            .map_with(|name, extra| (Type::Artifact(name), extra.span())),
+    ))
+    .boxed()
 }

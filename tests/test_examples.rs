@@ -22,3 +22,9 @@ fn fibonacci_example_executes() {
     let source = load_example("fibonacci.aby");
     test_base(&source).expect("fibonacci example failed to execute");
 }
+
+#[test]
+fn artifact_example_executes() {
+    let source = load_example("artifact.aby");
+    test_base(&source).expect("artifact example failed to execute");
+}

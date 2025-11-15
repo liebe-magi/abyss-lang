@@ -221,6 +221,7 @@ fn result_to_value(
 ) -> Result<Value, EvalError> {
     match result {
         EvalResult::Data(value) => Ok(value),
+        EvalResult::Artifact(handle) => Ok(Value::Artifact(handle)),
         EvalResult::Revealed(_) | EvalResult::Resume(_) | EvalResult::Eject(_) => {
             Err(EvalError::InvalidOperation(
                 format!("{} cannot accept control-flow results", context),

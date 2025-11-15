@@ -66,6 +66,7 @@ pub fn native_summon(
 fn format_eval_result(value: &EvalResult, line: &Option<LineInfo>) -> Result<String, EvalError> {
     match value {
         EvalResult::Data(inner) => format_value(inner, line),
+        EvalResult::Artifact(handle) => format_artifact(handle, line),
         EvalResult::Revealed(_) => Err(EvalError::InvalidOperation(
             "Cannot unveil a Revealed value (control flow construct)".to_string(),
             line.clone(),
@@ -104,5 +105,25 @@ fn format_value(value: &Value, _line: &Option<LineInfo>) -> Result<String, EvalE
             }
             Ok(format!("{{{}}}", pieces.join(", ")))
         }
+        Value::Artifact(handle) => format_artifact(handle, _line),
     }
+}
+
+fn format_artifact(
+    handle: &crate::env::ArtifactHandle,
+    line: &Option<LineInfo>,
+) -> Result<String, EvalError> {
+    let borrowed = handle.borrow();
+    let mut pieces = Vec::new();
+    for field in &borrowed.field_order {
+        if let Some(value) = borrowed.fields.get(field) {
+            let formatted = format_value(value, line)?;
+            pieces.push(format!("{}: {}", field, formatted));
+        }
+    }
+    Ok(format!(
+        "{} {{ {} }}",
+        borrowed.type_name,
+        pieces.join(", ")
+    ))
 }

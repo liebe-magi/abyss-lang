@@ -1,14 +1,20 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::ast::{AST, LineInfo, Type};
 use crate::env::{CallArg, Callable, EngravedFunction, Environment, Value};
 
+use super::artifacts::{
+    compare_artifacts, ensure_field_exists, expect_artifact_from_eval, instantiate_artifact_handle,
+    lookup_schema_by_name, read_artifact_field,
+};
 use super::collections::{expect_arcana_index, expect_rune_key};
 use super::result::{EvalError, EvalResult};
 use super::statements;
-use super::values::{convert_to_typed_value, eval_result_to_value_checked, value_to_eval_result};
+use super::values::{
+    convert_to_typed_value, describe_value, eval_result_to_value_checked, value_to_eval_result,
+};
 
 pub(crate) fn try_evaluate_expression(
     ast: &AST,
@@ -45,6 +51,24 @@ pub(crate) fn try_evaluate_expression(
                 map.insert(key.clone(), value);
             }
             EvalResult::data(Value::Lexicon(Rc::new(RefCell::new(map))))
+        }
+        AST::ArtifactLiteral {
+            type_name,
+            fields,
+            line_info,
+        } => instantiate_artifact_literal(env, type_name, fields, line_info)?,
+        AST::FieldAccess {
+            target,
+            field,
+            line_info,
+        } => {
+            let value = statements::evaluate(target, env)?;
+            let handle = expect_artifact_from_eval(value, line_info)?;
+            let field_value = read_artifact_field(env, &handle, field, line_info)?;
+            match field_value {
+                Value::Artifact(inner) => EvalResult::Artifact(inner),
+                other => EvalResult::data(other),
+            }
         }
         AST::Add(left, right, line_info) => binary_numeric_op(
             env,
@@ -323,6 +347,54 @@ where
     }
 }
 
+fn instantiate_artifact_literal(
+    env: &mut Environment,
+    type_name: &str,
+    fields: &[(String, AST)],
+    line_info: &Option<LineInfo>,
+) -> Result<EvalResult, EvalError> {
+    let schema = lookup_schema_by_name(env, type_name, line_info)?.clone();
+    let mut provided = HashSet::new();
+    let mut values = HashMap::new();
+
+    for (field_name, expr) in fields {
+        if !provided.insert(field_name.clone()) {
+            return Err(EvalError::InvalidOperation(
+                format!("Field '{}' is provided multiple times", field_name),
+                line_info.clone(),
+            ));
+        }
+
+        let field_schema = ensure_field_exists(&schema, field_name, line_info)?;
+        let evaluated = statements::evaluate(expr, env)?;
+        let typed_value = convert_to_typed_value(evaluated, &field_schema.field_type, line_info)?;
+        values.insert(field_name.clone(), typed_value);
+    }
+
+    let field_order = schema.field_names();
+    let missing: Vec<String> = field_order
+        .iter()
+        .filter(|name| !values.contains_key(*name))
+        .cloned()
+        .collect();
+    if !missing.is_empty() {
+        return Err(EvalError::InvalidOperation(
+            format!(
+                "Artifact {} literal is missing fields: {}",
+                type_name,
+                missing.join(", ")
+            ),
+            line_info.clone(),
+        ));
+    }
+
+    Ok(EvalResult::Artifact(instantiate_artifact_handle(
+        type_name,
+        field_order,
+        values,
+    )))
+}
+
 fn compare_values(
     env: &mut Environment,
     left: &AST,
@@ -339,6 +411,12 @@ fn compare_values(
             (l - r).abs() < f64::EPSILON
         }
         (EvalResult::Data(Value::Rune(l)), EvalResult::Data(Value::Rune(r))) => l == r,
+        (EvalResult::Artifact(left), EvalResult::Artifact(right))
+        | (EvalResult::Artifact(left), EvalResult::Data(Value::Artifact(right)))
+        | (EvalResult::Data(Value::Artifact(left)), EvalResult::Artifact(right))
+        | (EvalResult::Data(Value::Artifact(left)), EvalResult::Data(Value::Artifact(right))) => {
+            compare_artifacts(env, &left, &right, line_info)?
+        }
         _ => {
             return Err(EvalError::InvalidOperation(
                 "Comparison requires compatible types!".to_string(),
@@ -504,6 +582,20 @@ fn evaluate_engraved_function(
         (Type::Scroll, Value::Scroll(values)) => Ok(EvalResult::data(Value::Scroll(values))),
         (Type::Lexicon, Value::Lexicon(entries)) => Ok(EvalResult::data(Value::Lexicon(entries))),
         (Type::Materia, value) => Ok(EvalResult::data(value)),
+        (Type::Artifact(expected), Value::Artifact(handle)) => {
+            let type_name = handle.borrow().type_name.clone();
+            if type_name == expected {
+                Ok(EvalResult::Artifact(handle))
+            } else {
+                Err(EvalError::TypeError(
+                    format!(
+                        "Type mismatch for return value of function {} (expected artifact {}, got {})",
+                        function.name, expected, type_name
+                    ),
+                    function.line_info.clone(),
+                ))
+            }
+        }
         (expected, actual) => Err(EvalError::TypeError(
             format!(
                 "Type mismatch for return value of function {} (expected {:?}, got {:?})",
@@ -513,18 +605,5 @@ fn evaluate_engraved_function(
             ),
             function.line_info.clone(),
         )),
-    }
-}
-
-/// Returns a human-readable type name for the given value, used for error reporting.
-fn describe_value(value: &Value) -> &'static str {
-    match value {
-        Value::Omen(_) => "omen",
-        Value::Arcana(_) => "arcana",
-        Value::Aether(_) => "aether",
-        Value::Rune(_) => "rune",
-        Value::Abyss => "abyss",
-        Value::Scroll(_) => "scroll",
-        Value::Lexicon(_) => "lexicon",
     }
 }

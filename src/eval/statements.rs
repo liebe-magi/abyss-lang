@@ -2,12 +2,16 @@ use crate::ast::{AST, AssignmentOp, ConditionalAssignment, LineInfo, Type};
 use crate::env::{Callable, EngravedFunction, Environment, Value};
 use std::rc::Rc;
 
+use super::artifacts::{
+    build_artifact_schema, ensure_field_exists, ensure_type_known, expect_artifact_handle,
+    lookup_schema_from_handle, missing_field_error,
+};
 use super::collections::{collect_index_chain, expect_arcana_index, expect_rune_key};
 use super::expressions::try_evaluate_expression;
 use super::result::{EvalError, EvalResult};
 use super::values::{
-    convert_to_typed_value, eval_result_to_value_checked, extract_aether, extract_arcana,
-    extract_omen, extract_rune,
+    convert_to_typed_value, describe_value, eval_result_to_value_checked, extract_aether,
+    extract_arcana, extract_omen, extract_rune,
 };
 
 /// Evaluates an abstract syntax tree (AST) node in the given environment.
@@ -61,6 +65,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
             is_morph,
             line_info,
         } => {
+            ensure_type_known(var_type, env, line_info)?;
             let evaluated_value = evaluate(value, env)?;
             let stored_value = convert_to_typed_value(evaluated_value, var_type, line_info)?;
             env.set_var(
@@ -292,6 +297,69 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                     ));
                 }
             }
+
+            Ok(EvalResult::abyss())
+        }
+        AST::FieldAssignment {
+            target,
+            field,
+            value,
+            line_info,
+        } => {
+            let (base_name, access_chain) = collect_field_chain(target).ok_or_else(|| {
+                EvalError::InvalidOperation(
+                    "Field assignment requires an artifact variable".to_string(),
+                    line_info.clone(),
+                )
+            })?;
+
+            let evaluated_value = evaluate(value, env)?;
+
+            let var_info = env.get_var_mut(&base_name).ok_or_else(|| {
+                EvalError::UndefinedVariable(base_name.clone(), line_info.clone())
+            })?;
+
+            if !var_info.is_morph {
+                return Err(EvalError::InvalidOperation(
+                    format!("Cannot reassign to immutable variable {}", base_name),
+                    line_info.clone(),
+                ));
+            }
+
+            let mut current_handle = expect_artifact_handle(&var_info.value, line_info)?;
+            for segment in &access_chain {
+                let schema = lookup_schema_from_handle(env, &current_handle, line_info)?;
+                ensure_field_exists(schema, segment, line_info)?;
+                let next_value = {
+                    let borrowed = current_handle.borrow();
+                    borrowed
+                        .fields
+                        .get(segment)
+                        .cloned()
+                        .ok_or_else(|| missing_field_error(schema, segment, line_info))?
+                };
+                current_handle = match next_value {
+                    Value::Artifact(handle) => handle,
+                    other => {
+                        return Err(EvalError::InvalidOperation(
+                            format!(
+                                "Field '{}' is not an artifact (found {})",
+                                segment,
+                                describe_value(&other)
+                            ),
+                            line_info.clone(),
+                        ));
+                    }
+                };
+            }
+
+            let schema = lookup_schema_from_handle(env, &current_handle, line_info)?;
+            let field_schema = ensure_field_exists(schema, field, line_info)?;
+            let typed_value =
+                convert_to_typed_value(evaluated_value, &field_schema.field_type, line_info)?;
+
+            let mut borrowed = current_handle.borrow_mut();
+            borrowed.fields.insert(field.clone(), typed_value);
 
             Ok(EvalResult::abyss())
         }
@@ -585,6 +653,17 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
             body,
             line_info,
         } => {
+            ensure_type_known(return_type, env, line_info)?;
+            for param in params {
+                if let AST::EngraveParam {
+                    param_type,
+                    line_info: param_info,
+                    ..
+                } = param
+                {
+                    ensure_type_known(param_type, env, param_info)?;
+                }
+            }
             let function = EngravedFunction {
                 name: name.clone(),
                 params: params.clone(),
@@ -593,6 +672,21 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                 line_info: line_info.clone(),
             };
             env.set_function(name.clone(), Callable::Engraved(function));
+            Ok(EvalResult::abyss())
+        }
+        AST::ArtifactDef {
+            name,
+            fields,
+            line_info,
+        } => {
+            if env.artifact_defined_in_current_scope(name) {
+                return Err(EvalError::InvalidOperation(
+                    format!("Artifact {} is already defined", name),
+                    line_info.clone(),
+                ));
+            }
+            let schema = build_artifact_schema(name, fields, env, line_info)?;
+            env.define_artifact(schema)?;
             Ok(EvalResult::abyss())
         }
         AST::Comment(_, _) => Ok(EvalResult::abyss()),
@@ -633,5 +727,16 @@ fn clone_indexed_child(
             "Cannot index into non-collection value".to_string(),
             line_info.clone(),
         )),
+    }
+}
+fn collect_field_chain(ast: &AST) -> Option<(String, Vec<String>)> {
+    match ast {
+        AST::Var(name, _) => Some((name.clone(), Vec::new())),
+        AST::FieldAccess { target, field, .. } => {
+            let (base, mut chain) = collect_field_chain(target)?;
+            chain.push(field.clone());
+            Some((base, chain))
+        }
+        _ => None,
     }
 }

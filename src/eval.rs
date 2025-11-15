@@ -85,23 +85,28 @@ fn value_to_eval_result(value: &Value) -> EvalResult {
     }
 }
 
-fn eval_result_to_value_any(result: EvalResult) -> Value {
+fn eval_result_to_value_any(result: EvalResult) -> Result<Value, EvalError> {
     match result {
-        EvalResult::Omen(b) => Value::Omen(b),
-        EvalResult::Arcana(n) => Value::Arcana(n),
-        EvalResult::Aether(n) => Value::Aether(n),
-        EvalResult::Rune(s) => Value::Rune(s),
-        EvalResult::Abyss => Value::Abyss,
+        EvalResult::Omen(b) => Ok(Value::Omen(b)),
+        EvalResult::Arcana(n) => Ok(Value::Arcana(n)),
+        EvalResult::Aether(n) => Ok(Value::Aether(n)),
+        EvalResult::Rune(s) => Ok(Value::Rune(s)),
+        EvalResult::Abyss => Ok(Value::Abyss),
         EvalResult::Scroll(items) => {
-            Value::Scroll(items.into_iter().map(eval_result_to_value_any).collect())
+            let converted: Result<Vec<_>, _> = items.into_iter().map(eval_result_to_value_any).collect();
+            converted.map(Value::Scroll)
         }
-        EvalResult::Lexicon(entries) => Value::Lexicon(
-            entries
+        EvalResult::Lexicon(entries) => {
+            let converted: Result<HashMap<_, _>, _> = entries
                 .into_iter()
-                .map(|(k, v)| (k, eval_result_to_value_any(v)))
-                .collect(),
-        ),
-        other => panic!("Unsupported EvalResult for value conversion: {:?}", other),
+                .map(|(k, v)| eval_result_to_value_any(v).map(|v2| (k, v2)))
+                .collect();
+            converted.map(Value::Lexicon)
+        }
+        other => Err(EvalError::InvalidOperation(
+            format!("Cannot convert {:?} to value", other),
+            None,
+        )),
     }
 }
 

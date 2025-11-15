@@ -1,7 +1,8 @@
 use crate::ast::LineInfo;
-use crate::env::{CallArg, Environment};
+use crate::env::{CallArg, Environment, Value};
 use crate::eval::{EvalError, EvalResult};
 use std::io::{self, Write};
+use std::rc::Rc;
 
 pub fn native_unveil(
     _env: &mut Environment,
@@ -22,7 +23,7 @@ pub fn native_unveil(
 
     let output_str = outputs?.join("");
     println!("{}", output_str);
-    Ok(EvalResult::Abyss)
+    Ok(EvalResult::abyss())
 }
 
 pub fn native_summon(
@@ -38,7 +39,7 @@ pub fn native_summon(
     }
 
     let prompt = match &args[0].value {
-        EvalResult::Rune(s) => s,
+        EvalResult::Data(Value::Rune(r)) => r.as_ref(),
         _ => {
             return Err(EvalError::TypeError(
                 "summon() argument must be a Rune (prompt)".to_string(),
@@ -57,31 +58,14 @@ pub fn native_summon(
         EvalError::InvalidOperation("Failed to read input".to_string(), line.clone())
     })?;
 
-    Ok(EvalResult::Rune(input.trim().to_string()))
+    Ok(EvalResult::data(Value::Rune(Rc::new(
+        input.trim().to_string(),
+    ))))
 }
 
 fn format_eval_result(value: &EvalResult, line: &Option<LineInfo>) -> Result<String, EvalError> {
     match value {
-        EvalResult::Omen(b) => Ok(if *b { "boon" } else { "hex" }.to_string()),
-        EvalResult::Arcana(n) => Ok(n.to_string()),
-        EvalResult::Aether(n) => Ok(n.to_string()),
-        EvalResult::Rune(s) => Ok(s.replace("\\n", "\n")),
-        EvalResult::Abyss => Ok(String::new()),
-        EvalResult::Scroll(items) => {
-            let parts: Result<Vec<String>, EvalError> = items
-                .iter()
-                .map(|item| format_eval_result(item, line))
-                .collect();
-            Ok(format!("[{}]", parts?.join(", ")))
-        }
-        EvalResult::Lexicon(entries) => {
-            let mut pieces = Vec::new();
-            for (key, value) in entries {
-                let formatted_value = format_eval_result(value, line)?;
-                pieces.push(format!("\"{}\": {}", key, formatted_value));
-            }
-            Ok(format!("{{{}}}", pieces.join(", ")))
-        }
+        EvalResult::Data(inner) => format_value(inner, line),
         EvalResult::Revealed(_) => Err(EvalError::InvalidOperation(
             "Cannot unveil a Revealed value (control flow construct)".to_string(),
             line.clone(),
@@ -94,5 +78,31 @@ fn format_eval_result(value: &EvalResult, line: &Option<LineInfo>) -> Result<Str
             "Cannot unveil an Eject value (control flow construct)".to_string(),
             line.clone(),
         )),
+    }
+}
+
+fn format_value(value: &Value, _line: &Option<LineInfo>) -> Result<String, EvalError> {
+    match value {
+        Value::Omen(b) => Ok(if *b { "boon" } else { "hex" }.to_string()),
+        Value::Arcana(n) => Ok(n.to_string()),
+        Value::Aether(n) => Ok(n.to_string()),
+        Value::Rune(s) => Ok(s.replace("\\n", "\n")),
+        Value::Abyss => Ok(String::new()),
+        Value::Scroll(items) => {
+            let parts: Result<Vec<String>, EvalError> = items
+                .borrow()
+                .iter()
+                .map(|item| format_value(item, _line))
+                .collect();
+            Ok(format!("[{}]", parts?.join(", ")))
+        }
+        Value::Lexicon(entries) => {
+            let mut pieces = Vec::new();
+            for (key, val) in entries.borrow().iter() {
+                let formatted_value = format_value(val, _line)?;
+                pieces.push(format!("\"{}\": {}", key, formatted_value));
+            }
+            Ok(format!("{{{}}}", pieces.join(", ")))
+        }
     }
 }

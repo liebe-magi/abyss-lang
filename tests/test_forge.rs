@@ -1,7 +1,7 @@
 mod test_base;
 
 use abyss_lang::eval::{EvalError, EvalResult};
-use test_base::test_base;
+use test_base::{Value, test_base};
 
 #[test]
 fn test_forge_and_usage() {
@@ -13,7 +13,7 @@ fn test_forge_and_usage() {
         Ok(results) => {
             assert_eq!(results.len(), 2);
             match &results[1] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 42),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 42),
                 _ => panic!("Expected Arcana result"),
             }
         }
@@ -32,7 +32,7 @@ fn test_forge_morph_and_usage() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 100),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 100),
                 _ => panic!("Expected Arcana result"),
             }
         }
@@ -51,7 +51,7 @@ fn test_forge_redeclaration_with_different_type() {
         Ok(results) => {
             assert_eq!(results.len(), 3); // 3行目までの結果をチェック
             match &results[2] {
-                EvalResult::Aether(n) => {
+                EvalResult::Data(Value::Aether(n)) => {
                     let expected = "3.14"
                         .parse::<f64>()
                         .expect("literal conversion should succeed");
@@ -90,7 +90,7 @@ fn test_forge_morph_reassign_arcana() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Arcana(n) => assert_eq!(*n, 84),
+                EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 84),
                 _ => panic!("Expected Arcana result"),
             }
         }
@@ -109,7 +109,7 @@ fn test_forge_morph_reassign_aether() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Aether(n) => {
+                EvalResult::Data(Value::Aether(n)) => {
                     let expected = "3.14159"
                         .parse::<f64>()
                         .expect("literal conversion should succeed");
@@ -133,7 +133,7 @@ fn test_forge_morph_reassign_omen() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Omen(b) => assert!(!*b),
+                EvalResult::Data(Value::Omen(b)) => assert!(!*b),
                 _ => panic!("Expected Arcana result"),
             }
         }
@@ -182,7 +182,7 @@ fn test_forge_morph_different_type_assignment() {
         Ok(results) => {
             assert_eq!(results.len(), 3);
             match &results[2] {
-                EvalResult::Rune(s) => assert_eq!(s, "World"),
+                EvalResult::Data(Value::Rune(s)) => assert_eq!(s.as_ref(), "World"),
                 _ => panic!("Expected Rune result"),
             }
         }
@@ -200,7 +200,7 @@ fn test_forge_boolean_logic() {
         Ok(results) => {
             assert_eq!(results.len(), 2);
             match &results[1] {
-                EvalResult::Omen(b) => assert!(*b),
+                EvalResult::Data(Value::Omen(b)) => assert!(*b),
                 _ => panic!("Expected Omen result"),
             }
         }

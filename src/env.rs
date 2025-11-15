@@ -1,6 +1,8 @@
 use crate::ast::{AST, LineInfo, Type};
 use crate::eval::{EvalError, EvalResult};
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 pub type BuiltinFunc =
     fn(&mut Environment, Vec<CallArg>, Option<LineInfo>) -> Result<EvalResult, EvalError>;
@@ -195,8 +197,8 @@ pub enum Value {
     Omen(bool),
     Arcana(i64),
     Aether(f64),
-    Rune(String),
+    Rune(Rc<String>),
     Abyss,
-    Scroll(Vec<Value>),
-    Lexicon(HashMap<String, Value>),
+    Scroll(Rc<RefCell<Vec<Value>>>),
+    Lexicon(Rc<RefCell<HashMap<String, Value>>>),
 }

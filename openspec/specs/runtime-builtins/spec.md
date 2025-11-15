@@ -102,5 +102,5 @@ The stdlib SHALL expose collection-oriented builtins via `Callable::Builtin` so 
 #### Scenario: contents lists lexicon keys
 - **GIVEN** `contents({"id": 1, "name": "abyss"})`
 - **WHEN** the builtin executes
-- **THEN** it SHALL return a `scroll` of rune keys preserving the lexicon's iteration order.
+- **THEN** it SHALL return a `scroll` of rune keys (order unspecified).
 

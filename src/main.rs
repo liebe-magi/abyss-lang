@@ -16,7 +16,7 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(name = "abyss")]
 #[command(about = "AbySS: Advanced-scripting by Symbolic Syntax", long_about = None)]
-#[command(version)]
+#[command(version = concat!("v", env!("CARGO_PKG_VERSION")))]
 struct Cli {
     #[command(subcommand)]
     command: Commands,

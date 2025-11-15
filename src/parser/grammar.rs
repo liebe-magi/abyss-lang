@@ -282,9 +282,7 @@ fn method_receiver_parser<'src>() -> BoxedParser<'src, RawEngraveParam> {
 }
 
 fn core_keyword_span<'src>() -> BoxedParser<'src, SimpleSpan<usize>> {
-    just(Token::Core)
-        .map_with(|_, extra| extra.span())
-        .boxed()
+    just(Token::Core).map_with(|_, extra| extra.span()).boxed()
 }
 
 fn engrave_parser<'src>(

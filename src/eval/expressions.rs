@@ -717,7 +717,7 @@ fn validate_artifact_type(
     line_info: &Option<LineInfo>,
 ) -> Result<Value, EvalError> {
     let actual = handle.borrow().type_name.clone();
-    if &actual == expected {
+    if actual == expected {
         Ok(Value::Artifact(handle))
     } else {
         Err(EvalError::TypeError(

@@ -222,7 +222,7 @@ pub(crate) fn compare_artifacts(
 }
 
 /// Extracts the base variable name and field access chain from an AST expression.
-/// 
+///
 /// This function only handles direct variable access (`AST::Var`) and field access chains
 /// (`AST::FieldAccess`). It returns `None` for all other AST node types, including:
 /// - Method calls (`AST::MethodCall`)

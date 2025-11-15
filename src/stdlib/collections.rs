@@ -182,10 +182,7 @@ pub fn contents(
 
     match &args[0].value {
         EvalResult::Lexicon(entries) => {
-            let mut keys = Vec::new();
-            for key in entries.keys() {
-                keys.push(EvalResult::Rune(key.clone()));
-            }
+            let keys = entries.keys().map(|key| EvalResult::Rune(key.clone())).collect();
             Ok(EvalResult::Scroll(keys))
         }
         _ => Err(EvalError::TypeError(

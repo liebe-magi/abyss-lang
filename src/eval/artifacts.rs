@@ -1,4 +1,4 @@
-use crate::ast::{ArtifactField, LineInfo, Type};
+use crate::ast::{AST, ArtifactField, LineInfo, Type};
 use crate::env::{
     ArtifactFieldSchema, ArtifactHandle, ArtifactSchema, ArtifactValue, Environment, Value,
 };
@@ -75,6 +75,7 @@ pub(crate) fn build_artifact_schema(
     Ok(ArtifactSchema {
         name: name.to_string(),
         fields: compiled_fields,
+        methods: HashMap::new(),
         line_info: line_info.clone(),
     })
 }
@@ -218,6 +219,18 @@ pub(crate) fn compare_artifacts(
     }
 
     Ok(true)
+}
+
+pub(crate) fn collect_field_chain(ast: &AST) -> Option<(String, Vec<String>)> {
+    match ast {
+        AST::Var(name, _) => Some((name.clone(), Vec::new())),
+        AST::FieldAccess { target, field, .. } => {
+            let (base, mut chain) = collect_field_chain(target)?;
+            chain.push(field.clone());
+            Some((base, chain))
+        }
+        _ => None,
+    }
 }
 
 fn values_equal(

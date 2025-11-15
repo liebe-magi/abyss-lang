@@ -496,10 +496,34 @@ hero.stats.hp = hero.stats.hp - 15;
 unveil(hero);
 ```
 
+#### Artifact methods
+
+Methods let you attach behavior directly to a schema via `engrave Artifact::method(core, ...)`. The parser enforces that the implicit receiver (`core`) is declared first, and you can opt into mutation rules with `morph core` to require a mutable caller.
+
+```abyss
+artifact Player { name: rune; level: arcana; };
+
+engrave Player::get_level(core) -> arcana {
+    reveal core.level;
+};
+
+engrave Player::set_level(morph core, next: arcana) -> abyss {
+    core.level = next;
+};
+
+forge morph hero: Player = Player { name: "Kaia", level: 3 };
+unveil("Level", hero.get_level());
+hero.set_level(4);
+unveil("Updated", hero.get_level());
+```
+
+Calling a method automatically binds the receiver to `core`. When a method is declared with `morph core`, the evaluator ensures the caller is mutable—attempting to invoke it on an immutable binding produces a friendly runtime diagnostic.
+
 Key guarantees:
 - All declared fields must appear exactly once in literal form, and types are checked recursively.
 - Nested structs can be composed freely, enabling ergonomic data modeling without ad-hoc lexicon juggling.
 - Attempting to mutate through an immutable binding raises a runtime diagnostic, helping you reason about ownership boundaries.
+- Artifact methods honor the same mutability guarantees: `core` accesses are immutable by default, while `morph core` methods require the caller to be mutable before field assignments are permitted.
 
 Artifacts print in a deterministic, formatter-friendly layout, so structured dumps remain readable during debugging sessions.
 

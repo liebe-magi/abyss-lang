@@ -1,4 +1,17 @@
-forge name: rune = summon("Input your name: ", rune);
-forge age: arcana = summon("Input your age: ", arcana);
+// Capture user input inside a lexicon and retrieve values via rune keys
 
-unveil("You are ", name, " (", age, ")");
+forge morph profile: lexicon = {
+	"name": summon("Input your name: "),
+	"focus": summon("What is your favorite spell focus? ")
+};
+
+profile["age"] = trans(summon("Input your age: ") as arcana);
+
+unveil(
+	"Greetings, ",
+	profile["name"],
+	"! Age ",
+	profile["age"],
+	" with focus on ",
+	profile["focus"]
+);

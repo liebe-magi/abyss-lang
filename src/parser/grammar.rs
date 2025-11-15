@@ -21,6 +21,7 @@ type BoxedParser<'src, T> = chumsky::Boxed<'src, 'src, ParserInput<'src>, T, Par
 type RecursiveParser<'src, T> =
     recursive::Recursive<Direct<'src, 'src, ParserInput<'src>, T, ParserExtra<'src>>>;
 type SpannedAst = (AST, SimpleSpan<usize>);
+type IndexedTarget = (SpannedAst, SpannedAst);
 
 #[derive(Clone)]
 struct ParserContext {
@@ -114,10 +115,10 @@ fn statement_body_parser<'src>(
     choice((
         forge_parser(ctx.clone(), expression.clone()),
         engrave_parser(ctx.clone(), block.clone()),
-        unveil_parser(ctx.clone(), expression.clone()),
         reveal_parser(ctx.clone(), expression.clone()),
         orbit_parser(ctx.clone(), expression.clone(), block.clone()),
         orbit_flow_parser(ctx.clone()),
+        index_assignment_parser(ctx.clone(), expression.clone()),
         assignment_parser(ctx.clone(), expression.clone()),
         expression,
     ))
@@ -204,30 +205,6 @@ fn engrave_parser<'src>(
                 )
             },
         )
-        .boxed()
-}
-
-fn unveil_parser<'src>(
-    ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
-    let ctx_for_map = ctx.clone();
-    just(Token::Unveil)
-        .map_with(|_, extra| extra.span())
-        .then_ignore(just(Token::OpenParen))
-        .then(
-            expression
-                .separated_by(just(Token::Comma))
-                .at_least(1)
-                .collect::<Vec<_>>(),
-        )
-        .then(just(Token::CloseParen).map_with(|_, extra| extra.span()))
-        .map(move |((unveil_span, args), close_span)| {
-            let span = SimpleSpan::new(unveil_span.start(), close_span.end());
-            let info = ctx_for_map.info(span);
-            let items = args.into_iter().map(|(ast, _)| ast).collect();
-            (AST::Unveil(items, info.clone()), span)
-        })
         .boxed()
 }
 
@@ -390,6 +367,60 @@ fn assignment_op_from_token(token: Token) -> AssignmentOp {
         Token::PowAetherAssign => AssignmentOp::PowAetherAssign,
         other => unreachable!("Unhandled assignment operator: {other:?}"),
     }
+}
+
+fn index_assignment_parser<'src>(
+    ctx: ParserContext,
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
+    let ctx_for_map = ctx.clone();
+    indexed_target_parser(ctx, expression.clone())
+        .then_ignore(just(Token::Assign))
+        .then(expression)
+        .map(
+            move |(
+                ((target_ast, target_span), (index_ast, index_span)),
+                (value_ast, value_span),
+            )| {
+                let lhs_span = SimpleSpan::new(target_span.start(), index_span.end());
+                let span = SimpleSpan::new(lhs_span.start(), value_span.end());
+                let info = ctx_for_map.info(span);
+                (
+                    AST::IndexAssignment {
+                        target: Box::new(target_ast),
+                        index: Box::new(index_ast),
+                        value: Box::new(value_ast),
+                        line_info: info.clone(),
+                    },
+                    span,
+                )
+            },
+        )
+        .boxed()
+}
+
+fn indexed_target_parser<'src>(
+    ctx: ParserContext,
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, IndexedTarget> {
+    let ctx_for_map = ctx.clone();
+    primary_expr_parser(ctx.clone(), expression.clone())
+        .then(
+            index_suffix_parser(ctx.clone(), expression)
+                .repeated()
+                .at_least(1)
+                .collect::<Vec<_>>(),
+        )
+        .map(move |(base, mut suffixes)| {
+            let last = suffixes
+                .pop()
+                .expect("Parser guaranteed at least one index suffix via .at_least(1)");
+            let target = suffixes.into_iter().fold(base, |acc, suffix| {
+                create_index_access(ctx_for_map.clone(), acc, suffix)
+            });
+            (target, last)
+        })
+        .boxed()
 }
 
 fn oracle_expr_parser<'src>(
@@ -837,15 +868,76 @@ fn factor_parser<'src>(
     ctx: ParserContext,
     expression: BoxedParser<'src, SpannedAst>,
 ) -> BoxedParser<'src, SpannedAst> {
+    let primary = primary_expr_parser(ctx.clone(), expression.clone());
+    apply_index_suffixes(ctx, expression, primary).boxed()
+}
+
+fn primary_expr_parser<'src>(
+    ctx: ParserContext,
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
     choice((
         trans_parser(ctx.clone(), expression.clone()),
-        summon_parser(ctx.clone()),
+        list_literal_parser(ctx.clone(), expression.clone()),
+        map_literal_parser(ctx.clone(), expression.clone()),
         literal_parser(ctx.clone()),
         func_call_parser(ctx.clone(), expression.clone()),
         identifier_node(ctx.clone()),
         expression.delimited_by(just(Token::OpenParen), just(Token::CloseParen)),
     ))
     .boxed()
+}
+
+fn apply_index_suffixes<'src>(
+    ctx: ParserContext,
+    expression: BoxedParser<'src, SpannedAst>,
+    base: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
+    let ctx_for_map = ctx.clone();
+
+    base.then(
+        index_suffix_parser(ctx.clone(), expression)
+            .repeated()
+            .collect::<Vec<_>>(),
+    )
+    .map(move |(current, suffixes)| {
+        suffixes.into_iter().fold(current, |acc, index_suffix| {
+            create_index_access(ctx_for_map.clone(), acc, index_suffix)
+        })
+    })
+    .boxed()
+}
+
+fn index_suffix_parser<'src>(
+    _ctx: ParserContext,
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, (AST, SimpleSpan<usize>)> {
+    just(Token::OpenBracket)
+        .map_with(|_, extra| extra.span())
+        .then(expression)
+        .then(just(Token::CloseBracket).map_with(|_, extra| extra.span()))
+        .map(|((open_span, (index_ast, _)), close_span)| {
+            let span = SimpleSpan::new(open_span.start(), close_span.end());
+            (index_ast, span)
+        })
+        .boxed()
+}
+
+fn create_index_access(
+    ctx: ParserContext,
+    current: SpannedAst,
+    index_suffix: (AST, SimpleSpan<usize>),
+) -> SpannedAst {
+    let span = SimpleSpan::new(current.1.start(), index_suffix.1.end());
+    let info = ctx.info(span);
+    (
+        AST::IndexAccess {
+            target: Box::new(current.0),
+            index: Box::new(index_suffix.0),
+            line_info: info,
+        },
+        span,
+    )
 }
 
 fn trans_parser<'src>(
@@ -870,25 +962,6 @@ fn trans_parser<'src>(
                 )
             },
         )
-        .boxed()
-}
-
-fn summon_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedAst> {
-    let ctx_for_map = ctx.clone();
-    just(Token::Summon)
-        .map_with(|_, extra| extra.span())
-        .then_ignore(just(Token::OpenParen))
-        .then(
-            select! { Token::Rune(value) => value }.map_with(|value, extra| (value, extra.span())),
-        )
-        .then_ignore(just(Token::Comma))
-        .then(type_parser())
-        .then(just(Token::CloseParen).map_with(|_, extra| extra.span()))
-        .map(move |(((summon_span, (prompt, _)), (ty, _)), close_span)| {
-            let span = SimpleSpan::new(summon_span.start(), close_span.end());
-            let info = ctx_for_map.info(span);
-            (AST::Summon(prompt, ty, info.clone()), span)
-        })
         .boxed()
 }
 
@@ -926,6 +999,78 @@ fn func_call_parser<'src>(
                 )
             },
         )
+        .boxed()
+}
+
+fn list_literal_parser<'src>(
+    ctx: ParserContext,
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
+    let ctx_for_map = ctx.clone();
+    just(Token::OpenBracket)
+        .map_with(|_, extra| extra.span())
+        .then(
+            expression
+                .clone()
+                .separated_by(just(Token::Comma))
+                .collect::<Vec<_>>()
+                .or_not(),
+        )
+        .then(just(Token::CloseBracket).map_with(|_, extra| extra.span()))
+        .map(move |((open_span, maybe_items), close_span)| {
+            let span = SimpleSpan::new(open_span.start(), close_span.end());
+            let info = ctx_for_map.info(span);
+            let elements = maybe_items
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(ast, _)| ast)
+                .collect();
+            (
+                AST::ListLiteral {
+                    elements,
+                    line_info: info.clone(),
+                },
+                span,
+            )
+        })
+        .boxed()
+}
+
+fn map_literal_parser<'src>(
+    ctx: ParserContext,
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
+    let ctx_for_map = ctx.clone();
+    let entry = select! { Token::Rune(key) => key }
+        .map_with(|key, extra| (key, extra.span()))
+        .then_ignore(just(Token::Colon))
+        .then(expression.clone());
+
+    just(Token::OpenBrace)
+        .map_with(|_, extra| extra.span())
+        .then(
+            entry
+                .separated_by(just(Token::Comma))
+                .collect::<Vec<_>>()
+                .or_not(),
+        )
+        .then(just(Token::CloseBrace).map_with(|_, extra| extra.span()))
+        .map(move |((open_span, maybe_entries), close_span)| {
+            let span = SimpleSpan::new(open_span.start(), close_span.end());
+            let info = ctx_for_map.info(span);
+            let entries = maybe_entries
+                .unwrap_or_default()
+                .into_iter()
+                .map(|((key, _), (value_ast, _))| (key, value_ast))
+                .collect();
+            (
+                AST::MapLiteral {
+                    entries,
+                    line_info: info.clone(),
+                },
+                span,
+            )
+        })
         .boxed()
 }
 

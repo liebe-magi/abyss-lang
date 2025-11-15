@@ -1,8 +1,8 @@
 use abyss_lang::{
-    env::Environment,
     eval::{EvalError, EvalResult, display_error_with_source, evaluate},
     format::format_ast,
     parser::{ParserDiagnostic, emit_diagnostics, parse},
+    stdlib,
 };
 use clap::{Parser, Subcommand};
 use colored::*;
@@ -16,7 +16,7 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(name = "abyss")]
 #[command(about = "AbySS: Advanced-scripting by Symbolic Syntax", long_about = None)]
-#[command(version)]
+#[command(version = concat!("v", env!("CARGO_PKG_VERSION")))]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -84,7 +84,7 @@ fn report_diagnostics(source_id: &str, source: &str, diagnostics: &[ParserDiagno
 /// # Arguments
 /// * `script` - A string containing the AbySS script to be executed.
 fn execute_script(script: &str) {
-    let mut env = Environment::new();
+    let mut env = stdlib::create_global_environment();
     let outcome = parse(script);
     if report_diagnostics("<script>", script, &outcome.diagnostics) {
         return;
@@ -131,7 +131,7 @@ fn start_interpreter(debug: bool) {
 
     let mut current_session_code = String::new();
     let mut current_statement = String::new();
-    let mut env = Environment::new();
+    let mut env = stdlib::create_global_environment();
 
     let history_path = get_history_file_path();
     let mut rl = Editor::<(), FileHistory>::new().expect("Error: Failed to create editor");
@@ -222,7 +222,7 @@ fn start_interpreter(debug: bool) {
                 println!("CTRL-C: Restarting interpreter...");
                 current_session_code.clear();
                 current_statement.clear();
-                env = Environment::new();
+                env = stdlib::create_global_environment();
             }
             Err(ReadlineError::Eof) => {
                 println!("CTRL-D: Exiting interpreter...");

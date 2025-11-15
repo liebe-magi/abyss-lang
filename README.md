@@ -13,6 +13,7 @@ AbySS (Advanced-scripting by Symbolic Syntax) is a programming language designed
 - **Spellcasting-inspired Programming**: The language's design mimics the experience of casting spells, with reserved keywords that evoke a magical theme.
 - **Interactive Spellcasting**: AbySS supports interactive scripting through an interpreter, allowing real-time execution and feedback.
 - **Structured Sorcery**: AbySS encourages structured programming, combining the flexibility of scripting with the rigor of structured code.
+- **Arcane Collections**: Native `scroll`, `lexicon`, and `materia` types provide first-class list/dictionary semantics plus built-in rituals for inspecting and mutating data.
 - **Rust-native Parser & Diagnostics**: The compiler core uses `chumsky` combinators paired with `ariadne` to provide resilient parsing and AbySS-themed error messages.
 - **VSCode Extension**: Syntax highlighting, code completion, and snippets are available through the [AbySS Codex Familiar](https://github.com/liebe-magi/abyss-codex-familiar) VSCode extension.
 
@@ -27,6 +28,7 @@ AbySS (Advanced-scripting by Symbolic Syntax) is a programming language designed
   - [Conditionals](#conditionals)
   - [Loops](#loops)
   - [Functions](#functions)
+  - [Collections](#collections)
   - [Input/Output](#inputoutput)
 - [VSCode Extension](#vscode-extension)
 - [Roadmap](#roadmap)
@@ -108,12 +110,18 @@ AbySS supports the following primitive types:
 - **rune**: Represents strings (e.g., `"Hello, World"`).
 - **omen**: Represents boolean values, with `boon` for `true` and `hex` for `false`.
 - **abyss**: Represents the `void` type, indicating no value.
+- **scroll**: Ordered collections that can mix any element types.
+- **lexicon**: Rune-keyed dictionaries for structured data.
+- **materia**: A dynamically typed slot that can store any runtime value.
 
 ```abyss
 forge x: arcana = 10;
 forge pi: aether = 3.14;
 forge message: rune = "Hello, AbySS";
 forge is_active: omen = boon;
+forge spellbook: scroll = [1, boon, "sigil"];
+forge ledger: lexicon = {"sun": 1, "moon": 2};
+forge essence: materia = 99;
 ```
 
 - `arcana`: Derived from the Latin word for "secret" or "mystery," and also referencing the structured numbering of tarot cards, arcana represents integer values, symbolizing the hidden foundations of calculations in programming.
@@ -121,6 +129,9 @@ forge is_active: omen = boon;
 - `rune`: Borrowed from ancient writing systems used in magic, rune represents strings, suggesting the idea that words and symbols hold power in programming as they do in mystical inscriptions.
 - `omen`: Drawing from the concept of a prophetic sign, omen represents boolean values. The keywords `boon` and `hex` are used for `true` and `false`, respectively — `boon` originates from Old English, meaning a blessing or benefit, while `hex` comes from Germanic folklore, signifying a curse or spell, reinforcing the mystical theme of the language.
 - `abyss`: Symbolizing infinite nothingness, abyss represents the void type, indicating no value is returned, and is also the name of the language, reflecting its philosophy of exploring the depths of symbolic scripting.
+- `scroll`: Modeled after arcane parchment rolls, scroll values are indexed by arcana and preserve insertion order, making them ideal for spell queues or mixed data payloads.
+- `lexicon`: Inspired by grimoires and dictionaries, lexicon values map rune keys to arbitrary entries and allow quick lookups by string-like identifiers.
+- `materia`: Named after alchemical prime matter, materia variables willingly hold any type; they are perfect for staging data before you know its final shape or when writing polymorphic helpers.
 
 ### **Type Casting**
 
@@ -408,6 +419,49 @@ unveil(result); // Outputs: 120
 
 This recursive function calculates the factorial of a number.
 
+### **Collections**
+
+Scrolls and lexicons bring first-class collection support to AbySS. Scrolls behave like ordered lists, while lexicons act as rune-keyed dictionaries. Literals use familiar JSON-like syntax, and you can index into either structure with bracket notation.
+
+```abyss
+forge spellbook: scroll = ["ignite", 42, boon];
+forge grimoire: lexicon = {
+    "sun": "radiant",
+    "moon": "serene",
+};
+
+unveil(spellbook[0]);        // "ignite"
+unveil(grimoire["moon"]);   // "serene"
+
+forge morph satchel: scroll = [1, 2];
+satchel[1] = 3;               // morph required for mutation
+```
+
+Mutation requires the `morph` keyword, ensuring immutable data stays safe by default. Nested indexing is also supported, so `lexicon_scroll["sigils"][0]` works as expected.
+
+#### Collection rituals
+
+The standard library exposes helper spells for manipulating collections:
+
+- `measure(collection)` – returns the length of a scroll or lexicon as `arcana`.
+- `inscribe(scroll, value)` – appends to a morph scroll.
+- `retract(scroll)` – pops and returns the last entry of a morph scroll.
+- `expunge(lexicon, "key")` – removes a rune key from a morph lexicon.
+- `contents(lexicon)` – reveals a scroll of the stored rune keys.
+
+```abyss
+forge morph pack: scroll = ["ember"];
+inscribe(pack, "frost");
+unveil(measure(pack)); // 2
+unveil(retract(pack)); // "frost"
+
+forge morph ledger: lexicon = {"alpha": 1, "beta": 2};
+expunge(ledger, "alpha");
+unveil(contents(ledger)); // ["beta"]
+```
+
+These rituals operate on runtime `EvalResult`s directly, so you can pass nested scrolls or lexicons without additional boilerplate.
+
 ### **Input/Output**
 
 For output, AbySS uses the `unveil` function to print values to the console.
@@ -424,18 +478,18 @@ unveil("x + 42 = ", x + 42);
 In the example above, the second `unveil` statement prints both the string `"x + 42 = "` and the result of the expression `x + 42` on the same line.
 
 For input, AbySS provides the `summon` function to read user input during script execution.
-The `summon` function takes a prompt message and an expected type as arguments.
+The `summon` function takes a prompt message, always returns a `rune`, and callers can use `trans` to convert it into other types when needed.
 
-- `summon`: Represents the act of calling forth something from the user, summon is used for standard input operations. You can specify a prompt and the type of input expected (e.g., `arcana`, `aether`, `rune`).
+- `summon`: Represents the act of calling forth something from the user, summon is used for standard input operations. Provide a prompt rune, and use `trans` to coerce the response into `arcana` or `aether` when numerical input is required.
 
 ```abyss
-forge name: rune = summon("Input your name: ", rune);
-forge age: arcana = summon("Input your age: ", arcana);
+forge name: rune = summon("Input your name: ");
+forge age: arcana = trans(summon("Input your age: ") as arcana);
 unveil("Hello, ", name, "! You are ", age, " years old.");
 ```
 
 In this example, the user is prompted to enter their name and age.
-The inputs are then stored in the `name` and `age` variables, and both are printed using `unveil`.
+The string inputs are stored directly for `name`, while `age` is converted from the returned rune into an `arcana` using `trans` before being printed with `unveil`.
 
 ## **VSCode Extension**
 
@@ -448,7 +502,7 @@ To install the extension, search for "[AbySS Codex Familiar](https://marketplace
 
 ### **Roadmap**
 
-- **Collection Types**: Implement collection types such as lists and dictionaries for handling multiple values (Work-in-progress).
+- **Collection Types**: ✅ Scroll, lexicon, and materia shipped with literal syntax, indexing, and stdlib rituals.
 - **Struct Implementation**: Enable the definition and use of custom data structures (TBD).
 - **Generics Introduction**: Introduce generics to allow functions and data structures to be more flexible and reusable with different types (TBD).
 - **Module System**: Introduce the ability to import functions and variables from other files (TBD).

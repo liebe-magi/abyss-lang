@@ -1,11 +1,11 @@
 use abyss_lang::{
-    env::Environment,
     eval::{EvalError, EvalResult, display_error_with_source, evaluate},
     parser::{emit_diagnostics, parse},
+    stdlib,
 };
 
 pub fn test_base(input: &str) -> Result<Vec<EvalResult>, Box<dyn std::error::Error>> {
-    let mut env = Environment::new();
+    let mut env = stdlib::create_global_environment();
     let outcome = parse(input);
 
     if !outcome.diagnostics.is_empty() {

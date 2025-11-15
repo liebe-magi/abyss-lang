@@ -51,7 +51,6 @@ pub enum AST {
         line_info: Option<LineInfo>,
     },
     Var(String, Option<LineInfo>),
-    Unveil(Vec<AST>, Option<LineInfo>),
     Trans(Box<AST>, Type, Option<LineInfo>),
     Reveal(Box<AST>, Option<LineInfo>),
     Oracle {
@@ -99,7 +98,25 @@ pub enum AST {
         args: Vec<AST>,
         line_info: Option<LineInfo>,
     },
-    Summon(String, Type, Option<LineInfo>),
+    ListLiteral {
+        elements: Vec<AST>,
+        line_info: Option<LineInfo>,
+    },
+    MapLiteral {
+        entries: Vec<(String, AST)>,
+        line_info: Option<LineInfo>,
+    },
+    IndexAccess {
+        target: Box<AST>,
+        index: Box<AST>,
+        line_info: Option<LineInfo>,
+    },
+    IndexAssignment {
+        target: Box<AST>,
+        index: Box<AST>,
+        value: Box<AST>,
+        line_info: Option<LineInfo>,
+    },
 }
 
 /// Represents a conditional assignment within an oracle statement.
@@ -118,6 +135,9 @@ pub enum Type {
     Rune,
     Omen,
     Abyss,
+    Scroll,
+    Lexicon,
+    Materia,
 }
 
 /// Represents an assignment operation.

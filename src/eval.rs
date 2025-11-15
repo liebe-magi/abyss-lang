@@ -1,16 +1,19 @@
 use crate::ast::{AST, AssignmentOp, ConditionalAssignment, LineInfo, Type};
-use crate::env::{Environment, Function, Value};
+use crate::env::{CallArg, Callable, EngravedFunction, Environment, Value};
 use colored::*;
-use std::{fmt, io::Write};
+use std::collections::HashMap;
+use std::fmt;
 
 /// Represents the result of an evaluation in the interpreter.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum EvalResult {
     Omen(bool),
     Arcana(i64),
     Aether(f64),
     Rune(String),
     Abyss,
+    Scroll(Vec<EvalResult>),
+    Lexicon(HashMap<String, EvalResult>),
     Revealed(Box<EvalResult>),
     Resume(Option<String>),
     Eject(Option<String>),
@@ -63,6 +66,261 @@ pub fn display_error_with_source(script: &str, line_info: Option<LineInfo>, erro
     }
 }
 
+fn value_to_eval_result(value: &Value) -> EvalResult {
+    match value {
+        Value::Omen(b) => EvalResult::Omen(*b),
+        Value::Arcana(n) => EvalResult::Arcana(*n),
+        Value::Aether(n) => EvalResult::Aether(*n),
+        Value::Rune(s) => EvalResult::Rune(s.clone()),
+        Value::Abyss => EvalResult::Abyss,
+        Value::Scroll(items) => {
+            EvalResult::Scroll(items.iter().map(value_to_eval_result).collect())
+        }
+        Value::Lexicon(entries) => EvalResult::Lexicon(
+            entries
+                .iter()
+                .map(|(k, v)| (k.clone(), value_to_eval_result(v)))
+                .collect(),
+        ),
+    }
+}
+
+fn eval_result_to_value_any(result: EvalResult) -> Result<Value, EvalError> {
+    match result {
+        EvalResult::Omen(b) => Ok(Value::Omen(b)),
+        EvalResult::Arcana(n) => Ok(Value::Arcana(n)),
+        EvalResult::Aether(n) => Ok(Value::Aether(n)),
+        EvalResult::Rune(s) => Ok(Value::Rune(s)),
+        EvalResult::Abyss => Ok(Value::Abyss),
+        EvalResult::Scroll(items) => {
+            let converted: Result<Vec<_>, _> =
+                items.into_iter().map(eval_result_to_value_any).collect();
+            converted.map(Value::Scroll)
+        }
+        EvalResult::Lexicon(entries) => {
+            let converted: Result<HashMap<_, _>, _> = entries
+                .into_iter()
+                .map(|(k, v)| eval_result_to_value_any(v).map(|v2| (k, v2)))
+                .collect();
+            converted.map(Value::Lexicon)
+        }
+        other => Err(EvalError::InvalidOperation(
+            format!("Cannot convert {:?} to value", other),
+            None,
+        )),
+    }
+}
+
+fn eval_result_to_value_checked(
+    result: EvalResult,
+    line_info: Option<LineInfo>,
+) -> Result<Value, EvalError> {
+    eval_result_to_value_any(result).map_err(|err| match err {
+        EvalError::InvalidOperation(msg, _) => EvalError::InvalidOperation(msg, line_info.clone()),
+        EvalError::TypeError(msg, _) => EvalError::TypeError(msg, line_info.clone()),
+        other => other,
+    })
+}
+
+fn convert_to_typed_value(
+    result: EvalResult,
+    expected: &Type,
+    line_info: &Option<LineInfo>,
+) -> Result<Value, EvalError> {
+    match expected {
+        Type::Materia => eval_result_to_value_checked(result, line_info.clone()),
+        Type::Arcana => match result {
+            EvalResult::Arcana(n) => Ok(Value::Arcana(n)),
+            _ => Err(EvalError::TypeError(
+                "Expected arcana value".to_string(),
+                line_info.clone(),
+            )),
+        },
+        Type::Aether => match result {
+            EvalResult::Aether(n) => Ok(Value::Aether(n)),
+            _ => Err(EvalError::TypeError(
+                "Expected aether value".to_string(),
+                line_info.clone(),
+            )),
+        },
+        Type::Rune => match result {
+            EvalResult::Rune(s) => Ok(Value::Rune(s)),
+            _ => Err(EvalError::TypeError(
+                "Expected rune value".to_string(),
+                line_info.clone(),
+            )),
+        },
+        Type::Omen => match result {
+            EvalResult::Omen(b) => Ok(Value::Omen(b)),
+            _ => Err(EvalError::TypeError(
+                "Expected omen value".to_string(),
+                line_info.clone(),
+            )),
+        },
+        Type::Abyss => match result {
+            EvalResult::Abyss => Ok(Value::Abyss),
+            _ => Err(EvalError::TypeError(
+                "Expected abyss value".to_string(),
+                line_info.clone(),
+            )),
+        },
+        Type::Scroll => match result {
+            EvalResult::Scroll(items) => {
+                let converted: Vec<_> = items
+                    .into_iter()
+                    .map(|item| eval_result_to_value_checked(item, line_info.clone()))
+                    .collect::<Result<_, _>>()?;
+                Ok(Value::Scroll(converted))
+            }
+            _ => Err(EvalError::TypeError(
+                "Expected scroll value".to_string(),
+                line_info.clone(),
+            )),
+        },
+        Type::Lexicon => match result {
+            EvalResult::Lexicon(entries) => {
+                let converted: HashMap<_, _> = entries
+                    .into_iter()
+                    .map(|(k, v)| {
+                        eval_result_to_value_checked(v, line_info.clone())
+                            .map(|converted| (k, converted))
+                    })
+                    .collect::<Result<_, _>>()?;
+                Ok(Value::Lexicon(converted))
+            }
+            _ => Err(EvalError::TypeError(
+                "Expected lexicon value".to_string(),
+                line_info.clone(),
+            )),
+        },
+    }
+}
+
+/// Extract an Arcana value from an EvalResult for use in compound assignments
+fn extract_arcana(result: &EvalResult, line_info: &Option<LineInfo>) -> Result<i64, EvalError> {
+    match result {
+        EvalResult::Arcana(v) => Ok(*v),
+        _ => Err(EvalError::TypeError(
+            "Expected arcana value".to_string(),
+            line_info.clone(),
+        )),
+    }
+}
+
+/// Extract an Aether value from an EvalResult for use in compound assignments
+fn extract_aether(result: &EvalResult, line_info: &Option<LineInfo>) -> Result<f64, EvalError> {
+    match result {
+        EvalResult::Aether(v) => Ok(*v),
+        _ => Err(EvalError::TypeError(
+            "Expected aether value".to_string(),
+            line_info.clone(),
+        )),
+    }
+}
+
+/// Extract a Rune value from an EvalResult for use in compound assignments
+fn extract_rune(result: EvalResult, line_info: &Option<LineInfo>) -> Result<String, EvalError> {
+    match result {
+        EvalResult::Rune(v) => Ok(v),
+        _ => Err(EvalError::TypeError(
+            "Expected rune value".to_string(),
+            line_info.clone(),
+        )),
+    }
+}
+
+/// Extract an Omen value from an EvalResult for use in compound assignments
+fn extract_omen(result: &EvalResult, line_info: &Option<LineInfo>) -> Result<bool, EvalError> {
+    match result {
+        EvalResult::Omen(v) => Ok(*v),
+        _ => Err(EvalError::TypeError(
+            "Expected omen value".to_string(),
+            line_info.clone(),
+        )),
+    }
+}
+
+fn expect_arcana_index(
+    index: &EvalResult,
+    line_info: &Option<LineInfo>,
+) -> Result<usize, EvalError> {
+    if let EvalResult::Arcana(value) = index {
+        if *value < 0 {
+            return Err(EvalError::InvalidOperation(
+                "Scroll index cannot be negative".to_string(),
+                line_info.clone(),
+            ));
+        }
+        Ok(*value as usize)
+    } else {
+        Err(EvalError::TypeError(
+            "Scroll index must be arcana".to_string(),
+            line_info.clone(),
+        ))
+    }
+}
+
+fn expect_rune_key(index: &EvalResult, line_info: &Option<LineInfo>) -> Result<String, EvalError> {
+    if let EvalResult::Rune(value) = index {
+        Ok(value.clone())
+    } else {
+        Err(EvalError::TypeError(
+            "Lexicon key must be rune".to_string(),
+            line_info.clone(),
+        ))
+    }
+}
+
+fn collect_index_chain(target: &AST) -> Option<(String, Vec<&AST>)> {
+    let mut indices = Vec::new();
+    let mut current = target;
+
+    loop {
+        match current {
+            AST::Var(name, _) => {
+                indices.reverse();
+                return Some((name.clone(), indices));
+            }
+            AST::IndexAccess { target, index, .. } => {
+                indices.push(index.as_ref());
+                current = target.as_ref();
+            }
+            _ => return None,
+        }
+    }
+}
+
+fn resolve_nested_value_mut<'a>(
+    value: &'a mut Value,
+    index: &EvalResult,
+    line_info: &Option<LineInfo>,
+) -> Result<&'a mut Value, EvalError> {
+    match value {
+        Value::Scroll(items) => {
+            let idx = expect_arcana_index(index, line_info)?;
+            items.get_mut(idx).ok_or_else(|| {
+                EvalError::InvalidOperation(
+                    format!("Index {} is out of bounds for scroll", idx),
+                    line_info.clone(),
+                )
+            })
+        }
+        Value::Lexicon(entries) => {
+            let key = expect_rune_key(index, line_info)?;
+            entries.get_mut(key.as_str()).ok_or_else(|| {
+                EvalError::InvalidOperation(
+                    format!("Lexicon key '{}' does not exist", key),
+                    line_info.clone(),
+                )
+            })
+        }
+        _ => Err(EvalError::InvalidOperation(
+            "Cannot index into non-collection value".to_string(),
+            line_info.clone(),
+        )),
+    }
+}
+
 /// Evaluates an abstract syntax tree (AST) node in the given environment.
 ///
 /// # Arguments
@@ -81,6 +339,20 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
         AST::Aether(n, _line_info) => Ok(EvalResult::Aether(*n)),
         AST::Rune(s, _line_info) => Ok(EvalResult::Rune(s.clone())),
         AST::Abyss(_line_info) => Ok(EvalResult::Abyss),
+        AST::ListLiteral { elements, .. } => {
+            let mut evaluated = Vec::new();
+            for element in elements {
+                evaluated.push(evaluate(element, env)?);
+            }
+            Ok(EvalResult::Scroll(evaluated))
+        }
+        AST::MapLiteral { entries, .. } => {
+            let mut map = HashMap::new();
+            for (key, expr) in entries {
+                map.insert(key.clone(), evaluate(expr, env)?);
+            }
+            Ok(EvalResult::Lexicon(map))
+        }
         AST::Add(left, right, line_info) => match (evaluate(left, env)?, evaluate(right, env)?) {
             (EvalResult::Arcana(l), EvalResult::Arcana(r)) => Ok(EvalResult::Arcana(l + r)),
             (EvalResult::Aether(l), EvalResult::Aether(r)) => Ok(EvalResult::Aether(l + r)),
@@ -250,21 +522,11 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
             is_morph,
             line_info,
         } => {
-            let value = match evaluate(value, env)? {
-                EvalResult::Omen(b) if *var_type == Type::Omen => Value::Omen(b),
-                EvalResult::Arcana(n) if *var_type == Type::Arcana => Value::Arcana(n),
-                EvalResult::Aether(n) if *var_type == Type::Aether => Value::Aether(n),
-                EvalResult::Rune(s) if *var_type == Type::Rune => Value::Rune(s),
-                _ => {
-                    return Err(EvalError::InvalidOperation(
-                        "VarAssign operation requires a valid type!".to_string(),
-                        line_info.clone(),
-                    ));
-                }
-            };
+            let evaluated_value = evaluate(value, env)?;
+            let stored_value = convert_to_typed_value(evaluated_value, var_type, line_info)?;
             env.set_var(
                 name.clone(),
-                value,
+                stored_value,
                 var_type.clone(),
                 *is_morph,
                 line_info.clone(),
@@ -278,8 +540,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
             line_info,
         } => {
             let evaluated_value = evaluate(value, env)?;
-
-            if let Some(var_info) = env.get_var(name) {
+            if let Some(var_info) = env.get_var_mut(name) {
                 if !var_info.is_morph {
                     return Err(EvalError::InvalidOperation(
                         format!("Cannot reassign to immutable variable {}", name),
@@ -287,21 +548,32 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                     ));
                 }
 
-                let result = match (evaluated_value, &var_info.value, op) {
-                    (EvalResult::Arcana(v), Value::Arcana(current), op) => {
+                match (&mut var_info.value, &var_info.var_type) {
+                    (Value::Arcana(current), Type::Arcana) => {
                         let new_value = match op {
-                            AssignmentOp::AddAssign => current + v,
-                            AssignmentOp::SubAssign => current - v,
-                            AssignmentOp::MulAssign => current * v,
-                            AssignmentOp::DivAssign => current / v,
-                            AssignmentOp::ModAssign => current % v,
+                            AssignmentOp::AddAssign => {
+                                *current + extract_arcana(&evaluated_value, line_info)?
+                            }
+                            AssignmentOp::SubAssign => {
+                                *current - extract_arcana(&evaluated_value, line_info)?
+                            }
+                            AssignmentOp::MulAssign => {
+                                *current * extract_arcana(&evaluated_value, line_info)?
+                            }
+                            AssignmentOp::DivAssign => {
+                                *current / extract_arcana(&evaluated_value, line_info)?
+                            }
+                            AssignmentOp::ModAssign => {
+                                *current % extract_arcana(&evaluated_value, line_info)?
+                            }
                             AssignmentOp::PowArcanaAssign => {
-                                if v < 0 {
+                                let exponent = extract_arcana(&evaluated_value, line_info)?;
+                                if exponent < 0 {
                                     return Err(EvalError::NegativeExponent(line_info.clone()));
                                 }
-                                current.pow(v as u32)
+                                current.pow(exponent as u32)
                             }
-                            AssignmentOp::Assign => v,
+                            AssignmentOp::Assign => extract_arcana(&evaluated_value, line_info)?,
                             _ => {
                                 return Err(EvalError::InvalidOperation(
                                     format!("Unsupported operation for variable {}", name),
@@ -309,22 +581,18 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                                 ));
                             }
                         };
-                        env.update_var(
-                            name,
-                            Value::Arcana(new_value),
-                            Type::Arcana,
-                            line_info.clone(),
-                        )
+                        *current = new_value;
                     }
-                    (EvalResult::Aether(v), Value::Aether(current), op) => {
+                    (Value::Aether(current), Type::Aether) => {
+                        let operand = extract_aether(&evaluated_value, line_info)?;
                         let new_value = match op {
-                            AssignmentOp::AddAssign => current + v,
-                            AssignmentOp::SubAssign => current - v,
-                            AssignmentOp::MulAssign => current * v,
-                            AssignmentOp::DivAssign => current / v,
-                            AssignmentOp::ModAssign => current % v,
-                            AssignmentOp::PowAetherAssign => current.powf(v),
-                            AssignmentOp::Assign => v,
+                            AssignmentOp::AddAssign => *current + operand,
+                            AssignmentOp::SubAssign => *current - operand,
+                            AssignmentOp::MulAssign => *current * operand,
+                            AssignmentOp::DivAssign => *current / operand,
+                            AssignmentOp::ModAssign => *current % operand,
+                            AssignmentOp::PowAetherAssign => current.powf(operand),
+                            AssignmentOp::Assign => operand,
                             _ => {
                                 return Err(EvalError::InvalidOperation(
                                     format!("Unsupported operation for variable {}", name),
@@ -332,39 +600,88 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                                 ));
                             }
                         };
-                        env.update_var(
-                            name,
-                            Value::Aether(new_value),
-                            Type::Aether,
+                        *current = new_value;
+                    }
+                    (Value::Rune(current), Type::Rune) => match op {
+                        AssignmentOp::AddAssign => {
+                            let rhs = extract_rune(evaluated_value, line_info)?;
+                            current.push_str(&rhs);
+                        }
+                        AssignmentOp::Assign => {
+                            *current = extract_rune(evaluated_value, line_info)?;
+                        }
+                        _ => {
+                            return Err(EvalError::InvalidOperation(
+                                format!("Unsupported operation for variable {}", name),
+                                line_info.clone(),
+                            ));
+                        }
+                    },
+                    (Value::Omen(current), Type::Omen) => {
+                        if !matches!(op, AssignmentOp::Assign) {
+                            return Err(EvalError::InvalidOperation(
+                                format!("Unsupported operation for variable {}", name),
+                                line_info.clone(),
+                            ));
+                        }
+                        *current = extract_omen(&evaluated_value, line_info)?;
+                    }
+                    (Value::Abyss, Type::Abyss) => {
+                        if !matches!(op, AssignmentOp::Assign) {
+                            return Err(EvalError::InvalidOperation(
+                                format!("Unsupported operation for variable {}", name),
+                                line_info.clone(),
+                            ));
+                        }
+                        if !matches!(evaluated_value, EvalResult::Abyss) {
+                            return Err(EvalError::TypeError(
+                                "Expected abyss value".to_string(),
+                                line_info.clone(),
+                            ));
+                        }
+                    }
+                    (value_slot, Type::Scroll) => {
+                        if !matches!(op, AssignmentOp::Assign) {
+                            return Err(EvalError::InvalidOperation(
+                                "Scroll reassignment only supports =".to_string(),
+                                line_info.clone(),
+                            ));
+                        }
+                        *value_slot =
+                            convert_to_typed_value(evaluated_value, &Type::Scroll, line_info)?;
+                    }
+                    (value_slot, Type::Lexicon) => {
+                        if !matches!(op, AssignmentOp::Assign) {
+                            return Err(EvalError::InvalidOperation(
+                                "Lexicon reassignment only supports =".to_string(),
+                                line_info.clone(),
+                            ));
+                        }
+                        *value_slot =
+                            convert_to_typed_value(evaluated_value, &Type::Lexicon, line_info)?;
+                    }
+                    (value_slot, Type::Materia) => {
+                        if !matches!(op, AssignmentOp::Assign) {
+                            return Err(EvalError::InvalidOperation(
+                                "Materia variables only support =".to_string(),
+                                line_info.clone(),
+                            ));
+                        }
+                        *value_slot =
+                            eval_result_to_value_checked(evaluated_value, line_info.clone())?;
+                    }
+                    _ => {
+                        return Err(EvalError::InvalidOperation(
+                            format!(
+                                "Type mismatch or unsupported operation for variable {}",
+                                name
+                            ),
                             line_info.clone(),
-                        )
+                        ));
                     }
-                    (EvalResult::Rune(v), Value::Rune(current), op) => {
-                        let new_value = match op {
-                            AssignmentOp::AddAssign => format!("{}{}", current, v),
-                            AssignmentOp::Assign => v,
-                            _ => {
-                                return Err(EvalError::InvalidOperation(
-                                    format!("Unsupported operation for variable {}", name),
-                                    line_info.clone(),
-                                ));
-                            }
-                        };
-                        env.update_var(name, Value::Rune(new_value), Type::Rune, line_info.clone())
-                    }
-                    (EvalResult::Omen(v), _, AssignmentOp::Assign) => {
-                        env.update_var(name, Value::Omen(v), Type::Omen, line_info.clone())
-                    }
-                    _ => Err(EvalError::InvalidOperation(
-                        format!(
-                            "Type mismatch or unsupported operation for variable {}",
-                            name
-                        ),
-                        line_info.clone(),
-                    )),
-                };
+                }
 
-                result.map(|_| EvalResult::Abyss)
+                Ok(EvalResult::Abyss)
             } else {
                 Err(EvalError::UndefinedVariable(
                     name.clone(),
@@ -372,43 +689,107 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                 ))
             }
         }
+        AST::IndexAccess {
+            target,
+            index,
+            line_info,
+        } => {
+            let collection = evaluate(target, env)?;
+            let idx_value = evaluate(index, env)?;
+            match collection {
+                EvalResult::Scroll(items) => {
+                    let idx = expect_arcana_index(&idx_value, line_info)?;
+                    items.get(idx).cloned().ok_or_else(|| {
+                        EvalError::InvalidOperation(
+                            format!("Index {} is out of bounds for scroll", idx),
+                            line_info.clone(),
+                        )
+                    })
+                }
+                EvalResult::Lexicon(entries) => {
+                    let key = expect_rune_key(&idx_value, line_info)?;
+                    entries.get(&key).cloned().ok_or_else(|| {
+                        EvalError::InvalidOperation(
+                            format!("Lexicon key '{}' does not exist", key),
+                            line_info.clone(),
+                        )
+                    })
+                }
+                _ => Err(EvalError::InvalidOperation(
+                    "Indexing is only supported for scroll or lexicon".to_string(),
+                    line_info.clone(),
+                )),
+            }
+        }
+        AST::IndexAssignment {
+            target,
+            index,
+            value,
+            line_info,
+        } => {
+            let (base_name, nested_indices) = collect_index_chain(target).ok_or_else(|| {
+                EvalError::InvalidOperation(
+                    "Indexed assignment requires a mutable variable target".to_string(),
+                    line_info.clone(),
+                )
+            })?;
+
+            let mut evaluated_indices = Vec::new();
+            for idx_ast in nested_indices {
+                evaluated_indices.push(evaluate(idx_ast, env)?);
+            }
+
+            let final_index_value = evaluate(index, env)?;
+            let new_value = eval_result_to_value_checked(evaluate(value, env)?, line_info.clone())?;
+
+            let var_info = env.get_var_mut(&base_name).ok_or_else(|| {
+                EvalError::UndefinedVariable(base_name.clone(), line_info.clone())
+            })?;
+
+            if !var_info.is_morph {
+                return Err(EvalError::InvalidOperation(
+                    format!("Cannot reassign to immutable variable {}", base_name),
+                    line_info.clone(),
+                ));
+            }
+
+            let mut current_value = &mut var_info.value;
+            for idx in &evaluated_indices {
+                current_value = resolve_nested_value_mut(current_value, idx, line_info)?;
+            }
+
+            match current_value {
+                Value::Scroll(items) => {
+                    let idx = expect_arcana_index(&final_index_value, line_info)?;
+                    if idx >= items.len() {
+                        return Err(EvalError::InvalidOperation(
+                            format!("Index {} is out of bounds for scroll", idx),
+                            line_info.clone(),
+                        ));
+                    }
+                    items[idx] = new_value;
+                }
+                Value::Lexicon(entries) => {
+                    let key = expect_rune_key(&final_index_value, line_info)?;
+                    entries.insert(key, new_value);
+                }
+                _ => {
+                    return Err(EvalError::InvalidOperation(
+                        "Indexed assignment requires a scroll or lexicon".to_string(),
+                        line_info.clone(),
+                    ));
+                }
+            }
+
+            Ok(EvalResult::Abyss)
+        }
         AST::Var(name, line_info) => match env.get_var(name) {
-            Some(var_info) => match &var_info.value {
-                Value::Omen(b) => Ok(EvalResult::Omen(*b)),
-                Value::Arcana(n) => Ok(EvalResult::Arcana(*n)),
-                Value::Aether(n) => Ok(EvalResult::Aether(*n)),
-                Value::Rune(s) => Ok(EvalResult::Rune(s.clone())),
-            },
+            Some(var_info) => Ok(value_to_eval_result(&var_info.value)),
             None => Err(EvalError::UndefinedVariable(
                 name.clone(),
                 line_info.clone(),
             )),
         },
-        AST::Unveil(args, _line_info) => {
-            let outputs: Result<Vec<String>, EvalError> = args
-                .iter()
-                .map(|arg| evaluate(arg, env))
-                .collect::<Result<Vec<EvalResult>, EvalError>>()?
-                .iter()
-                .map(|result| match result {
-                    EvalResult::Omen(b) => match b {
-                        true => Ok("boon".to_string()),
-                        false => Ok("hex".to_string()),
-                    },
-                    EvalResult::Arcana(n) => Ok(n.to_string()),
-                    EvalResult::Aether(n) => Ok(n.to_string()),
-                    EvalResult::Rune(s) => Ok(s.replace("\\n", "\n")),
-                    EvalResult::Abyss => Ok("".to_string()),
-                    _ => Err(EvalError::InvalidOperation(
-                        "Unsupported type in unveil statement".to_string(),
-                        None,
-                    )),
-                })
-                .collect();
-            let output_str = outputs?.join("");
-            println!("{}", output_str);
-            Ok(EvalResult::Abyss)
-        }
         AST::Trans(expr, target_type, line_info) => {
             let value = evaluate(expr, env)?;
             match target_type {
@@ -723,14 +1104,14 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
             body,
             line_info,
         } => {
-            let function = Function {
+            let function = EngravedFunction {
                 name: name.clone(),
                 params: params.clone(),
                 return_type: return_type.clone(),
                 body: body.clone(),
                 line_info: line_info.clone(),
             };
-            env.set_function(name.clone(), function);
+            env.set_function(name.clone(), Callable::Engraved(function));
             Ok(EvalResult::Abyss)
         }
         AST::FuncCall {
@@ -738,106 +1119,127 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
             args,
             line_info,
         } => {
-            let function = {
-                env.get_function(name)
-                    .ok_or_else(|| EvalError::UndefinedVariable(name.clone(), line_info.clone()))?
-            }
-            .clone();
-
-            let params = function.params.clone();
+            let callable = env
+                .get_function(name)
+                .ok_or_else(|| EvalError::UndefinedVariable(name.clone(), line_info.clone()))?
+                .clone();
 
             let mut evaluated_args = Vec::new();
             for arg in args {
                 let evaluated_arg = evaluate(arg, env)?;
-                evaluated_args.push(evaluated_arg);
+                let var_name = if let AST::Var(var_name, _) = arg {
+                    Some(var_name.clone())
+                } else {
+                    None
+                };
+                evaluated_args.push(CallArg {
+                    value: evaluated_arg,
+                    var_name,
+                });
             }
 
-            env.push_scope();
+            match callable {
+                Callable::Engraved(function) => {
+                    let eval_args: Vec<EvalResult> =
+                        evaluated_args.into_iter().map(|arg| arg.value).collect();
+                    let params = function.params.clone();
+                    env.push_scope();
 
-            for (evaluated_arg, param) in evaluated_args.into_iter().zip(params.iter()) {
-                let (name, param_type) = match param {
-                    AST::EngraveParam {
-                        name, param_type, ..
-                    } => (name, param_type),
-                    _ => {
+                    if eval_args.len() != params.len() {
                         return Err(EvalError::InvalidOperation(
-                            format!("Expected EngraveParam in function definition: {}", name),
+                            format!(
+                                "Function '{}' expected {} arguments but got {}.",
+                                name,
+                                params.len(),
+                                eval_args.len()
+                            ),
                             line_info.clone(),
                         ));
                     }
-                };
-                let value = match (evaluated_arg, param_type) {
-                    (EvalResult::Arcana(n), Type::Arcana) => Value::Arcana(n),
-                    (EvalResult::Aether(n), Type::Aether) => Value::Aether(n),
-                    (EvalResult::Rune(s), Type::Rune) => Value::Rune(s),
-                    (EvalResult::Omen(b), Type::Omen) => Value::Omen(b),
-                    _ => {
-                        return Err(EvalError::TypeError(
-                            format!("Type mismatch for parameter {}", name),
+                    for (evaluated_arg, param) in eval_args.into_iter().zip(params.iter()) {
+                        let (param_name, param_type) = match param {
+                            AST::EngraveParam {
+                                name, param_type, ..
+                            } => (name, param_type),
+                            _ => {
+                                return Err(EvalError::InvalidOperation(
+                                    format!(
+                                        "Expected EngraveParam in function definition: {}",
+                                        name
+                                    ),
+                                    line_info.clone(),
+                                ));
+                            }
+                        };
+                        let value = convert_to_typed_value(evaluated_arg, param_type, line_info)?;
+                        env.set_var(
+                            param_name.to_string(),
+                            value,
+                            param_type.clone(),
+                            false,
                             line_info.clone(),
-                        ));
+                        );
                     }
-                };
-                env.set_var(
-                    name.to_string(),
-                    value,
-                    param_type.clone(),
-                    false,
-                    line_info.clone(),
-                );
-            }
 
-            let result = evaluate(&function.body, env)?;
+                    let result = evaluate(&function.body, env)?;
+                    env.pop_scope();
 
-            env.pop_scope();
-
-            match (result, function.return_type) {
-                (EvalResult::Arcana(n), Type::Arcana) => Ok(EvalResult::Arcana(n)),
-                (EvalResult::Aether(n), Type::Aether) => Ok(EvalResult::Aether(n)),
-                (EvalResult::Rune(s), Type::Rune) => Ok(EvalResult::Rune(s)),
-                (EvalResult::Omen(b), Type::Omen) => Ok(EvalResult::Omen(b)),
-                (EvalResult::Abyss, Type::Abyss) => Ok(EvalResult::Abyss),
-                _ => Err(EvalError::TypeError(
-                    format!("Type mismatch for return value of function {}", name),
-                    function.line_info.clone(),
-                )),
-            }
-        }
-        AST::Summon(prompt, var_type, line_info) => {
-            print!("{}", prompt.trim_matches('"'));
-            std::io::stdout().flush().map_err(|_| {
-                EvalError::InvalidOperation("Failed to flush stdout".to_string(), line_info.clone())
-            })?;
-            let mut input = String::new();
-            std::io::stdin().read_line(&mut input).map_err(|_| {
-                EvalError::InvalidOperation("Failed to read input".to_string(), line_info.clone())
-            })?;
-            match var_type {
-                Type::Arcana => input
-                    .trim()
-                    .parse::<i64>()
-                    .map(EvalResult::Arcana)
-                    .map_err(|_| {
-                        EvalError::InvalidOperation(
-                            "Failed to parse input as Arcana".to_string(),
-                            line_info.clone(),
-                        )
-                    }),
-                Type::Aether => input
-                    .trim()
-                    .parse::<f64>()
-                    .map(EvalResult::Aether)
-                    .map_err(|_| {
-                        EvalError::InvalidOperation(
-                            "Failed to parse input as Aether".to_string(),
-                            line_info.clone(),
-                        )
-                    }),
-                Type::Rune => Ok(EvalResult::Rune(input.trim().to_string())),
-                _ => Err(EvalError::InvalidOperation(
-                    "Unsupported type for summon".to_string(),
-                    line_info.clone(),
-                )),
+                    match function.return_type {
+                        Type::Arcana => match result {
+                            EvalResult::Arcana(n) => Ok(EvalResult::Arcana(n)),
+                            _ => Err(EvalError::TypeError(
+                                format!("Type mismatch for return value of function {}", name),
+                                function.line_info.clone(),
+                            )),
+                        },
+                        Type::Aether => match result {
+                            EvalResult::Aether(n) => Ok(EvalResult::Aether(n)),
+                            _ => Err(EvalError::TypeError(
+                                format!("Type mismatch for return value of function {}", name),
+                                function.line_info.clone(),
+                            )),
+                        },
+                        Type::Rune => match result {
+                            EvalResult::Rune(s) => Ok(EvalResult::Rune(s)),
+                            _ => Err(EvalError::TypeError(
+                                format!("Type mismatch for return value of function {}", name),
+                                function.line_info.clone(),
+                            )),
+                        },
+                        Type::Omen => match result {
+                            EvalResult::Omen(b) => Ok(EvalResult::Omen(b)),
+                            _ => Err(EvalError::TypeError(
+                                format!("Type mismatch for return value of function {}", name),
+                                function.line_info.clone(),
+                            )),
+                        },
+                        Type::Abyss => match result {
+                            EvalResult::Abyss => Ok(EvalResult::Abyss),
+                            _ => Err(EvalError::TypeError(
+                                format!("Type mismatch for return value of function {}", name),
+                                function.line_info.clone(),
+                            )),
+                        },
+                        Type::Scroll => match result {
+                            EvalResult::Scroll(items) => Ok(EvalResult::Scroll(items)),
+                            _ => Err(EvalError::TypeError(
+                                format!("Type mismatch for return value of function {}", name),
+                                function.line_info.clone(),
+                            )),
+                        },
+                        Type::Lexicon => match result {
+                            EvalResult::Lexicon(entries) => Ok(EvalResult::Lexicon(entries)),
+                            _ => Err(EvalError::TypeError(
+                                format!("Type mismatch for return value of function {}", name),
+                                function.line_info.clone(),
+                            )),
+                        },
+                        Type::Materia => Ok(result),
+                    }
+                }
+                Callable::Builtin(function) => {
+                    (function.func)(env, evaluated_args, line_info.clone())
+                }
             }
         }
         AST::Comment(_, _) => Ok(EvalResult::Abyss),

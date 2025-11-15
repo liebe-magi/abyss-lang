@@ -517,7 +517,7 @@ hero.set_level(4);
 unveil("Updated", hero.get_level());
 ```
 
-Calling a method automatically binds the receiver to `core`. When a method is declared with `morph core`, the evaluator ensures the caller is mutable—attempting to invoke it on an immutable binding produces a friendly runtime diagnostic.
+Calling a method automatically binds the receiver to `core`. When a method is declared with `morph core`, the evaluator ensures the caller is mutable—attempting to invoke it on an immutable binding produces a friendly runtime diagnostic. `core` is only available within method bodies and cannot be shadowed by local variables or accessed outside of a method context.
 
 Key guarantees:
 - All declared fields must appear exactly once in literal form, and types are checked recursively.

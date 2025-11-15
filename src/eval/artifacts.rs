@@ -221,6 +221,20 @@ pub(crate) fn compare_artifacts(
     Ok(true)
 }
 
+/// Extracts the base variable name and field access chain from an AST expression.
+///
+/// This function only handles direct variable access (`AST::Var`) and field access chains
+/// (`AST::FieldAccess`). It returns `None` for all other AST node types, including:
+/// - Method calls (`AST::MethodCall`)
+/// - Index access (`AST::IndexAccess`)
+/// - Other complex expressions
+///
+/// This means that mutable method calls are only supported on direct variable/field access
+/// patterns. Attempting to call a mutable method on a method call result or indexed expression
+/// will produce an error indicating the expression is not tied to a mutable variable.
+///
+/// Returns `Some((base_var_name, field_chain))` if the expression can be traced to a variable,
+/// or `None` if the expression type is not supported for mutability tracking.
 pub(crate) fn collect_field_chain(ast: &AST) -> Option<(String, Vec<String>)> {
     match ast {
         AST::Var(name, _) => Some((name.clone(), Vec::new())),

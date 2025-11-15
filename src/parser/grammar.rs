@@ -414,7 +414,7 @@ fn indexed_target_parser<'src>(
         .map(move |(base, mut suffixes)| {
             let last = suffixes
                 .pop()
-                .expect("At least one index suffix should be present");
+                .expect("Parser guaranteed at least one index suffix via .at_least(1) on line 411");
             let target = suffixes.into_iter().fold(base, |acc, suffix| {
                 create_index_access(ctx_for_map.clone(), acc, suffix)
             });

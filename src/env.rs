@@ -129,7 +129,10 @@ impl Environment {
                     ));
                 }
 
-                if var_info.var_type != var_type && var_info.var_type != Type::Materia && var_type != Type::Materia {
+                if var_info.var_type != var_type
+                    && var_info.var_type != Type::Materia
+                    && var_type != Type::Materia
+                {
                     return Err(EvalError::InvalidOperation(
                         format!(
                             "Type mismatch: cannot assign {:?} to variable {} of type {:?}",

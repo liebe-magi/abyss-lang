@@ -93,7 +93,8 @@ fn eval_result_to_value_any(result: EvalResult) -> Result<Value, EvalError> {
         EvalResult::Rune(s) => Ok(Value::Rune(s)),
         EvalResult::Abyss => Ok(Value::Abyss),
         EvalResult::Scroll(items) => {
-            let converted: Result<Vec<_>, _> = items.into_iter().map(eval_result_to_value_any).collect();
+            let converted: Result<Vec<_>, _> =
+                items.into_iter().map(eval_result_to_value_any).collect();
             converted.map(Value::Scroll)
         }
         EvalResult::Lexicon(entries) => {
@@ -110,13 +111,24 @@ fn eval_result_to_value_any(result: EvalResult) -> Result<Value, EvalError> {
     }
 }
 
+fn eval_result_to_value_checked(
+    result: EvalResult,
+    line_info: Option<LineInfo>,
+) -> Result<Value, EvalError> {
+    eval_result_to_value_any(result).map_err(|err| match err {
+        EvalError::InvalidOperation(msg, _) => EvalError::InvalidOperation(msg, line_info.clone()),
+        EvalError::TypeError(msg, _) => EvalError::TypeError(msg, line_info.clone()),
+        other => other,
+    })
+}
+
 fn convert_to_typed_value(
     result: EvalResult,
     expected: &Type,
     line_info: &Option<LineInfo>,
 ) -> Result<Value, EvalError> {
     match expected {
-        Type::Materia => Ok(eval_result_to_value_any(result)),
+        Type::Materia => eval_result_to_value_checked(result, line_info.clone()),
         Type::Arcana => match result {
             EvalResult::Arcana(n) => Ok(Value::Arcana(n)),
             _ => Err(EvalError::TypeError(
@@ -153,21 +165,29 @@ fn convert_to_typed_value(
             )),
         },
         Type::Scroll => match result {
-            EvalResult::Scroll(items) => Ok(Value::Scroll(
-                items.into_iter().map(eval_result_to_value_any).collect(),
-            )),
+            EvalResult::Scroll(items) => {
+                let converted: Vec<_> = items
+                    .into_iter()
+                    .map(|item| eval_result_to_value_checked(item, line_info.clone()))
+                    .collect::<Result<_, _>>()?;
+                Ok(Value::Scroll(converted))
+            }
             _ => Err(EvalError::TypeError(
                 "Expected scroll value".to_string(),
                 line_info.clone(),
             )),
         },
         Type::Lexicon => match result {
-            EvalResult::Lexicon(entries) => Ok(Value::Lexicon(
-                entries
+            EvalResult::Lexicon(entries) => {
+                let converted: HashMap<_, _> = entries
                     .into_iter()
-                    .map(|(k, v)| (k, eval_result_to_value_any(v)))
-                    .collect(),
-            )),
+                    .map(|(k, v)| {
+                        eval_result_to_value_checked(v, line_info.clone())
+                            .map(|converted| (k, converted))
+                    })
+                    .collect::<Result<_, _>>()?;
+                Ok(Value::Lexicon(converted))
+            }
             _ => Err(EvalError::TypeError(
                 "Expected lexicon value".to_string(),
                 line_info.clone(),
@@ -692,7 +712,8 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                                 line_info.clone(),
                             ));
                         }
-                        *value_slot = eval_result_to_value_any(evaluated_value);
+                        *value_slot =
+                            eval_result_to_value_checked(evaluated_value, line_info.clone())?;
                     }
                     _ => {
                         return Err(EvalError::InvalidOperation(

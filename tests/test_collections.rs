@@ -46,7 +46,9 @@ fn inscribe_and_retract_mutate_scroll() {
 
     match &results[4] {
         EvalResult::Arcana(value) => assert_eq!(*value, 3),
-        other => panic!("expected arcana from value returned by retract (popped value), got {other:?}"),
+        other => {
+            panic!("expected arcana from value returned by retract (popped value), got {other:?}")
+        }
     }
 
     match &results[5] {

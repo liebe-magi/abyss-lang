@@ -1,0 +1,96 @@
+// Example demonstrating artifact (struct) usage in AbySS
+// This file will work once the add-artifact-structs proposal is implemented
+
+// Define a simple artifact with two fields
+artifact Player {
+    name: rune;
+    health: arcana;
+};
+
+// Define a more complex artifact with nested type
+artifact Stats {
+    max_hp: arcana;
+    current_hp: arcana;
+    level: arcana;
+};
+
+artifact Character {
+    name: rune;
+    stats: Stats;
+    is_alive: omen;
+};
+
+// Create artifact instances
+forge hero: Player = Player {
+    name: "Ardyn",
+    health: 100
+};
+
+forge ally: Player = Player {
+    name: "Lyra",
+    health: 85
+};
+
+// Access fields
+unveil("Hero name: ", hero.name);
+unveil("Hero health: ", hero.health);
+
+// Modify fields (requires morph)
+forge morph mutable_hero: Player = Player {
+    name: "Marcus",
+    health: 90
+};
+
+mutable_hero.health = 50;
+unveil("Updated health: ", mutable_hero.health);
+
+// Nested artifacts
+forge player_stats: Stats = Stats {
+    max_hp: 200,
+    current_hp: 180,
+    level: 10
+};
+
+forge player: Character = Character {
+    name: "Theron",
+    stats: player_stats,
+    is_alive: boon
+};
+
+// Chained field access
+unveil("Player current HP: ", player.stats.current_hp);
+
+// Use artifacts in functions
+engrave heal(target: Player, amount: arcana) -> abyss {
+    unveil("Healing ", target.name, " by ", amount);
+};
+
+heal(hero, 20);
+
+// Return artifacts from functions
+engrave create_default_player() -> Player {
+    reveal Player {
+        name: "Default",
+        health: 100
+    };
+};
+
+forge default: Player = create_default_player();
+unveil("Default player: ", default.name);
+
+// Artifacts in conditionals
+oracle (hero.health < 50) {
+    (boon) => unveil("Hero needs healing!");
+    (hex) => unveil("Hero is healthy.");
+};
+
+// Artifact equality
+forge hero_copy: Player = Player {
+    name: "Ardyn",
+    health: 100
+};
+
+oracle (hero == hero_copy) {
+    (boon) => unveil("Artifacts are equal!");
+    (hex) => unveil("Artifacts differ.");
+};

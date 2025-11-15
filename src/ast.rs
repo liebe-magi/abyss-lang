@@ -86,11 +86,13 @@ pub enum AST {
         params: Vec<AST>,
         return_type: Type,
         body: Box<AST>,
+        method_target: Option<ArtifactMethodTarget>,
         line_info: Option<LineInfo>,
     },
     EngraveParam {
         name: String,
         param_type: Type,
+        is_morph: bool,
         line_info: Option<LineInfo>,
     },
     FuncCall {
@@ -138,6 +140,12 @@ pub enum AST {
         value: Box<AST>,
         line_info: Option<LineInfo>,
     },
+    MethodCall {
+        receiver: Box<AST>,
+        method: String,
+        args: Vec<AST>,
+        line_info: Option<LineInfo>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -145,6 +153,12 @@ pub struct ArtifactField {
     pub name: String,
     pub field_type: Type,
     pub line_info: Option<LineInfo>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ArtifactMethodTarget {
+    pub artifact: String,
+    pub requires_morph: bool,
 }
 
 /// Represents a conditional assignment within an oracle statement.

@@ -1,10 +1,10 @@
 use crate::ast::{AST, AssignmentOp, ConditionalAssignment, LineInfo, Type};
-use crate::env::{Callable, EngravedFunction, Environment, Value};
+use crate::env::{ArtifactMethod, Callable, EngravedFunction, Environment, Value};
 use std::rc::Rc;
 
 use super::artifacts::{
-    build_artifact_schema, ensure_field_exists, ensure_type_known, expect_artifact_handle,
-    lookup_schema_from_handle, missing_field_error,
+    build_artifact_schema, collect_field_chain, ensure_field_exists, ensure_type_known,
+    expect_artifact_handle, lookup_schema_from_handle, missing_field_error,
 };
 use super::collections::{collect_index_chain, expect_arcana_index, expect_rune_key};
 use super::expressions::try_evaluate_expression;
@@ -57,7 +57,8 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
         | AST::Var(..)
         | AST::Trans(..)
         | AST::IndexAccess { .. }
-        | AST::FuncCall { .. } => unreachable!("expression nodes handled earlier"),
+        | AST::FuncCall { .. }
+        | AST::MethodCall { .. } => unreachable!("expression nodes handled earlier"),
         AST::VarAssign {
             name,
             value,
@@ -651,6 +652,7 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
             params,
             return_type,
             body,
+            method_target,
             line_info,
         } => {
             ensure_type_known(return_type, env, line_info)?;
@@ -664,14 +666,27 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                     ensure_type_known(param_type, env, param_info)?;
                 }
             }
+            let function_name = if let Some(target) = method_target {
+                format!("{}::{}", target.artifact, name)
+            } else {
+                name.clone()
+            };
             let function = EngravedFunction {
-                name: name.clone(),
+                name: function_name,
                 params: params.clone(),
                 return_type: return_type.clone(),
                 body: body.clone(),
                 line_info: line_info.clone(),
             };
-            env.set_function(name.clone(), Callable::Engraved(function));
+            if let Some(target) = method_target {
+                let artifact_method = ArtifactMethod {
+                    function,
+                    requires_mutable_receiver: target.requires_morph,
+                };
+                env.add_artifact_method(&target.artifact, name, artifact_method, line_info)?;
+            } else {
+                env.set_function(name.clone(), Callable::Engraved(function));
+            }
             Ok(EvalResult::abyss())
         }
         AST::ArtifactDef {
@@ -727,16 +742,5 @@ fn clone_indexed_child(
             "Cannot index into non-collection value".to_string(),
             line_info.clone(),
         )),
-    }
-}
-fn collect_field_chain(ast: &AST) -> Option<(String, Vec<String>)> {
-    match ast {
-        AST::Var(name, _) => Some((name.clone(), Vec::new())),
-        AST::FieldAccess { target, field, .. } => {
-            let (base, mut chain) = collect_field_chain(target)?;
-            chain.push(field.clone());
-            Some((base, chain))
-        }
-        _ => None,
     }
 }

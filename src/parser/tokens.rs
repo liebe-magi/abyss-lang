@@ -10,6 +10,7 @@ use super::SimpleSpan;
 pub enum Token {
     Forge,
     Morph,
+    Core,
     Oracle,
     Orbit,
     Resume,
@@ -30,6 +31,7 @@ pub enum Token {
     Comma,
     Arrow,
     FatArrow,
+    DoubleColon,
     Assign,
     AddAssign,
     SubAssign,
@@ -72,6 +74,7 @@ impl fmt::Display for Token {
         match self {
             Token::Forge => write!(f, "forge"),
             Token::Morph => write!(f, "morph"),
+            Token::Core => write!(f, "core"),
             Token::Oracle => write!(f, "oracle"),
             Token::Orbit => write!(f, "orbit"),
             Token::Resume => write!(f, "resume"),
@@ -93,6 +96,7 @@ impl fmt::Display for Token {
             Token::Comma => write!(f, ","),
             Token::Arrow => write!(f, "->"),
             Token::FatArrow => write!(f, "=>"),
+            Token::DoubleColon => write!(f, "::"),
             Token::Assign => write!(f, "="),
             Token::AddAssign => write!(f, "+="),
             Token::SubAssign => write!(f, "-="),
@@ -193,6 +197,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<SpannedToken>, LexerExt
     let ident = text::ident::<_, LexerExtra<'src>>().map(|ident: &'src str| match ident {
         "forge" => Token::Forge,
         "morph" => Token::Morph,
+        "core" => Token::Core,
         "oracle" => Token::Oracle,
         "orbit" => Token::Orbit,
         "resume" => Token::Resume,
@@ -225,6 +230,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<SpannedToken>, LexerExt
         just::<&str, _, LexerExtra<'src>>("/=").to(Token::DivAssign),
         just::<&str, _, LexerExtra<'src>>("%=").to(Token::ModAssign),
         just::<&str, _, LexerExtra<'src>>("=>").to(Token::FatArrow),
+        just::<&str, _, LexerExtra<'src>>("::").to(Token::DoubleColon),
         just::<&str, _, LexerExtra<'src>>("->").to(Token::Arrow),
         just::<&str, _, LexerExtra<'src>>("||").to(Token::DoublePipe),
         just::<&str, _, LexerExtra<'src>>("&&").to(Token::DoubleAmpersand),

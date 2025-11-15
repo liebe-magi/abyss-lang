@@ -6,8 +6,9 @@ use crate::ast::{AST, LineInfo, Type};
 use crate::env::{CallArg, Callable, EngravedFunction, Environment, Value};
 
 use super::artifacts::{
-    compare_artifacts, ensure_field_exists, expect_artifact_from_eval, instantiate_artifact_handle,
-    lookup_schema_by_name, read_artifact_field,
+    collect_field_chain, compare_artifacts, ensure_field_exists, expect_artifact_from_eval,
+    instantiate_artifact_handle, lookup_schema_by_name, lookup_schema_from_handle,
+    read_artifact_field,
 };
 use super::collections::{expect_arcana_index, expect_rune_key};
 use super::result::{EvalError, EvalResult};
@@ -301,6 +302,12 @@ pub(crate) fn try_evaluate_expression(
             args,
             line_info,
         } => evaluate_function_call(env, name, args, line_info)?,
+        AST::MethodCall {
+            receiver,
+            method,
+            args,
+            line_info,
+        } => evaluate_method_call(env, receiver, method, args, line_info)?,
         AST::OracleDontCareItem(_) => EvalResult::data(Value::Omen(true)),
         _ => return Ok(None),
     };
@@ -480,6 +487,95 @@ where
     }
 }
 
+fn evaluate_method_call(
+    env: &mut Environment,
+    receiver: &AST,
+    method_name: &str,
+    args: &[AST],
+    line_info: &Option<LineInfo>,
+) -> Result<EvalResult, EvalError> {
+    let receiver_result = statements::evaluate(receiver, env)?;
+    let receiver_handle = expect_artifact_from_eval(receiver_result, line_info)?;
+    let schema = lookup_schema_from_handle(env, &receiver_handle, line_info)?;
+    let artifact_name = schema.name.clone();
+    let artifact_method = env
+        .get_artifact_method(&artifact_name, method_name)
+        .ok_or_else(|| {
+            EvalError::InvalidOperation(
+                format!("Method {}::{} is not defined", artifact_name, method_name),
+                line_info.clone(),
+            )
+        })?;
+
+    if artifact_method.requires_mutable_receiver {
+        ensure_method_receiver_mutability(env, receiver, &artifact_name, method_name, line_info)?;
+    }
+
+    let mut evaluated_args = Vec::with_capacity(args.len() + 1);
+    let receiver_var_name = if let AST::Var(var_name, _) = receiver {
+        Some(var_name.clone())
+    } else {
+        None
+    };
+    evaluated_args.push(CallArg {
+        value: EvalResult::Artifact(receiver_handle),
+        var_name: receiver_var_name,
+    });
+
+    for arg in args {
+        let evaluated_arg = statements::evaluate(arg, env)?;
+        let var_name = if let AST::Var(var_name, _) = arg {
+            Some(var_name.clone())
+        } else {
+            None
+        };
+        evaluated_args.push(CallArg {
+            value: evaluated_arg,
+            var_name,
+        });
+    }
+
+    evaluate_engraved_function(
+        env,
+        evaluated_args,
+        artifact_method.function.clone(),
+        line_info,
+    )
+}
+
+fn ensure_method_receiver_mutability(
+    env: &Environment,
+    receiver: &AST,
+    artifact_name: &str,
+    method_name: &str,
+    line_info: &Option<LineInfo>,
+) -> Result<(), EvalError> {
+    if let Some((base_name, _)) = collect_field_chain(receiver) {
+        if let Some(var_info) = env.get_var(&base_name) {
+            if var_info.is_morph {
+                return Ok(());
+            }
+            return Err(EvalError::InvalidOperation(
+                format!(
+                    "Cannot call {}::{} with immutable receiver '{}'",
+                    artifact_name, method_name, base_name
+                ),
+                line_info.clone(),
+            ));
+        } else {
+            return Err(EvalError::UndefinedVariable(base_name, line_info.clone()));
+        }
+    }
+
+    Err(EvalError::InvalidOperation(
+        format!(
+            "Method {}::{} requires a morph receiver, but the expression is not tied to a mutable variable",
+            artifact_name, method_name
+        ),
+        line_info.clone(),
+    ))
+}
+
 fn evaluate_function_call(
     env: &mut Environment,
     name: &str,
@@ -541,10 +637,13 @@ fn evaluate_engraved_function(
     }
 
     for (evaluated_arg, param) in eval_args.into_iter().zip(params.iter()) {
-        let (param_name, param_type) = match param {
+        let (param_name, param_type, is_morph_param) = match param {
             AST::EngraveParam {
-                name, param_type, ..
-            } => (name, param_type),
+                name,
+                param_type,
+                is_morph,
+                ..
+            } => (name, param_type, *is_morph),
             _ => {
                 return Err(EvalError::InvalidOperation(
                     format!(
@@ -555,12 +654,16 @@ fn evaluate_engraved_function(
                 ));
             }
         };
-        let value = convert_to_typed_value(evaluated_arg, param_type, line_info)?;
+        let value = if is_morph_param {
+            convert_morph_param_value(evaluated_arg, param_type, line_info)?
+        } else {
+            convert_to_typed_value(evaluated_arg, param_type, line_info)?
+        };
         env.set_var(
             param_name.to_string(),
             value,
             param_type.clone(),
-            false,
+            is_morph_param,
             line_info.clone(),
         );
     }
@@ -604,6 +707,44 @@ fn evaluate_engraved_function(
                 describe_value(&actual)
             ),
             function.line_info.clone(),
+        )),
+    }
+}
+
+fn validate_artifact_type(
+    handle: Rc<RefCell<crate::env::ArtifactValue>>,
+    expected: &str,
+    line_info: &Option<LineInfo>,
+) -> Result<Value, EvalError> {
+    let actual = handle.borrow().type_name.clone();
+    if actual == expected {
+        Ok(Value::Artifact(handle))
+    } else {
+        Err(EvalError::TypeError(
+            format!(
+                "Expected artifact of type {} but received {}",
+                expected, actual
+            ),
+            line_info.clone(),
+        ))
+    }
+}
+
+fn convert_morph_param_value(
+    evaluated_arg: EvalResult,
+    param_type: &Type,
+    line_info: &Option<LineInfo>,
+) -> Result<Value, EvalError> {
+    match param_type {
+        Type::Artifact(expected) => match evaluated_arg {
+            EvalResult::Artifact(handle) | EvalResult::Data(Value::Artifact(handle)) => {
+                validate_artifact_type(handle, expected, line_info)
+            }
+            other => convert_to_typed_value(other, param_type, line_info),
+        },
+        _ => Err(EvalError::InvalidOperation(
+            "`morph` parameters are only supported for artifact receivers".to_string(),
+            line_info.clone(),
         )),
     }
 }

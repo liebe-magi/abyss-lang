@@ -172,3 +172,68 @@ create_player("Nova");
         other => panic!("expected artifact result, found {:?}", other),
     }
 }
+
+#[test]
+fn artifact_method_invocation_returns_value() {
+    let input = r#"
+artifact Player { level: arcana; };
+engrave Player::get_level(core) -> arcana {
+    reveal core.level;
+};
+forge hero: Player = Player { level: 10 };
+hero.get_level();
+"#;
+
+    let results = test_base(input).expect("method invocation failed");
+    assert_eq!(results.len(), 4);
+    match &results[3] {
+        EvalResult::Data(Value::Arcana(value)) => assert_eq!(*value, 10),
+        other => panic!("expected arcana result, found {:?}", other),
+    }
+}
+
+#[test]
+fn mutable_method_requires_morph_receiver() {
+    let input = r#"
+artifact Player { level: arcana; };
+engrave Player::set_level(morph core, next: arcana) -> abyss {
+    core.level = next;
+};
+forge hero: Player = Player { level: 5 };
+hero.set_level(8);
+"#;
+
+    match test_base(input) {
+        Ok(_) => panic!("expected immutable receiver error"),
+        Err(err) => match err.downcast_ref::<EvalError>() {
+            Some(EvalError::InvalidOperation(message, _)) => {
+                assert!(
+                    message.contains("immutable receiver"),
+                    "unexpected error message: {}",
+                    message
+                );
+            }
+            other => panic!("expected invalid operation error, found {:?}", other),
+        },
+    }
+}
+
+#[test]
+fn mutable_method_updates_morph_receiver() {
+    let input = r#"
+artifact Player { level: arcana; };
+engrave Player::set_level(morph core, next: arcana) -> abyss {
+    core.level = next;
+};
+forge morph hero: Player = Player { level: 5 };
+hero.set_level(12);
+hero.level;
+"#;
+
+    let results = test_base(input).expect("mutable method should succeed");
+    assert_eq!(results.len(), 5);
+    match &results[4] {
+        EvalResult::Data(Value::Arcana(value)) => assert_eq!(*value, 12),
+        other => panic!("expected arcana result, found {:?}", other),
+    }
+}

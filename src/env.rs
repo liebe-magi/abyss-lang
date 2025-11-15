@@ -34,6 +34,12 @@ pub struct BuiltinFunction {
     pub func: BuiltinFunc,
 }
 
+#[derive(Debug, Clone)]
+pub struct ArtifactMethod {
+    pub function: EngravedFunction,
+    pub requires_mutable_receiver: bool,
+}
+
 /// Stores information about a variable, including its value, type, and mutability.
 #[derive(Debug, Clone)]
 pub struct VarInfo {
@@ -209,11 +215,50 @@ impl Environment {
         None
     }
 
+    pub fn get_artifact_mut(&mut self, name: &str) -> Option<&mut ArtifactSchema> {
+        for scope in self.artifact_scopes.iter_mut().rev() {
+            if let Some(schema) = scope.get_mut(name) {
+                return Some(schema);
+            }
+        }
+        None
+    }
+
     pub fn artifact_defined_in_current_scope(&self, name: &str) -> bool {
         self.artifact_scopes
             .last()
             .map(|scope| scope.contains_key(name))
             .unwrap_or(false)
+    }
+
+    pub fn add_artifact_method(
+        &mut self,
+        artifact: &str,
+        method_name: &str,
+        method: ArtifactMethod,
+        line_info: &Option<LineInfo>,
+    ) -> Result<(), EvalError> {
+        if let Some(schema) = self.get_artifact_mut(artifact) {
+            if schema.methods.contains_key(method_name) {
+                return Err(EvalError::InvalidOperation(
+                    format!("Method {}::{} is already defined", artifact, method_name),
+                    line_info.clone(),
+                ));
+            }
+            schema.methods.insert(method_name.to_string(), method);
+            Ok(())
+        } else {
+            Err(EvalError::InvalidOperation(
+                format!("Artifact {} is not defined", artifact),
+                line_info.clone(),
+            ))
+        }
+    }
+
+    pub fn get_artifact_method(&self, artifact: &str, method_name: &str) -> Option<ArtifactMethod> {
+        self.get_artifact(artifact)
+            .and_then(|schema| schema.method(method_name))
+            .cloned()
     }
 }
 
@@ -241,6 +286,7 @@ pub enum Value {
 pub struct ArtifactSchema {
     pub name: String,
     pub fields: Vec<ArtifactFieldSchema>,
+    pub methods: HashMap<String, ArtifactMethod>,
     pub line_info: Option<LineInfo>,
 }
 
@@ -251,6 +297,10 @@ impl ArtifactSchema {
 
     pub fn field_names(&self) -> Vec<String> {
         self.fields.iter().map(|field| field.name.clone()).collect()
+    }
+
+    pub fn method(&self, name: &str) -> Option<&ArtifactMethod> {
+        self.methods.get(name)
     }
 }
 

@@ -9,6 +9,14 @@ artifact Player {
     stats: Stats;
 };
 
+engrave Player::current_hp(core) -> arcana {
+    reveal core.stats.hp;
+};
+
+engrave Player::heal(morph core, amount: arcana) -> abyss {
+    core.stats.hp = core.stats.hp + amount;
+};
+
 engrave report(hero: Player) -> abyss {
     unveil("Status: ");
     unveil(hero);
@@ -20,6 +28,10 @@ forge morph hero: Player = Player {
     stats: Stats { hp: 90, max_hp: 120 }
 };
 
+unveil("Current HP:", hero.current_hp());
 report(hero);
 hero.stats.hp = hero.stats.hp - 15;
+unveil("After damage:", hero.current_hp());
+hero.heal(10);
+unveil("After heal:", hero.current_hp());
 report(hero);

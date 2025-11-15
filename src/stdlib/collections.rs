@@ -182,7 +182,10 @@ pub fn contents(
 
     match &args[0].value {
         EvalResult::Lexicon(entries) => {
-            let keys = entries.keys().map(|key| EvalResult::Rune(key.clone())).collect();
+            let keys = entries
+                .keys()
+                .map(|key| EvalResult::Rune(key.clone()))
+                .collect();
             Ok(EvalResult::Scroll(keys))
         }
         _ => Err(EvalError::TypeError(

@@ -38,11 +38,22 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
+          components: llvm-tools-preview
 
-      - name: Run cargo test
-        uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
         with:
-          command: test
+          tool: cargo-llvm-cov
+
+      - name: Run tests and generate coverage report
+        run: cargo llvm-cov --all-features --lcov --output-path lcov.info
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./lcov.info
+          fail_ci_if_error: true
 
   lints:
     name: Lints

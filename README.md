@@ -61,7 +61,7 @@ rustup component add llvm-tools-preview
 cargo install cargo-llvm-cov
 ```
 
-The CI pipeline runs `cargo llvm-cov --all-features --lcov --output-path lcov.info` and uploads the report to Codecov via `.github/workflows/build.yml`. If you are working in a fork, create a repository secret named `CODECOV_TOKEN` that matches the token shown on your Codecov dashboard; upstream forks inherit coverage uploads through the organization-level secret. You can preview the same report locally with `cargo llvm-cov --open` or upload it manually with `codecov --file lcov.info` if needed.
+The CI pipeline runs `cargo llvm-cov --all-features --lcov --output-path lcov.info` and uploads the report to Codecov via `.github/workflows/build.yml`. If you are working in a fork, create a repository secret named `CODECOV_TOKEN` that matches the token shown on your Codecov dashboard. Forks can inherit coverage uploads through organization-level secrets, while the upstream repository uses its configured token. You can preview the same report locally with `cargo llvm-cov --open` or upload it manually with `codecov --file lcov.info` if needed.
 
 ## **Getting Started**
 

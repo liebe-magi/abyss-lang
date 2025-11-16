@@ -64,7 +64,7 @@ The evaluator SHALL execute `oracle` statements in one of two modes based on the
 - **WHEN** the evaluator processes the statement
 - **THEN** it SHALL evaluate the scrutinee expression exactly once, cache the resulting value, and compare it against each branch pattern according to the pattern semantics until a matching branch executes.
 
-The guard-mode `oracle` evaluator SHALL evaluate the scrutinee expression exactly once at the beginning of the statement and SHALL store the resulting value for use in each guard comparison block.
+The match-mode `oracle` evaluator SHALL evaluate the scrutinee expression exactly once at the beginning of the statement and SHALL store the resulting value for use in each guard comparison block.
 
 **Reason**: Removing the inline mutation syntax keeps the `oracle` evaluation modes clearly separated.
 **Reason**: Eliminating the ambiguous inline binding form is necessary; `forge` statements and `if-else` mode `oracle` serve as the replacement.

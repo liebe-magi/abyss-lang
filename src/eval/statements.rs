@@ -1,4 +1,6 @@
-use crate::ast::{AST, AssignmentOp, ConditionalAssignment, LineInfo, Type};
+#[cfg(test)]
+use crate::ast::ConditionalAssignment;
+use crate::ast::{AST, AssignmentOp, LineInfo, Type};
 use crate::env::{ArtifactMethod, Callable, EngravedFunction, Environment, Value};
 use std::rc::Rc;
 
@@ -371,50 +373,23 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
         } => {
             env.push_scope();
 
-            let mut evaluate_and_set_var =
-                |conditional: &ConditionalAssignment| -> Result<(), EvalError> {
-                    let result = evaluate(&conditional.expression, env)?;
-                    match result {
-                        EvalResult::Data(Value::Arcana(n)) => env.set_var(
-                            conditional.variable.clone(),
-                            Value::Arcana(n),
-                            Type::Arcana,
-                            false,
-                            line_info.clone(),
-                        ),
-                        EvalResult::Data(Value::Aether(n)) => env.set_var(
-                            conditional.variable.clone(),
-                            Value::Aether(n),
-                            Type::Aether,
-                            false,
-                            line_info.clone(),
-                        ),
-                        EvalResult::Data(Value::Rune(rune)) => env.set_var(
-                            conditional.variable.clone(),
-                            Value::Rune(rune.clone()),
-                            Type::Rune,
-                            false,
-                            line_info.clone(),
-                        ),
-                        EvalResult::Data(Value::Omen(b)) => env.set_var(
-                            conditional.variable.clone(),
-                            Value::Omen(b),
-                            Type::Omen,
-                            false,
-                            line_info.clone(),
-                        ),
-                        other => {
-                            return Err(EvalError::InvalidOperation(
-                                format!("Unsupported type in oracle conditional: {:?}", other),
-                                line_info.clone(),
-                            ));
-                        }
-                    }
-                    Ok(())
-                };
-
+            let mut scrutinee_values = Vec::with_capacity(conditionals.len());
             for conditional in conditionals {
-                evaluate_and_set_var(conditional)?;
+                let result = evaluate(&conditional.expression, env)?;
+                let stored = match result {
+                    EvalResult::Data(Value::Arcana(n)) => Value::Arcana(n),
+                    EvalResult::Data(Value::Aether(n)) => Value::Aether(n),
+                    EvalResult::Data(Value::Rune(rune)) => Value::Rune(rune.clone()),
+                    EvalResult::Data(Value::Omen(b)) => Value::Omen(b),
+                    other => {
+                        env.pop_scope();
+                        return Err(EvalError::InvalidOperation(
+                            format!("Unsupported type in oracle scrutinee: {:?}", other),
+                            line_info.clone(),
+                        ));
+                    }
+                };
+                scrutinee_values.push(stored);
             }
 
             for branch in branches {
@@ -431,54 +406,63 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
                     let matched = if pattern.is_empty() {
                         true
                     } else if *is_match {
+                        if pattern.len() != scrutinee_values.len() {
+                            env.pop_scope();
+                            return Err(EvalError::InvalidOperation(
+                                format!(
+                                    "Oracle branch pattern length {} does not match scrutinee length {}",
+                                    pattern.len(),
+                                    scrutinee_values.len()
+                                ),
+                                line_info.clone(),
+                            ));
+                        }
+
                         let mut matched = true;
                         for (idx, pattern) in pattern.iter().enumerate() {
                             if let AST::OracleDontCareItem(_) = pattern {
                                 continue;
                             }
-                            let pattern_result = evaluate(pattern, env)?;
-                            let conditional_result = evaluate(&conditionals[idx].expression, env)?;
 
-                            match (conditional_result, pattern_result) {
-                                (
-                                    EvalResult::Data(Value::Arcana(cond_n)),
-                                    EvalResult::Data(Value::Arcana(pat_n)),
-                                ) => {
-                                    if cond_n != pat_n {
+                            let Some(scrutinee_value) = scrutinee_values.get(idx) else {
+                                env.pop_scope();
+                                return Err(EvalError::InvalidOperation(
+                                    "Oracle branch references missing scrutinee".to_string(),
+                                    line_info.clone(),
+                                ));
+                            };
+
+                            let pattern_result = evaluate(pattern, env)?;
+
+                            match (scrutinee_value, pattern_result) {
+                                (Value::Arcana(cond_n), EvalResult::Data(Value::Arcana(pat_n))) => {
+                                    if *cond_n != pat_n {
                                         matched = false;
                                         break;
                                     }
                                 }
-                                (
-                                    EvalResult::Data(Value::Aether(cond_n)),
-                                    EvalResult::Data(Value::Aether(pat_n)),
-                                ) => {
-                                    if (cond_n - pat_n).abs() >= f64::EPSILON {
+                                (Value::Aether(cond_n), EvalResult::Data(Value::Aether(pat_n))) => {
+                                    if (*cond_n - pat_n).abs() >= f64::EPSILON {
                                         matched = false;
                                         break;
                                     }
                                 }
-                                (
-                                    EvalResult::Data(Value::Rune(cond_s)),
-                                    EvalResult::Data(Value::Rune(pat_s)),
-                                ) => {
-                                    if cond_s != pat_s {
+                                (Value::Rune(cond_s), EvalResult::Data(Value::Rune(pat_s))) => {
+                                    if cond_s.as_ref() != pat_s.as_ref() {
                                         matched = false;
                                         break;
                                     }
                                 }
-                                (
-                                    EvalResult::Data(Value::Omen(cond_b)),
-                                    EvalResult::Data(Value::Omen(pat_b)),
-                                ) => {
-                                    if cond_b != pat_b {
+                                (Value::Omen(cond_b), EvalResult::Data(Value::Omen(pat_b))) => {
+                                    if *cond_b != pat_b {
                                         matched = false;
                                         break;
                                     }
                                 }
                                 _ => {
+                                    env.pop_scope();
                                     return Err(EvalError::InvalidOperation(
-                                        "Oracle branch pattern type must match conditional type"
+                                        "Oracle branch pattern type must match scrutinee type"
                                             .to_string(),
                                         line_info.clone(),
                                     ));

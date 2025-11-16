@@ -691,22 +691,7 @@ fn oracle_expr_parser<'src>(
 ) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_cond = ctx.clone();
 
-    let assignments = conditional_assignment_parser(ctx.clone(), expression.clone())
-        .separated_by(just(Token::Comma))
-        .at_least(1)
-        .collect::<Vec<_>>()
-        .map(|pairs| {
-            pairs
-                .into_iter()
-                .map(|(name, ast)| ConditionalAssignment {
-                    variable: name,
-                    expression: Box::new(ast),
-                    line_info: None,
-                })
-                .collect::<Vec<_>>()
-        });
-
-    let matches = expression
+    let match_scrutinee = expression
         .clone()
         .separated_by(just(Token::Comma))
         .at_least(1)
@@ -724,11 +709,7 @@ fn oracle_expr_parser<'src>(
         });
 
     let conditional = just(Token::OpenParen)
-        .ignore_then(
-            assignments
-                .map(|conds| (false, conds))
-                .or(matches.map(|conds| (true, conds))),
-        )
+        .ignore_then(match_scrutinee)
         .then_ignore(just(Token::CloseParen))
         .or_not();
 
@@ -745,7 +726,11 @@ fn oracle_expr_parser<'src>(
                 let span = SimpleSpan::new(oracle_span.start(), close_span.end());
                 let info = ctx_for_cond.info(span);
 
-                let (is_match, mut conditionals) = conditional_opt.unwrap_or((false, Vec::new()));
+                let (is_match, mut conditionals) = if let Some(conds) = conditional_opt {
+                    (true, conds)
+                } else {
+                    (false, Vec::new())
+                };
                 for cond in &mut conditionals {
                     cond.line_info = info.clone();
                 }
@@ -766,17 +751,6 @@ fn oracle_expr_parser<'src>(
                 )
             },
         )
-        .boxed()
-}
-
-fn conditional_assignment_parser<'src>(
-    _ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, (String, AST)> {
-    select! { Token::Identifier(name) => name }
-        .then_ignore(just(Token::Assign))
-        .then(expression)
-        .map(|(name, (ast, _))| (name, ast))
         .boxed()
 }
 

@@ -181,12 +181,12 @@ counter += 5;
 
 ### **Conditionals**
 
-In AbySS, you can use the `oracle` construct to handle conditionals. One approach is to define conditions directly within each pattern, allowing for flexible and readable branching logic.
-This method lets you skip a separate conditional statement and write all conditions within the branches themselves.
+`oracle` is AbySS's single conditional construct. It now has two explicit modes that make control flow easy to read:
 
-- `oracle`: Reflecting the role of an oracle in ancient mythology, this keyword is used for conditionals, where decisions and predictions are made based on input.
+- `oracle { ... }` &rarr; **if-else mode**. Each branch supplies one or more guard expressions that must evaluate to `boon`. The first branch whose guards all succeed runs, and `_` acts as `else`.
+- `oracle (expr) { ... }` &rarr; **match mode**. The parenthesized expression (or tuple of expressions) is evaluated once, then compared against each branch pattern until a match is found.
 
-#### **Pattern-based Oracle**
+#### **If-Else Mode (`oracle { ... }`)**
 
 ```abyss
 forge x: arcana = -5;
@@ -197,57 +197,49 @@ oracle {
 };
 ```
 
-In this example, the conditions are written directly within the patterns.
-The oracle evaluates each condition in sequence and executes the matching branch.
-If no specific conditions are met, the default pattern `_` is executed.
+Guards are evaluated top-to-bottom until one yields `boon`. The `_` branch behaves like `else`.
 
-#### **Boolean-based Oracle**
+When you need intermediate values, compute them with `forge` (or `morph`) first and keep using the same if-else syntax:
 
-Another way to use `oracle` is by explicitly writing a condition as part of the `oracle` expression, which can be evaluated as an `omen` (boolean) value.
+```abyss
+forge total: arcana = (x ^ 2) + 10;
+oracle {
+    (total > 50) => unveil("large");
+    (total == 50) => unveil("exact");
+    _ => unveil("small");
+};
+```
+
+This replaces the older `oracle (z = ...) { ... }` syntax—do the assignment outside and keep the guards inside the braces.
+
+#### **Match Mode (`oracle (expr) { ... }`)**
+
+Match mode evaluates its scrutinee once, stores the result, and compares it to each pattern. It's perfect for booleans, strings, tuples, and (in the future) enums.
 
 ```abyss
 oracle (x > 0) {
     (boon) => unveil("x is positive");
     (hex) => unveil("x is non-positive");
 };
-```
 
-Here, the condition `x > 0` is evaluated as `boon` (true) or `hex` (false), and the appropriate branch executes based on this result.
-
-#### **Value-based Oracle**
-
-You can also use expressions or assignments within `oracle` for more complex evaluations.
-
-```abyss
-forge y: arcana = 42;
-oracle (z = y * 2) {
-    (z > 50) => unveil("z is greater than 50");
-    (z == 50) => unveil("z equals 50");
-    _ => unveil("z is less than 50");
+forge name: rune = "abyss";
+oracle (name) {
+    ("abyss") => unveil("matched name");
+    _ => unveil("fallback");
 };
-```
 
-In this case, `z` is assigned the result of `y * 2`, and the appropriate branch is chosen based on the computed value of `z`.
-
-#### **Multiple Condition-based Oracle**
-
-You can also handle multiple conditions within a single oracle construct, allowing for complex branching based on multiple variables.
-
-```abyss
 forge a: arcana = 3;
 forge b: arcana = 2;
-
 oracle (a, b) {
     (1, 2) => unveil("a is 1 and b is 2");
     (3, 2) => unveil("a is 3 and b is 2");
-    _ => unveil("Other combination");
+    (_, _) => unveil("other combination");
 };
 ```
 
-In this example, oracle evaluates multiple conditions (a and b) together and executes the corresponding branch based on their values.
-If no specific conditions are met, the default pattern _ is used.
+Patterns may use `_` to ignore a position, and every non-wildcard value must have the same type as the scrutinee in that slot.
 
-This flexibility makes `oracle` a powerful tool for creating readable and intuitive branching logic in AbySS.
+Together, these two modes cover the old inline-assignment behavior while keeping the syntax unambiguous and ready for future exhaustiveness checks.
 
 ### **Loops**
 

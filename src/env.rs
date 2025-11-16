@@ -318,3 +318,156 @@ pub struct ArtifactValue {
 }
 
 pub type ArtifactHandle = Rc<RefCell<ArtifactValue>>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rune(text: &str) -> Value {
+        Value::Rune(Rc::new(text.to_string()))
+    }
+
+    fn artifact_schema(name: &str) -> ArtifactSchema {
+        ArtifactSchema {
+            name: name.to_string(),
+            fields: Vec::new(),
+            methods: HashMap::new(),
+            line_info: None,
+        }
+    }
+
+    fn engraved(name: &str) -> EngravedFunction {
+        EngravedFunction {
+            name: name.to_string(),
+            params: Vec::new(),
+            return_type: Type::Abyss,
+            body: Box::new(AST::Abyss(None)),
+            line_info: None,
+        }
+    }
+
+    fn builtin(
+        _: &mut Environment,
+        _: Vec<CallArg>,
+        _: Option<LineInfo>,
+    ) -> Result<EvalResult, EvalError> {
+        Ok(EvalResult::abyss())
+    }
+
+    #[test]
+    fn set_get_and_scope_resolution_of_vars() {
+        let mut env = Environment::new();
+        env.set_var("sigil".into(), Value::Arcana(1), Type::Arcana, true, None);
+        assert!(
+            matches!(env.get_var("sigil"), Some(info) if matches!(info.value, Value::Arcana(1)))
+        );
+
+        env.push_scope();
+        env.set_var("sigil".into(), Value::Arcana(5), Type::Arcana, false, None);
+        assert!(
+            matches!(env.get_var("sigil"), Some(info) if matches!(info.value, Value::Arcana(5)))
+        );
+
+        env.pop_scope();
+        assert!(
+            matches!(env.get_var("sigil"), Some(info) if matches!(info.value, Value::Arcana(1)))
+        );
+    }
+
+    #[test]
+    fn update_var_respects_mutability_and_types() {
+        let mut env = Environment::new();
+        env.set_var("sigil".into(), Value::Arcana(1), Type::Arcana, false, None);
+        let immutable_err = env
+            .update_var("sigil", Value::Arcana(2), Type::Arcana, None)
+            .unwrap_err();
+        assert!(matches!(immutable_err, EvalError::InvalidOperation(_, _)));
+
+        env.set_var("hex".into(), Value::Arcana(0), Type::Arcana, true, None);
+        let type_err = env
+            .update_var("hex", rune("glyph"), Type::Rune, None)
+            .unwrap_err();
+        assert!(matches!(type_err, EvalError::InvalidOperation(_, _)));
+
+        env.set_var(
+            "materia".into(),
+            Value::Arcana(3),
+            Type::Materia,
+            true,
+            None,
+        );
+        assert!(
+            env.update_var("materia", rune("glyph"), Type::Rune, None)
+                .is_ok()
+        );
+
+        let undefined_err = env
+            .update_var("missing", Value::Arcana(0), Type::Arcana, None)
+            .unwrap_err();
+        assert!(matches!(undefined_err, EvalError::UndefinedVariable(_, _)));
+    }
+
+    #[test]
+    fn extend_functions_registers_all_callable_entries() {
+        let mut env = Environment::new();
+        env.extend_functions(vec![
+            (
+                "summon".into(),
+                Callable::Builtin(BuiltinFunction {
+                    name: "summon".into(),
+                    func: builtin,
+                }),
+            ),
+            ("engrave".into(), Callable::Engraved(engraved("engrave"))),
+        ]);
+
+        assert!(matches!(
+            env.get_function("summon"),
+            Some(Callable::Builtin(_))
+        ));
+        assert!(
+            matches!(env.get_function("engrave"), Some(Callable::Engraved(func)) if func.name == "engrave")
+        );
+    }
+
+    #[test]
+    fn artifacts_can_be_defined_and_retrieved_per_scope() {
+        let mut env = Environment::new();
+        env.define_artifact(artifact_schema("Relic")).unwrap();
+        assert!(env.artifact_defined_in_current_scope("Relic"));
+
+        env.push_scope();
+        assert!(!env.artifact_defined_in_current_scope("Relic"));
+
+        env.define_artifact(artifact_schema("Relic")).unwrap();
+        assert!(env.artifact_defined_in_current_scope("Relic"));
+
+        let duplicate = env.define_artifact(artifact_schema("Relic"));
+        assert!(matches!(duplicate, Err(EvalError::InvalidOperation(_, _))));
+
+        env.pop_scope();
+        assert!(env.get_artifact("Relic").is_some());
+    }
+
+    #[test]
+    fn add_artifact_method_registers_and_guards_duplicates() {
+        let mut env = Environment::new();
+        env.define_artifact(artifact_schema("Relic")).unwrap();
+
+        let method = ArtifactMethod {
+            function: engraved("ignite"),
+            requires_mutable_receiver: true,
+        };
+        env.add_artifact_method("Relic", "ignite", method.clone(), &None)
+            .unwrap();
+
+        let fetched = env.get_artifact_method("Relic", "ignite").unwrap();
+        assert_eq!(fetched.function.name, "ignite");
+
+        let duplicate = env.add_artifact_method("Relic", "ignite", method.clone(), &None);
+        assert!(matches!(duplicate, Err(EvalError::InvalidOperation(_, _))));
+
+        let missing = env.add_artifact_method("Unknown", "ignite", method, &None);
+        assert!(matches!(missing, Err(EvalError::InvalidOperation(_, _))));
+    }
+}

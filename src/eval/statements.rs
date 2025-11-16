@@ -744,3 +744,212 @@ fn clone_indexed_child(
         )),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::env::{ArtifactFieldSchema, ArtifactSchema, ArtifactValue};
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+
+    fn line() -> Option<LineInfo> {
+        Some(LineInfo::new(1, 1))
+    }
+
+    fn scroll(values: Vec<Value>) -> Value {
+        Value::Scroll(Rc::new(RefCell::new(values)))
+    }
+
+    fn artifact_handle(name: &str, fields: Vec<(&str, Value)>) -> Rc<RefCell<ArtifactValue>> {
+        let mut map = HashMap::new();
+        let mut order = Vec::new();
+        for (field, value) in fields {
+            let key = field.to_string();
+            order.push(key.clone());
+            map.insert(key, value);
+        }
+        Rc::new(RefCell::new(ArtifactValue {
+            type_name: name.to_string(),
+            fields: map,
+            field_order: order,
+        }))
+    }
+
+    fn register_artifact(env: &mut Environment, name: &str, fields: Vec<(&str, Type)>) {
+        let schema = ArtifactSchema {
+            name: name.to_string(),
+            fields: fields
+                .into_iter()
+                .map(|(field, field_type)| ArtifactFieldSchema {
+                    name: field.to_string(),
+                    field_type,
+                })
+                .collect(),
+            methods: HashMap::new(),
+            line_info: None,
+        };
+        env.define_artifact(schema).expect("schema registration");
+    }
+
+    #[test]
+    fn arcana_assignment_supports_compound_ops() {
+        let mut env = Environment::new();
+        env.set_var("sigil".into(), Value::Arcana(2), Type::Arcana, true, line());
+
+        let assignment = AST::Assignment {
+            name: "sigil".into(),
+            value: Box::new(AST::Arcana(5, line())),
+            op: AssignmentOp::AddAssign,
+            line_info: line(),
+        };
+
+        evaluate(&assignment, &mut env).expect("assignment should succeed");
+        let stored = env.get_var("sigil").expect("variable exists");
+        match &stored.value {
+            Value::Arcana(value) => assert_eq!(*value, 7),
+            other => panic!("unexpected value {:?}", other),
+        }
+    }
+
+    #[test]
+    fn assignment_rejects_immutable_variables() {
+        let mut env = Environment::new();
+        env.set_var(
+            "sigil".into(),
+            Value::Arcana(2),
+            Type::Arcana,
+            false,
+            line(),
+        );
+
+        let assignment = AST::Assignment {
+            name: "sigil".into(),
+            value: Box::new(AST::Arcana(5, line())),
+            op: AssignmentOp::Assign,
+            line_info: line(),
+        };
+
+        let err = evaluate(&assignment, &mut env).expect_err("immutable reassign should fail");
+        match err {
+            EvalError::InvalidOperation(..) => {}
+            other => panic!("unexpected error variant {:?}", other),
+        }
+    }
+
+    #[test]
+    fn index_assignment_updates_scroll_entries() {
+        let mut env = Environment::new();
+        env.set_var(
+            "scroll".into(),
+            scroll(vec![Value::Arcana(0), Value::Arcana(1)]),
+            Type::Scroll,
+            true,
+            line(),
+        );
+
+        let index_assignment = AST::IndexAssignment {
+            target: Box::new(AST::Var("scroll".into(), line())),
+            index: Box::new(AST::Arcana(1, line())),
+            value: Box::new(AST::Arcana(99, line())),
+            line_info: line(),
+        };
+
+        evaluate(&index_assignment, &mut env).expect("index assignment succeeds");
+        let stored = env.get_var("scroll").expect("scroll exists");
+        if let Value::Scroll(handle) = &stored.value {
+            let borrowed = handle.borrow();
+            match &borrowed[1] {
+                Value::Arcana(value) => assert_eq!(*value, 99),
+                other => panic!("unexpected value {:?}", other),
+            }
+        } else {
+            panic!("expected scroll value");
+        }
+    }
+
+    #[test]
+    fn field_assignment_updates_nested_artifact_fields() {
+        let mut env = Environment::new();
+        register_artifact(&mut env, "Glyph", vec![("power", Type::Arcana)]);
+        register_artifact(
+            &mut env,
+            "Sigil",
+            vec![("core", Type::Artifact("Glyph".into()))],
+        );
+
+        let inner = artifact_handle("Glyph", vec![("power", Value::Arcana(3))]);
+        let outer = artifact_handle("Sigil", vec![("core", Value::Artifact(inner.clone()))]);
+        env.set_var(
+            "sigil".into(),
+            Value::Artifact(outer.clone()),
+            Type::Artifact("Sigil".into()),
+            true,
+            line(),
+        );
+
+        let target = AST::FieldAccess {
+            target: Box::new(AST::Var("sigil".into(), line())),
+            field: "core".into(),
+            line_info: line(),
+        };
+        let assignment = AST::FieldAssignment {
+            target: Box::new(target),
+            field: "power".into(),
+            value: Box::new(AST::Arcana(10, line())),
+            line_info: line(),
+        };
+
+        evaluate(&assignment, &mut env).expect("field assignment succeeds");
+        let borrowed = inner.borrow();
+        match borrowed.fields.get("power") {
+            Some(Value::Arcana(value)) => assert_eq!(*value, 10),
+            other => panic!("unexpected field value {:?}", other),
+        }
+        drop(borrowed);
+        let outer_borrow = outer.borrow();
+        assert!(outer_borrow.fields.contains_key("core"));
+    }
+
+    #[test]
+    fn oracle_match_branch_returns_revealed_value() {
+        let mut env = Environment::new();
+        let conditional = ConditionalAssignment {
+            variable: "sigil".into(),
+            expression: Box::new(AST::Arcana(1, line())),
+            line_info: line(),
+        };
+
+        let branch = AST::OracleBranch {
+            pattern: vec![AST::Arcana(1, line())],
+            body: Box::new(AST::Reveal(Box::new(AST::Arcana(42, line())), line())),
+            line_info: line(),
+        };
+
+        let oracle = AST::Oracle {
+            is_match: true,
+            conditionals: vec![conditional],
+            branches: vec![branch],
+            line_info: line(),
+        };
+
+        let result = evaluate(&oracle, &mut env).expect("oracle should succeed");
+        match result {
+            EvalResult::Data(Value::Arcana(value)) => assert_eq!(value, 42),
+            other => panic!("unexpected oracle result {:?}", other),
+        }
+    }
+
+    #[test]
+    fn clone_indexed_child_errors_on_non_collections() {
+        let err = clone_indexed_child(
+            &Value::Arcana(1),
+            &EvalResult::data(Value::Arcana(0)),
+            &line(),
+        )
+        .expect_err("non-collections should fail");
+        match err {
+            EvalError::InvalidOperation(_, info) => assert!(info.is_some()),
+            other => panic!("unexpected error variant {:?}", other),
+        }
+    }
+}

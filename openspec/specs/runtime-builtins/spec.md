@@ -76,32 +76,52 @@ The evaluator SHALL construct `Rc<RefCell<_>>` handles for literal nodes, clone 
 - **WHEN** the evaluator executes the assignment
 - **THEN** it SHALL verify `bag` is mutable, borrow the shared scroll mutably, update index `0`, and both `bag` and `alias` SHALL observe the new value because they share the same handle.
 
-### Requirement: Stdlib registers collection helpers
-The stdlib SHALL expose collection-oriented builtins via `Callable::Builtin` so scripts can introspect and mutate shared collections consistently by borrowing the underlying `Rc<RefCell<_>>` handles rather than replacing entire vectors or maps.
+### Requirement: Stdlib exposes collection methods
+The stdlib SHALL register scroll and lexicon helpers as builtin methods so user code invokes them with dot syntax, guaranteeing consistent borrowing semantics and centralised mutability checks.
 
-#### Scenario: measure returns length
-- **GIVEN** `measure([1, 2, 3])`
-- **WHEN** the builtin executes
+#### Scenario: tally returns length
+- **GIVEN** `forge bag: scroll = [1, 2, 3];`
+- **WHEN** the evaluator executes `bag.tally();`
 - **THEN** it SHALL borrow the scroll immutably, return an `arcana` count of `3`, and avoid cloning the collection data.
 
-#### Scenario: inscribe appends value
-- **GIVEN** `morph bag: scroll = []; forge alias: materia = bag; inscribe(alias, "sigil");`
-- **WHEN** the builtin runs
+#### Scenario: scribe appends value
+- **GIVEN** `morph bag: scroll = []; forge alias: materia = bag; alias.scribe("sigil");`
+- **WHEN** the method runs
 - **THEN** it SHALL borrow `bag`'s shared handle mutably, append the rune, and both `bag` and `alias` SHALL report the appended element afterwards.
 
-#### Scenario: retract pops and returns element
-- **GIVEN** `morph bag: scroll = [1]; forge last: materia = retract(bag);`
-- **WHEN** the builtin executes
+#### Scenario: extract pops and returns element
+- **GIVEN** `morph bag: scroll = [1]; forge last: materia = bag.extract();`
+- **WHEN** the method executes
 - **THEN** it SHALL borrow the scroll mutably, remove the final element, return it as `EvalResult::Data(Value::Arcana(1))`, and share the mutated scroll with all aliases.
 
+#### Scenario: scribe requires morph receiver
+- **GIVEN** `forge bag: scroll = [1];`
+- **WHEN** the evaluator executes `bag.scribe(2);`
+- **THEN** it SHALL raise an invalid-operation error explaining that `scroll::scribe` requires a `morph` receiver before mutating the shared handle.
+
+#### Scenario: define inserts or updates entries
+- **GIVEN** `morph data: lexicon = {"id": 1};`
+- **WHEN** the evaluator executes `data.define("name", "abyss");`
+- **THEN** it SHALL borrow the lexicon mutably, insert the rune key, and future `data["name"]` reads SHALL observe the stored value.
+
+#### Scenario: define requires rune key
+- **GIVEN** `morph data: lexicon = {"id": 1};`
+- **WHEN** the evaluator executes `data.define(123, "abyss");`
+- **THEN** it SHALL raise a type error explaining the first argument must be a rune glyph, preserving the lexicon unchanged.
+
 #### Scenario: expunge removes lexicon key
-- **GIVEN** `morph data: lexicon = {"id": 1}; forge alias: materia = data; expunge(alias, "id");`
-- **WHEN** the builtin runs
+- **GIVEN** `morph data: lexicon = {"id": 1}; forge alias: materia = data; alias.expunge("id");`
+- **WHEN** the method runs
 - **THEN** it SHALL borrow the shared lexicon mutably, delete the `"id"` entry, and both bindings SHALL observe the deletion.
 
-#### Scenario: contents lists lexicon keys
-- **GIVEN** `contents({"id": 1, "name": "abyss"})`
-- **WHEN** the builtin executes
+#### Scenario: expunge requires morph receiver
+- **GIVEN** `forge data: lexicon = {"id": 1};`
+- **WHEN** the evaluator executes `data.expunge("id");`
+- **THEN** it SHALL raise an invalid-operation error indicating `lexicon::expunge` requires a mutable binding because it performs an in-place deletion.
+
+#### Scenario: glossary lists lexicon keys
+- **GIVEN** `forge data: lexicon = {"id": 1, "name": "abyss"};`
+- **WHEN** the evaluator executes `data.glossary();`
 - **THEN** it SHALL borrow the lexicon immutably, collect rune keys into a new `Value::Scroll(Rc<RefCell<Vec<Value>>>)`, and return it via `EvalResult::Data`.
 
 ### Requirement: Shared heap-backed values
@@ -109,7 +129,7 @@ The runtime SHALL store every heap-backed `Value` variant (`rune`, `scroll`, `le
 
 #### Scenario: Assignment keeps shared handle
 - **GIVEN** `forge a: scroll = [1]; forge b: materia = a;`
-- **WHEN** the evaluator executes `inscribe(b, 9);`
+- **WHEN** the evaluator executes `b.scribe(9);`
 - **THEN** `a` and `b` SHALL reference the same `Rc<RefCell<Vec<Value>>>`
 - **AND** reading `a` afterwards SHALL observe the appended `9` without copying the entire scroll.
 

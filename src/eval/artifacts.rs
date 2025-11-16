@@ -259,6 +259,7 @@ fn values_equal(
         (Value::Aether(l), Value::Aether(r)) => Ok((l - r).abs() < f64::EPSILON),
         (Value::Rune(l), Value::Rune(r)) => Ok(l == r),
         (Value::Abyss, Value::Abyss) => Ok(true),
+        (Value::Glyph(left), Value::Glyph(right)) => Ok(left == right),
         (Value::Artifact(l), Value::Artifact(r)) => compare_artifacts(env, l, r, line_info),
         (Value::Scroll(left_items), Value::Scroll(right_items)) => {
             let left_borrow = left_items.borrow();

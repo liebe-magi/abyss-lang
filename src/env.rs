@@ -268,8 +268,8 @@ impl Default for Environment {
     }
 }
 
-/// Represents the value stored in a variable, which can be a boolean (Omen), integer (Arcana),
-/// floating-point number (Aether), string (Rune), list (Scroll), or map (Lexicon).
+/// Represents the value stored in a variable, including primitive scalars, collections,
+/// glyphs (type handles), and artifact instances.
 #[derive(Debug, Clone)]
 pub enum Value {
     Omen(bool),
@@ -279,6 +279,7 @@ pub enum Value {
     Abyss,
     Scroll(Rc<RefCell<Vec<Value>>>),
     Lexicon(Rc<RefCell<HashMap<String, Value>>>),
+    Glyph(Type),
     Artifact(ArtifactHandle),
 }
 

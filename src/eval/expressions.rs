@@ -190,75 +190,6 @@ pub(crate) fn try_evaluate_expression(
                 ));
             }
         },
-        AST::Trans(expr, target_type, line_info) => {
-            let value = statements::evaluate(expr, env)?;
-            match target_type {
-                Type::Arcana => match value {
-                    EvalResult::Data(Value::Aether(n)) => EvalResult::data(Value::Arcana(n as i64)),
-                    EvalResult::Data(Value::Rune(s)) => s
-                        .as_ref()
-                        .parse::<i64>()
-                        .map(|parsed| EvalResult::data(Value::Arcana(parsed)))
-                        .map_err(|_| {
-                            EvalError::InvalidOperation(
-                                "Failed to convert Rune to Arcana".to_string(),
-                                line_info.clone(),
-                            )
-                        })?,
-                    _ => {
-                        return Err(EvalError::InvalidOperation(
-                            "Invalid cast to Arcana".to_string(),
-                            line_info.clone(),
-                        ));
-                    }
-                },
-                Type::Aether => match value {
-                    EvalResult::Data(Value::Arcana(n)) => EvalResult::data(Value::Aether(n as f64)),
-                    EvalResult::Data(Value::Rune(s)) => s
-                        .as_ref()
-                        .parse::<f64>()
-                        .map(|parsed| EvalResult::data(Value::Aether(parsed)))
-                        .map_err(|_| {
-                            EvalError::InvalidOperation(
-                                "Failed to convert Rune to Aether".to_string(),
-                                line_info.clone(),
-                            )
-                        })?,
-                    _ => {
-                        return Err(EvalError::InvalidOperation(
-                            "Invalid cast to Aether".to_string(),
-                            line_info.clone(),
-                        ));
-                    }
-                },
-                Type::Rune => match value {
-                    EvalResult::Data(Value::Arcana(n)) => {
-                        EvalResult::data(Value::Rune(Rc::new(n.to_string())))
-                    }
-                    EvalResult::Data(Value::Aether(n)) => {
-                        EvalResult::data(Value::Rune(Rc::new(n.to_string())))
-                    }
-                    _ => {
-                        return Err(EvalError::InvalidOperation(
-                            "Invalid cast to Rune".to_string(),
-                            line_info.clone(),
-                        ));
-                    }
-                },
-                Type::Omen => {
-                    return Err(EvalError::InvalidOperation(
-                        "Casting to Omen is not supported".to_string(),
-                        line_info.clone(),
-                    ));
-                }
-                _ => {
-                    return Err(EvalError::InvalidOperation(
-                        format!("Unsupported cast to type {:?}", target_type),
-                        line_info.clone(),
-                    ));
-                }
-            }
-        }
         AST::IndexAccess {
             target,
             index,
@@ -495,33 +426,13 @@ fn evaluate_method_call(
     line_info: &Option<LineInfo>,
 ) -> Result<EvalResult, EvalError> {
     let receiver_result = statements::evaluate(receiver, env)?;
-    let receiver_handle = expect_artifact_from_eval(receiver_result, line_info)?;
-    let schema = lookup_schema_from_handle(env, &receiver_handle, line_info)?;
-    let artifact_name = schema.name.clone();
-    let artifact_method = env
-        .get_artifact_method(&artifact_name, method_name)
-        .ok_or_else(|| {
-            EvalError::InvalidOperation(
-                format!("Method {}::{} is not defined", artifact_name, method_name),
-                line_info.clone(),
-            )
-        })?;
-
-    if artifact_method.requires_mutable_receiver {
-        ensure_method_receiver_mutability(env, receiver, &artifact_name, method_name, line_info)?;
-    }
-
-    let mut evaluated_args = Vec::with_capacity(args.len() + 1);
     let receiver_var_name = if let AST::Var(var_name, _) = receiver {
         Some(var_name.clone())
     } else {
         None
     };
-    evaluated_args.push(CallArg {
-        value: EvalResult::Artifact(receiver_handle),
-        var_name: receiver_var_name,
-    });
 
+    let mut evaluated_args = Vec::with_capacity(args.len());
     for arg in args {
         let evaluated_arg = statements::evaluate(arg, env)?;
         let var_name = if let AST::Var(var_name, _) = arg {
@@ -535,12 +446,42 @@ fn evaluate_method_call(
         });
     }
 
-    evaluate_engraved_function(
-        env,
-        evaluated_args,
-        artifact_method.function.clone(),
-        line_info,
-    )
+    match receiver_result {
+        EvalResult::Artifact(handle) => evaluate_artifact_method_call(
+            env,
+            receiver,
+            receiver_var_name,
+            handle,
+            method_name,
+            evaluated_args,
+            line_info,
+        ),
+        EvalResult::Data(Value::Artifact(handle)) => evaluate_artifact_method_call(
+            env,
+            receiver,
+            receiver_var_name,
+            handle,
+            method_name,
+            evaluated_args,
+            line_info,
+        ),
+        EvalResult::Data(value) => evaluate_builtin_method_call(
+            env,
+            receiver,
+            receiver_var_name,
+            value,
+            method_name,
+            evaluated_args,
+            line_info,
+        ),
+        control => Err(EvalError::InvalidOperation(
+            format!(
+                "Cannot invoke method {} on control-flow result {:?}",
+                method_name, control
+            ),
+            line_info.clone(),
+        )),
+    }
 }
 
 fn ensure_method_receiver_mutability(
@@ -574,6 +515,435 @@ fn ensure_method_receiver_mutability(
         ),
         line_info.clone(),
     ))
+}
+
+fn evaluate_artifact_method_call(
+    env: &mut Environment,
+    receiver_ast: &AST,
+    receiver_var_name: Option<String>,
+    receiver_handle: crate::env::ArtifactHandle,
+    method_name: &str,
+    arg_values: Vec<CallArg>,
+    line_info: &Option<LineInfo>,
+) -> Result<EvalResult, EvalError> {
+    let schema = lookup_schema_from_handle(env, &receiver_handle, line_info)?;
+    let artifact_name = schema.name.clone();
+    let artifact_method = env
+        .get_artifact_method(&artifact_name, method_name)
+        .ok_or_else(|| {
+            EvalError::InvalidOperation(
+                format!("Method {}::{} is not defined", artifact_name, method_name),
+                line_info.clone(),
+            )
+        })?;
+
+    if artifact_method.requires_mutable_receiver {
+        ensure_method_receiver_mutability(
+            env,
+            receiver_ast,
+            &artifact_name,
+            method_name,
+            line_info,
+        )?;
+    }
+
+    let mut evaluated_args = Vec::with_capacity(arg_values.len() + 1);
+    evaluated_args.push(CallArg {
+        value: EvalResult::Artifact(receiver_handle),
+        var_name: receiver_var_name,
+    });
+    evaluated_args.extend(arg_values);
+
+    evaluate_engraved_function(
+        env,
+        evaluated_args,
+        artifact_method.function.clone(),
+        line_info,
+    )
+}
+
+fn evaluate_builtin_method_call(
+    env: &mut Environment,
+    receiver_ast: &AST,
+    receiver_var_name: Option<String>,
+    receiver_value: Value,
+    method_name: &str,
+    arg_values: Vec<CallArg>,
+    line_info: &Option<LineInfo>,
+) -> Result<EvalResult, EvalError> {
+    if method_name == "trans" {
+        return materia_trans_method(receiver_value, arg_values, line_info);
+    }
+
+    match &receiver_value {
+        Value::Scroll(items) => evaluate_scroll_method(
+            env,
+            receiver_ast,
+            receiver_var_name.as_deref(),
+            Rc::clone(items),
+            method_name,
+            arg_values,
+            line_info,
+        ),
+        Value::Lexicon(entries) => evaluate_lexicon_method(
+            env,
+            receiver_ast,
+            receiver_var_name.as_deref(),
+            Rc::clone(entries),
+            method_name,
+            arg_values,
+            line_info,
+        ),
+        _ => Err(EvalError::InvalidOperation(
+            format!(
+                "Method {} is not defined for {}",
+                method_name,
+                describe_value(&receiver_value)
+            ),
+            line_info.clone(),
+        )),
+    }
+}
+
+fn materia_trans_method(
+    receiver_value: Value,
+    args: Vec<CallArg>,
+    line_info: &Option<LineInfo>,
+) -> Result<EvalResult, EvalError> {
+    if args.len() != 1 {
+        return Err(EvalError::InvalidOperation(
+            "trans() expects exactly one glyph argument".to_string(),
+            line_info.clone(),
+        ));
+    }
+
+    let glyph_arg = args
+        .into_iter()
+        .next()
+        .expect("trans() argument vector should contain one entry");
+    let glyph_value = eval_result_to_value_checked(glyph_arg.value, line_info.clone())?;
+    let target_type = match glyph_value {
+        Value::Glyph(ty) => ty,
+        other => {
+            return Err(EvalError::InvalidOperation(
+                format!(
+                    "trans() argument must be a glyph value, found {}",
+                    describe_value(&other)
+                ),
+                line_info.clone(),
+            ));
+        }
+    };
+
+    let converted = convert_value_via_trans(receiver_value, &target_type, line_info)?;
+    Ok(EvalResult::data(converted))
+}
+
+fn evaluate_scroll_method(
+    env: &mut Environment,
+    receiver_ast: &AST,
+    receiver_var_name: Option<&str>,
+    items: Rc<RefCell<Vec<Value>>>,
+    method_name: &str,
+    arg_values: Vec<CallArg>,
+    line_info: &Option<LineInfo>,
+) -> Result<EvalResult, EvalError> {
+    match method_name {
+        "tally" => {
+            if !arg_values.is_empty() {
+                return Err(EvalError::InvalidOperation(
+                    "tally() does not take any arguments".to_string(),
+                    line_info.clone(),
+                ));
+            }
+            Ok(EvalResult::data(Value::Arcana(items.borrow().len() as i64)))
+        }
+        "scribe" => {
+            ensure_collection_receiver_mutability(
+                env,
+                receiver_ast,
+                receiver_var_name,
+                "scroll",
+                method_name,
+                line_info,
+            )?;
+            if arg_values.len() != 1 {
+                return Err(EvalError::InvalidOperation(
+                    "scribe() expects exactly one argument".to_string(),
+                    line_info.clone(),
+                ));
+            }
+            let value = call_arg_to_value(
+                arg_values.into_iter().next().expect("scribe() arg"),
+                "scribe()",
+                line_info,
+            )?;
+            items.borrow_mut().push(value);
+            Ok(EvalResult::abyss())
+        }
+        "extract" => {
+            ensure_collection_receiver_mutability(
+                env,
+                receiver_ast,
+                receiver_var_name,
+                "scroll",
+                method_name,
+                line_info,
+            )?;
+            if !arg_values.is_empty() {
+                return Err(EvalError::InvalidOperation(
+                    "extract() does not take any arguments".to_string(),
+                    line_info.clone(),
+                ));
+            }
+            let value = items.borrow_mut().pop().ok_or_else(|| {
+                EvalError::InvalidOperation(
+                    "extract() cannot pop from an empty scroll".to_string(),
+                    line_info.clone(),
+                )
+            })?;
+            Ok(EvalResult::data(value))
+        }
+        _ => Err(EvalError::InvalidOperation(
+            format!("Method {} is not defined for scroll", method_name),
+            line_info.clone(),
+        )),
+    }
+}
+
+fn evaluate_lexicon_method(
+    env: &mut Environment,
+    receiver_ast: &AST,
+    receiver_var_name: Option<&str>,
+    entries: Rc<RefCell<HashMap<String, Value>>>,
+    method_name: &str,
+    arg_values: Vec<CallArg>,
+    line_info: &Option<LineInfo>,
+) -> Result<EvalResult, EvalError> {
+    match method_name {
+        "tally" => {
+            if !arg_values.is_empty() {
+                return Err(EvalError::InvalidOperation(
+                    "tally() does not take any arguments".to_string(),
+                    line_info.clone(),
+                ));
+            }
+            Ok(EvalResult::data(Value::Arcana(
+                entries.borrow().len() as i64
+            )))
+        }
+        "define" => {
+            ensure_collection_receiver_mutability(
+                env,
+                receiver_ast,
+                receiver_var_name,
+                "lexicon",
+                method_name,
+                line_info,
+            )?;
+            if arg_values.len() != 2 {
+                return Err(EvalError::InvalidOperation(
+                    "define() expects a rune key and a value".to_string(),
+                    line_info.clone(),
+                ));
+            }
+            let mut iter = arg_values.into_iter();
+            let key_value = call_arg_to_value(
+                iter.next().expect("define() key"),
+                "define() key",
+                line_info,
+            )?;
+            let key = match key_value {
+                Value::Rune(text) => text.as_ref().clone(),
+                _ => {
+                    return Err(EvalError::TypeError(
+                        "define() key must be a rune".to_string(),
+                        line_info.clone(),
+                    ));
+                }
+            };
+            let value = call_arg_to_value(
+                iter.next().expect("define() value"),
+                "define() value",
+                line_info,
+            )?;
+            entries.borrow_mut().insert(key, value);
+            Ok(EvalResult::abyss())
+        }
+        "expunge" => {
+            ensure_collection_receiver_mutability(
+                env,
+                receiver_ast,
+                receiver_var_name,
+                "lexicon",
+                method_name,
+                line_info,
+            )?;
+            if arg_values.len() != 1 {
+                return Err(EvalError::InvalidOperation(
+                    "expunge() expects exactly one rune key".to_string(),
+                    line_info.clone(),
+                ));
+            }
+            let key_value = call_arg_to_value(
+                arg_values.into_iter().next().expect("expunge() key"),
+                "expunge() key",
+                line_info,
+            )?;
+            let key = match key_value {
+                Value::Rune(text) => text.as_ref().clone(),
+                _ => {
+                    return Err(EvalError::TypeError(
+                        "expunge() key must be a rune".to_string(),
+                        line_info.clone(),
+                    ));
+                }
+            };
+            entries.borrow_mut().remove(&key);
+            Ok(EvalResult::abyss())
+        }
+        "glossary" => {
+            if !arg_values.is_empty() {
+                return Err(EvalError::InvalidOperation(
+                    "glossary() does not take any arguments".to_string(),
+                    line_info.clone(),
+                ));
+            }
+            let keys: Vec<Value> = entries
+                .borrow()
+                .keys()
+                .map(|key| Value::Rune(Rc::new(key.clone())))
+                .collect();
+            Ok(EvalResult::data(Value::Scroll(Rc::new(RefCell::new(keys)))))
+        }
+        _ => Err(EvalError::InvalidOperation(
+            format!("Method {} is not defined for lexicon", method_name),
+            line_info.clone(),
+        )),
+    }
+}
+
+fn ensure_collection_receiver_mutability(
+    env: &Environment,
+    receiver_ast: &AST,
+    receiver_var_name: Option<&str>,
+    collection_kind: &str,
+    method_name: &str,
+    line_info: &Option<LineInfo>,
+) -> Result<(), EvalError> {
+    let base_name = receiver_var_name
+        .map(|name| name.to_string())
+        .or_else(|| collect_field_chain(receiver_ast).map(|(base, _)| base));
+
+    let Some(var_name) = base_name else {
+        return Err(EvalError::InvalidOperation(
+            format!(
+                "Method {}::{} requires a morph receiver, but the expression is not tied to a mutable variable",
+                collection_kind, method_name
+            ),
+            line_info.clone(),
+        ));
+    };
+
+    let var_info = env
+        .get_var(&var_name)
+        .ok_or_else(|| EvalError::UndefinedVariable(var_name.clone(), line_info.clone()))?;
+
+    if var_info.is_morph {
+        Ok(())
+    } else {
+        Err(EvalError::InvalidOperation(
+            format!(
+                "Cannot call {}::{} with immutable receiver '{}'",
+                collection_kind, method_name, var_name
+            ),
+            line_info.clone(),
+        ))
+    }
+}
+
+fn call_arg_to_value(
+    arg: CallArg,
+    context: &str,
+    line_info: &Option<LineInfo>,
+) -> Result<Value, EvalError> {
+    match arg.value {
+        EvalResult::Data(value) => Ok(value),
+        EvalResult::Artifact(handle) => Ok(Value::Artifact(handle)),
+        EvalResult::Revealed(_) | EvalResult::Resume(_) | EvalResult::Eject(_) => {
+            Err(EvalError::InvalidOperation(
+                format!("{} cannot accept control-flow results", context),
+                line_info.clone(),
+            ))
+        }
+    }
+}
+
+fn convert_value_via_trans(
+    receiver: Value,
+    target_type: &Type,
+    line_info: &Option<LineInfo>,
+) -> Result<Value, EvalError> {
+    match target_type {
+        Type::Arcana => match receiver {
+            Value::Aether(n) => Ok(Value::Arcana(n as i64)),
+            Value::Rune(text) => text
+                .as_ref()
+                .parse::<i64>()
+                .map(Value::Arcana)
+                .map_err(|_| {
+                    EvalError::InvalidOperation(
+                        "Failed to convert Rune to Arcana".to_string(),
+                        line_info.clone(),
+                    )
+                }),
+            _ => Err(EvalError::InvalidOperation(
+                "Invalid cast to Arcana".to_string(),
+                line_info.clone(),
+            )),
+        },
+        Type::Aether => match receiver {
+            Value::Arcana(n) => Ok(Value::Aether(n as f64)),
+            Value::Rune(text) => text
+                .as_ref()
+                .parse::<f64>()
+                .map(Value::Aether)
+                .map_err(|_| {
+                    EvalError::InvalidOperation(
+                        "Failed to convert Rune to Aether".to_string(),
+                        line_info.clone(),
+                    )
+                }),
+            _ => Err(EvalError::InvalidOperation(
+                "Invalid cast to Aether".to_string(),
+                line_info.clone(),
+            )),
+        },
+        Type::Rune => match receiver {
+            Value::Arcana(n) => Ok(Value::Rune(Rc::new(n.to_string()))),
+            Value::Aether(n) => Ok(Value::Rune(Rc::new(n.to_string()))),
+            _ => Err(EvalError::InvalidOperation(
+                "Invalid cast to Rune".to_string(),
+                line_info.clone(),
+            )),
+        },
+        Type::Omen => Err(EvalError::InvalidOperation(
+            "Casting to Omen is not supported".to_string(),
+            line_info.clone(),
+        )),
+        Type::Glyph => Err(EvalError::InvalidOperation(
+            "Casting to glyph is not supported".to_string(),
+            line_info.clone(),
+        )),
+        Type::Artifact(name) => Err(EvalError::InvalidOperation(
+            format!("Unsupported cast to artifact type {}", name),
+            line_info.clone(),
+        )),
+        _ => Err(EvalError::InvalidOperation(
+            format!("Unsupported cast to type {:?}", target_type),
+            line_info.clone(),
+        )),
+    }
 }
 
 fn evaluate_function_call(

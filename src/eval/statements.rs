@@ -55,7 +55,6 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
         | AST::LogicalOr(..)
         | AST::LogicalNot(..)
         | AST::Var(..)
-        | AST::Trans(..)
         | AST::IndexAccess { .. }
         | AST::FuncCall { .. }
         | AST::MethodCall { .. } => unreachable!("expression nodes handled earlier"),
@@ -702,6 +701,13 @@ pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalErro
             }
             let schema = build_artifact_schema(name, fields, env, line_info)?;
             env.define_artifact(schema)?;
+            env.set_var(
+                name.clone(),
+                Value::Glyph(Type::Artifact(name.clone())),
+                Type::Glyph,
+                false,
+                line_info.clone(),
+            );
             Ok(EvalResult::abyss())
         }
         AST::Comment(_, _) => Ok(EvalResult::abyss()),
@@ -950,6 +956,26 @@ mod tests {
         match err {
             EvalError::InvalidOperation(_, info) => assert!(info.is_some()),
             other => panic!("unexpected error variant {:?}", other),
+        }
+    }
+
+    #[test]
+    fn artifact_definition_creates_glyph_variable() {
+        let mut env = Environment::new();
+        let artifact = AST::ArtifactDef {
+            name: "Relic".into(),
+            fields: Vec::new(),
+            line_info: line(),
+        };
+
+        evaluate(&artifact, &mut env).expect("artifact definition succeeds");
+
+        let glyph_entry = env.get_var("Relic").expect("glyph variable exists");
+        assert_eq!(glyph_entry.var_type, Type::Glyph);
+        assert!(!glyph_entry.is_morph);
+        match &glyph_entry.value {
+            Value::Glyph(Type::Artifact(name)) if name == "Relic" => {}
+            other => panic!("unexpected glyph value {:?}", other),
         }
     }
 }

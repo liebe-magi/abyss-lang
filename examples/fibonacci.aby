@@ -6,7 +6,7 @@ forge morph fibs: scroll = [0, 1];
 orbit (i = 2..terms) {
     forge prev: arcana = fibs[i - 1];
     forge before_prev: arcana = fibs[i - 2];
-    inscribe(fibs, prev + before_prev);
+    fibs.scribe(prev + before_prev);
 };
 
 unveil("Fibonacci (", terms, " terms): ", fibs);

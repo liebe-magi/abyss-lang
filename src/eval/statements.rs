@@ -741,6 +741,7 @@ mod tests {
     use crate::env::{ArtifactFieldSchema, ArtifactSchema, ArtifactValue};
     use std::cell::RefCell;
     use std::collections::HashMap;
+    use std::rc::Rc;
 
     fn line() -> Option<LineInfo> {
         Some(LineInfo::new(1, 1))
@@ -748,6 +749,18 @@ mod tests {
 
     fn scroll(values: Vec<Value>) -> Value {
         Value::Scroll(Rc::new(RefCell::new(values)))
+    }
+
+    fn lexicon(entries: Vec<(&str, Value)>) -> Value {
+        let mut map = HashMap::new();
+        for (key, value) in entries {
+            map.insert(key.to_string(), value);
+        }
+        Value::Lexicon(Rc::new(RefCell::new(map)))
+    }
+
+    fn rune(text: &str) -> Value {
+        Value::Rune(Rc::new(text.to_string()))
     }
 
     fn artifact_handle(name: &str, fields: Vec<(&str, Value)>) -> Rc<RefCell<ArtifactValue>> {
@@ -858,6 +871,84 @@ mod tests {
     }
 
     #[test]
+    fn field_assignment_requires_artifact_target() {
+        let mut env = Environment::new();
+        let assignment = AST::FieldAssignment {
+            target: Box::new(AST::Arcana(1, line())),
+            field: "power".into(),
+            value: Box::new(AST::Arcana(2, line())),
+            line_info: line(),
+        };
+
+        let err = evaluate(&assignment, &mut env).expect_err("non artifact target should fail");
+        match err {
+            EvalError::InvalidOperation(_, _) => {}
+            other => panic!("unexpected error variant {:?}", other),
+        }
+    }
+
+    #[test]
+    fn field_assignment_reports_missing_variable() {
+        let mut env = Environment::new();
+        let assignment = AST::FieldAssignment {
+            target: Box::new(AST::Var("missing".into(), line())),
+            field: "power".into(),
+            value: Box::new(AST::Arcana(1, line())),
+            line_info: line(),
+        };
+
+        let err = evaluate(&assignment, &mut env).expect_err("missing variable should error");
+        match err {
+            EvalError::UndefinedVariable(name, _) => assert_eq!(name, "missing"),
+            other => panic!("unexpected error variant {:?}", other),
+        }
+    }
+
+    #[test]
+    fn field_assignment_rejects_non_artifact_chain_segments() {
+        let mut env = Environment::new();
+        register_artifact(&mut env, "Glyph", vec![("power", Type::Arcana)]);
+        register_artifact(
+            &mut env,
+            "Sigil",
+            vec![("core", Type::Artifact("Glyph".into()))],
+        );
+
+        let outer = artifact_handle("Sigil", vec![("core", Value::Arcana(7))]);
+        env.set_var(
+            "sigil".into(),
+            Value::Artifact(outer),
+            Type::Artifact("Sigil".into()),
+            true,
+            line(),
+        );
+
+        let target = AST::FieldAccess {
+            target: Box::new(AST::Var("sigil".into(), line())),
+            field: "core".into(),
+            line_info: line(),
+        };
+        let assignment = AST::FieldAssignment {
+            target: Box::new(target),
+            field: "power".into(),
+            value: Box::new(AST::Arcana(10, line())),
+            line_info: line(),
+        };
+
+        let err = evaluate(&assignment, &mut env).expect_err("non artifact segment should error");
+        match err {
+            EvalError::InvalidOperation(message, _) => {
+                assert!(
+                    message.contains("Field 'core' is not an artifact"),
+                    "{}",
+                    message
+                )
+            }
+            other => panic!("unexpected error variant {:?}", other),
+        }
+    }
+
+    #[test]
     fn field_assignment_updates_nested_artifact_fields() {
         let mut env = Environment::new();
         register_artifact(&mut env, "Glyph", vec![("power", Type::Arcana)]);
@@ -930,6 +1021,131 @@ mod tests {
     }
 
     #[test]
+    fn oracle_match_handles_aether_and_rune_patterns() {
+        let mut env = Environment::new();
+        let conditionals = vec![
+            ConditionalAssignment {
+                variable: "flux".into(),
+                expression: Box::new(AST::Aether(1.5, line())),
+                line_info: line(),
+            },
+            ConditionalAssignment {
+                variable: "word".into(),
+                expression: Box::new(AST::Rune("moon".into(), line())),
+                line_info: line(),
+            },
+        ];
+
+        let branch = AST::OracleBranch {
+            pattern: vec![AST::Aether(1.5, line()), AST::Rune("moon".into(), line())],
+            body: Box::new(AST::Arcana(7, line())),
+            line_info: line(),
+        };
+
+        let oracle = AST::Oracle {
+            is_match: true,
+            conditionals,
+            branches: vec![branch],
+            line_info: line(),
+        };
+
+        let result = evaluate(&oracle, &mut env).expect("oracle should match scalars");
+        match result {
+            EvalResult::Data(Value::Arcana(value)) => assert_eq!(value, 7),
+            other => panic!("unexpected oracle result {:?}", other),
+        }
+    }
+
+    #[test]
+    fn oracle_guard_requires_omen_values() {
+        let mut env = Environment::new();
+        let guard_branch = AST::OracleBranch {
+            pattern: vec![AST::Arcana(1, line())],
+            body: Box::new(AST::Arcana(0, line())),
+            line_info: line(),
+        };
+
+        let oracle = AST::Oracle {
+            is_match: false,
+            conditionals: vec![],
+            branches: vec![guard_branch],
+            line_info: line(),
+        };
+
+        let err = evaluate(&oracle, &mut env).expect_err("guards must yield omens");
+        match err {
+            EvalError::InvalidOperation(message, _) => {
+                assert!(
+                    message.contains("Oracle guard must evaluate to an omen"),
+                    "{}",
+                    message
+                );
+            }
+            other => panic!("unexpected error variant {:?}", other),
+        }
+    }
+
+    #[test]
+    fn oracle_pattern_length_mismatch_errors() {
+        let mut env = Environment::new();
+        let conditional = ConditionalAssignment {
+            variable: "sigil".into(),
+            expression: Box::new(AST::Arcana(1, line())),
+            line_info: line(),
+        };
+
+        let branch = AST::OracleBranch {
+            pattern: vec![AST::Arcana(1, line()), AST::Arcana(2, line())],
+            body: Box::new(AST::Arcana(0, line())),
+            line_info: line(),
+        };
+
+        let oracle = AST::Oracle {
+            is_match: true,
+            conditionals: vec![conditional],
+            branches: vec![branch],
+            line_info: line(),
+        };
+
+        let err = evaluate(&oracle, &mut env).expect_err("pattern length mismatch should fail");
+        match err {
+            EvalError::InvalidOperation(message, _) => {
+                assert!(message.contains("pattern length"), "{}", message)
+            }
+            other => panic!("unexpected error variant {:?}", other),
+        }
+    }
+
+    #[test]
+    fn oracle_skips_comments_and_supports_dont_care_items() {
+        let mut env = Environment::new();
+        let conditional = ConditionalAssignment {
+            variable: "arc".into(),
+            expression: Box::new(AST::Arcana(99, line())),
+            line_info: line(),
+        };
+
+        let branch = AST::OracleBranch {
+            pattern: vec![AST::OracleDontCareItem(line())],
+            body: Box::new(AST::Arcana(5, line())),
+            line_info: line(),
+        };
+
+        let oracle = AST::Oracle {
+            is_match: true,
+            conditionals: vec![conditional],
+            branches: vec![AST::Comment("ignored".into(), line()), branch],
+            line_info: line(),
+        };
+
+        let result = evaluate(&oracle, &mut env).expect("dont care branch should match");
+        match result {
+            EvalResult::Data(Value::Arcana(value)) => assert_eq!(value, 5),
+            other => panic!("unexpected oracle result {:?}", other),
+        }
+    }
+
+    #[test]
     fn clone_indexed_child_errors_on_non_collections() {
         let err = clone_indexed_child(
             &Value::Arcana(1),
@@ -939,6 +1155,32 @@ mod tests {
         .expect_err("non-collections should fail");
         match err {
             EvalError::InvalidOperation(_, info) => assert!(info.is_some()),
+            other => panic!("unexpected error variant {:?}", other),
+        }
+    }
+
+    #[test]
+    fn clone_indexed_child_reports_scroll_bounds() {
+        let value = scroll(vec![Value::Arcana(0)]);
+        let err = clone_indexed_child(&value, &EvalResult::data(Value::Arcana(5)), &line())
+            .expect_err("out of bounds should fail");
+        match err {
+            EvalError::InvalidOperation(message, _) => {
+                assert!(message.contains("out of bounds"), "{}", message)
+            }
+            other => panic!("unexpected error variant {:?}", other),
+        }
+    }
+
+    #[test]
+    fn clone_indexed_child_reports_missing_lexicon_entries() {
+        let value = lexicon(vec![("known", Value::Arcana(1))]);
+        let err = clone_indexed_child(&value, &EvalResult::data(rune("missing")), &line())
+            .expect_err("missing key should fail");
+        match err {
+            EvalError::InvalidOperation(message, _) => {
+                assert!(message.contains("does not exist"), "{}", message)
+            }
             other => panic!("unexpected error variant {:?}", other),
         }
     }

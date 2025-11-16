@@ -49,8 +49,8 @@ cargo install abyss-lang
 Alternatively, you can install AbySS by cloning the repository and building it locally. `cargo-llvm-cov` is supported for test coverage analysis.
 
 ```bash
-git clone https://github.com/your-repository/abyss.git
-cd abyss
+git clone https://github.com/liebe-magi/abyss-lang.git
+cd abyss-lang
 cargo install --path .
 ```
 
@@ -125,6 +125,7 @@ AbySS supports the following primitive types:
 - **scroll**: Ordered collections that can mix any element types.
 - **lexicon**: Rune-keyed dictionaries for structured data.
 - **materia**: A dynamically typed slot that can store any runtime value.
+- **glyph**: A compile-time type token used as an argument to `.trans(...)` or runtime APIs that need to refer to types by name.
 - **artifact**: Custom structs you define with `artifact Name { field: Type; }`, enforcing field presence, types, and read/write rules.
 
 ```abyss
@@ -145,14 +146,14 @@ forge essence: materia = 99;
 - `scroll`: Modeled after arcane parchment rolls, scroll values are indexed by arcana and preserve insertion order, making them ideal for spell queues or mixed data payloads.
 - `lexicon`: Inspired by grimoires and dictionaries, lexicon values map rune keys to arbitrary entries and allow quick lookups by string-like identifiers.
 - `materia`: Named after alchemical prime matter, materia variables willingly hold any type; they are perfect for staging data before you know its final shape or when writing polymorphic helpers.
+- `glyph`: Describes the runic representation of a type itself—think "type handle" rather than a runtime value. Glyphs travel through APIs like `.trans(glyph)` to describe the target type of a conversion without instantiating a real value.
 - `artifact`: Formalizes bespoke records. Declare a schema once and instantiate typed literals anywhere, with the evaluator ensuring every required field is provided exactly once and that nested fields honor their declared types.
 
 ### **Type Casting**
 
-In AbySS, type casting is achieved using the `trans` keyword.
-This allows the conversion of values from one type to another.
+Type casting in AbySS uses the builtin `.trans(glyph)` method that every runtime value inherits via the universal `materia` receiver. Pass a glyph describing the destination type and the interpreter handles the conversion in-place.
 
-`trans`: Short for "transformation," `trans` enables the conversion of one type into another, reflecting the idea of magical transformations in programming.
+`trans`: Short for "transformation," `trans` works as a method call registered in the stdlib's builtin method table. Because the dispatcher falls back to the `materia` table, you can call `.trans(...)` on any value without manual pattern matches.
 
 ```abyss
 forge x: arcana = 3.14.trans(arcana);

@@ -7,6 +7,17 @@ use std::rc::Rc;
 pub type BuiltinFunc =
     fn(&mut Environment, Vec<CallArg>, Option<LineInfo>) -> Result<EvalResult, EvalError>;
 
+pub type BuiltinMethodHandler = fn(
+    &mut Environment,
+    &AST,
+    Option<&str>,
+    Value,
+    Vec<CallArg>,
+    &Option<LineInfo>,
+) -> Result<EvalResult, EvalError>;
+
+pub type BuiltinMethodRegistry = HashMap<Type, HashMap<String, BuiltinMethodHandler>>;
+
 #[derive(Debug)]
 pub struct CallArg {
     pub value: EvalResult,
@@ -56,6 +67,7 @@ pub struct Environment {
     scopes: Vec<HashMap<String, VarInfo>>, // Variable scopes
     function_scopes: Vec<HashMap<String, Callable>>, // Function scopes
     artifact_scopes: Vec<HashMap<String, ArtifactSchema>>, // Artifact schemas per scope
+    builtin_methods: BuiltinMethodRegistry,
 }
 
 impl Environment {
@@ -65,6 +77,7 @@ impl Environment {
             scopes: vec![HashMap::new()],
             function_scopes: vec![HashMap::new()],
             artifact_scopes: vec![HashMap::new()],
+            builtin_methods: HashMap::new(),
         }
     }
 
@@ -259,6 +272,14 @@ impl Environment {
         self.get_artifact(artifact)
             .and_then(|schema| schema.method(method_name))
             .cloned()
+    }
+
+    pub fn set_builtin_methods(&mut self, methods: BuiltinMethodRegistry) {
+        self.builtin_methods = methods;
+    }
+
+    pub fn builtin_methods(&self) -> &BuiltinMethodRegistry {
+        &self.builtin_methods
     }
 }
 

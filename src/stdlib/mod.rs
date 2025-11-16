@@ -1,30 +1,8 @@
-pub mod io;
+pub mod functions;
+pub mod methods;
 
 use crate::ast::Type;
-use crate::env::{BuiltinFunction, Callable, Environment, Value};
-use std::collections::HashMap;
-
-fn get_all_builtins() -> HashMap<String, Callable> {
-    let mut builtins = HashMap::new();
-
-    builtins.insert(
-        "unveil".to_string(),
-        Callable::Builtin(BuiltinFunction {
-            name: "unveil".to_string(),
-            func: io::native_unveil,
-        }),
-    );
-
-    builtins.insert(
-        "summon".to_string(),
-        Callable::Builtin(BuiltinFunction {
-            name: "summon".to_string(),
-            func: io::native_summon,
-        }),
-    );
-
-    builtins
-}
+use crate::env::{Environment, Value};
 
 fn seed_builtin_glyphs(env: &mut Environment) {
     let glyphs = [
@@ -52,8 +30,10 @@ fn seed_builtin_glyphs(env: &mut Environment) {
 
 pub fn create_global_environment() -> Environment {
     let mut env = Environment::new();
-    let builtins = get_all_builtins();
-    env.extend_functions(builtins);
+    let functions = functions::get_all_global_functions();
+    env.extend_functions(functions);
+    let methods = methods::get_all_builtin_methods();
+    env.set_builtin_methods(methods);
     seed_builtin_glyphs(&mut env);
     env
 }

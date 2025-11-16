@@ -13,7 +13,7 @@ The stdlib SHALL register a builtin method named `trans` for the universal `mate
 - **THEN** it SHALL route to the registered builtin, passing both the receiver and glyph argument without going through the legacy global `trans` function symbol.
 
 ## MODIFIED Requirements
-### Requirement: Stdlib registers collection helpers
+### Requirement: Stdlib exposes collection methods
 The stdlib SHALL expose collection-oriented helpers as themed builtin methods attached to `scroll` and `lexicon` receivers so scripts call them via dot syntax (`bag.tally()`, `lex.define(...)`). The runtime SHALL enforce `morph core` restrictions on mutating helpers by checking the receiver's mutability before borrowing the shared collection handles.
 
 #### Scenario: tally returns scroll length

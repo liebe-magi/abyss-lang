@@ -38,12 +38,12 @@ fn convert_value_via_trans(
                 .map(Value::Arcana)
                 .map_err(|_| {
                     EvalError::InvalidOperation(
-                        "Failed to convert Rune to Arcana".to_string(),
+                        "failed to convert rune to arcana".to_string(),
                         line_info.clone(),
                     )
                 }),
             _ => Err(EvalError::InvalidOperation(
-                "Invalid cast to Arcana".to_string(),
+                "cannot convert to arcana".to_string(),
                 line_info.clone(),
             )),
         },
@@ -55,12 +55,12 @@ fn convert_value_via_trans(
                 .map(Value::Aether)
                 .map_err(|_| {
                     EvalError::InvalidOperation(
-                        "Failed to convert Rune to Aether".to_string(),
+                        "failed to convert rune to aether".to_string(),
                         line_info.clone(),
                     )
                 }),
             _ => Err(EvalError::InvalidOperation(
-                "Invalid cast to Aether".to_string(),
+                "cannot convert to aether".to_string(),
                 line_info.clone(),
             )),
         },
@@ -68,24 +68,24 @@ fn convert_value_via_trans(
             Value::Arcana(n) => Ok(Value::Rune(Rc::new(n.to_string()))),
             Value::Aether(n) => Ok(Value::Rune(Rc::new(n.to_string()))),
             _ => Err(EvalError::InvalidOperation(
-                "Invalid cast to Rune".to_string(),
+                "cannot convert to rune".to_string(),
                 line_info.clone(),
             )),
         },
         Type::Omen => Err(EvalError::InvalidOperation(
-            "Casting to Omen is not supported".to_string(),
+            "cannot convert to omen".to_string(),
             line_info.clone(),
         )),
         Type::Glyph => Err(EvalError::InvalidOperation(
-            "Casting to glyph is not supported".to_string(),
+            "cannot convert to glyph".to_string(),
             line_info.clone(),
         )),
         Type::Artifact(name) => Err(EvalError::InvalidOperation(
-            format!("Unsupported cast to artifact type {}", name),
+            format!("cannot convert to artifact type {}", name),
             line_info.clone(),
         )),
         _ => Err(EvalError::InvalidOperation(
-            format!("Unsupported cast to type {:?}", target_type),
+            format!("cannot convert to type {:?}", target_type),
             line_info.clone(),
         )),
     }

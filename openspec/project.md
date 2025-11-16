@@ -34,6 +34,7 @@ AbySS is a custom, magic-themed scripting language with its own interpreter, for
 - Primary coverage comes from integration-style tests in `tests/`, which feed example scripts through the parser/evaluator and assert typed `EvalResult` outputs.
 - New language behaviour must add focused tests (e.g., `tests/test_calc.rs`, `tests/test_oracle.rs`) to prevent regressions in parsing precedence, environment state, and runtime errors.
 - Run `cargo test` locally before pushing. For coverage checks, use `cargo llvm-cov` (requires `llvm-tools-preview` component).
+- Coverage artifacts (`lcov.info`) are published by the `build.yml` workflow via `cargo llvm-cov --all-features --lcov --output-path lcov.info` and uploaded to Codecov. Forks must provide a `CODECOV_TOKEN` secret to keep coverage uploads working.
 - When adding CLI flags or REPL features, supplement with targeted tests or scripted example runs to confirm line-editing and history mechanics work across platforms.
 
 ### Git Workflow
@@ -58,4 +59,4 @@ AbySS is a custom, magic-themed scripting language with its own interpreter, for
 ## External Dependencies
 - Crates: `ariadne`, `chumsky`, `clap`, `colored`, `dirs`, `ordered-float`, `rustyline` (all declared in `Cargo.toml`).
 - Tooling: `cargo llvm-cov` with `llvm-tools-preview` for coverage; `cargo fmt`/`cargo clippy` for linting.
-- Services: GitHub Actions workflow `build.yml` for CI; crates.io for binary distribution; VS Code extension `abyss-codex-familiar` for editor integration.
+- Services: GitHub Actions workflow `build.yml` for CI; Codecov for coverage dashboards (requires `CODECOV_TOKEN`); crates.io for binary distribution; VS Code extension `abyss-codex-familiar` for editor integration.

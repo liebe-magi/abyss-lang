@@ -294,3 +294,216 @@ fn values_equal(
         _ => Ok(false),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn env_with_schema(name: &str, fields: Vec<(&str, Type)>) -> Environment {
+        let mut env = Environment::new();
+        env.define_artifact(ArtifactSchema {
+            name: name.to_string(),
+            fields: fields
+                .into_iter()
+                .map(|(field, ty)| ArtifactFieldSchema {
+                    name: field.to_string(),
+                    field_type: ty,
+                })
+                .collect(),
+            methods: HashMap::new(),
+            line_info: None,
+        })
+        .unwrap();
+        env
+    }
+
+    fn artifact_handle(name: &str, entries: Vec<(&str, Value)>) -> ArtifactHandle {
+        let mut map = HashMap::new();
+        let mut order = Vec::new();
+        for (key, value) in entries {
+            let key_string = key.to_string();
+            order.push(key_string.clone());
+            map.insert(key_string, value);
+        }
+        instantiate_artifact_handle(name, order, map)
+    }
+
+    fn arcana(value: i64) -> Value {
+        Value::Arcana(value)
+    }
+
+    fn rune(text: &str) -> Value {
+        Value::Rune(Rc::new(text.to_string()))
+    }
+
+    fn scroll(values: Vec<Value>) -> Value {
+        Value::Scroll(Rc::new(RefCell::new(values)))
+    }
+
+    fn lexicon(entries: Vec<(&str, Value)>) -> Value {
+        let mut map = HashMap::new();
+        for (key, value) in entries {
+            map.insert(key.to_string(), value);
+        }
+        Value::Lexicon(Rc::new(RefCell::new(map)))
+    }
+
+    #[test]
+    fn ensure_type_known_rejects_unknown_artifact_types() {
+        let env = Environment::new();
+        let err = ensure_type_known(&Type::Artifact("Sigil".into()), &env, &None).unwrap_err();
+        match err {
+            EvalError::TypeError(_, _) => {}
+            other => panic!("expected type error, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn ensure_field_type_known_validates_external_references() {
+        let env = env_with_schema("Glyph", vec![("power", Type::Arcana)]);
+        let valid = ArtifactField {
+            name: "ally".into(),
+            field_type: Type::Artifact("Glyph".into()),
+            line_info: None,
+        };
+        ensure_field_type_known(&valid, &env, "Sigil").unwrap();
+
+        let invalid = ArtifactField {
+            name: "unknown".into(),
+            field_type: Type::Artifact("Missing".into()),
+            line_info: None,
+        };
+        let err = ensure_field_type_known(&invalid, &env, "Sigil").unwrap_err();
+        match err {
+            EvalError::TypeError(_, _) => {}
+            other => panic!("expected type error, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn build_artifact_schema_detects_duplicate_fields() {
+        let env = env_with_schema("Glyph", vec![]);
+        let duplicate_fields = vec![
+            ArtifactField {
+                name: "power".into(),
+                field_type: Type::Arcana,
+                line_info: None,
+            },
+            ArtifactField {
+                name: "power".into(),
+                field_type: Type::Arcana,
+                line_info: None,
+            },
+        ];
+
+        let err = build_artifact_schema("Sigil", &duplicate_fields, &env, &None).unwrap_err();
+        match err {
+            EvalError::InvalidOperation(_, _) => {}
+            other => panic!("expected invalid operation, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn expect_artifact_from_eval_accepts_multiple_sources() {
+        let handle = artifact_handle("Sigil", vec![]);
+        let eval_handle =
+            expect_artifact_from_eval(EvalResult::Artifact(handle.clone()), &None).unwrap();
+        assert!(Rc::ptr_eq(&handle, &eval_handle));
+
+        let data_handle =
+            expect_artifact_from_eval(EvalResult::Data(Value::Artifact(handle.clone())), &None)
+                .unwrap();
+        assert!(Rc::ptr_eq(&handle, &data_handle));
+
+        let type_err = expect_artifact_from_eval(EvalResult::data(arcana(1)), &None).unwrap_err();
+        match type_err {
+            EvalError::InvalidOperation(_, _) => {}
+            other => panic!("expected invalid operation, got {:?}", other),
+        }
+
+        let control_err = expect_artifact_from_eval(EvalResult::Resume(None), &None).unwrap_err();
+        match control_err {
+            EvalError::InvalidOperation(_, _) => {}
+            other => panic!("expected invalid operation, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn lookup_schema_and_field_accessors_resolve_entries() {
+        let env = env_with_schema("Sigil", vec![("power", Type::Arcana)]);
+        let schema = lookup_schema_by_name(&env, "Sigil", &None).unwrap();
+        assert_eq!(schema.name, "Sigil");
+
+        let handle = artifact_handle("Sigil", vec![("power", arcana(3))]);
+        let schema_from_handle = lookup_schema_from_handle(&env, &handle, &None).unwrap();
+        assert_eq!(schema_from_handle.name, "Sigil");
+
+        let field = ensure_field_exists(schema, "power", &None).unwrap();
+        assert_eq!(field.name, "power");
+
+        let missing = ensure_field_exists(schema, "missing", &None).unwrap_err();
+        match missing {
+            EvalError::InvalidOperation(_, _) => {}
+            other => panic!("expected invalid operation, got {:?}", other),
+        }
+
+        let value = read_artifact_field(&env, &handle, "power", &None).unwrap();
+        assert!(matches!(value, Value::Arcana(3)));
+
+        let missing_err = read_artifact_field(&env, &handle, "missing", &None).unwrap_err();
+        match missing_err {
+            EvalError::InvalidOperation(_, _) => {}
+            other => panic!("expected invalid operation, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn compare_artifacts_checks_schema_and_values() {
+        let env = env_with_schema("Sigil", vec![("power", Type::Arcana), ("text", Type::Rune)]);
+        let left = artifact_handle("Sigil", vec![("power", arcana(3)), ("text", rune("alpha"))]);
+        let right_same =
+            artifact_handle("Sigil", vec![("power", arcana(3)), ("text", rune("alpha"))]);
+        assert!(compare_artifacts(&env, &left, &right_same, &None).unwrap());
+
+        let right_diff =
+            artifact_handle("Sigil", vec![("power", arcana(4)), ("text", rune("alpha"))]);
+        assert!(!compare_artifacts(&env, &left, &right_diff, &None).unwrap());
+
+        let other = artifact_handle("Glyph", vec![("power", arcana(3))]);
+        assert!(!compare_artifacts(&env, &left, &other, &None).unwrap());
+    }
+
+    #[test]
+    fn collect_field_chain_tracks_nested_field_access() {
+        let chain = AST::FieldAccess {
+            target: Box::new(AST::FieldAccess {
+                target: Box::new(AST::Var("sigil".into(), None)),
+                field: "inner".into(),
+                line_info: None,
+            }),
+            field: "deep".into(),
+            line_info: None,
+        };
+
+        let (base, fields) = collect_field_chain(&chain).expect("chain should resolve");
+        assert_eq!(base, "sigil");
+        assert_eq!(fields, vec!["inner".to_string(), "deep".to_string()]);
+
+        assert!(collect_field_chain(&AST::Abyss(None)).is_none());
+    }
+
+    #[test]
+    fn values_equal_handles_nested_structures() {
+        let env = env_with_schema("Sigil", vec![]);
+        let scroll_a = scroll(vec![arcana(1), arcana(2)]);
+        let scroll_b = scroll(vec![arcana(1), arcana(2)]);
+        assert!(values_equal(&env, &scroll_a, &scroll_b, &None).unwrap());
+
+        let lex_a = lexicon(vec![("key", rune("alpha"))]);
+        let lex_b = lexicon(vec![("key", rune("alpha"))]);
+        assert!(values_equal(&env, &lex_a, &lex_b, &None).unwrap());
+
+        let lex_c = lexicon(vec![("key", rune("beta"))]);
+        assert!(!values_equal(&env, &lex_a, &lex_c, &None).unwrap());
+    }
+}

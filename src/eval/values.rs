@@ -240,3 +240,218 @@ fn clone_lexicon(
     }
     Rc::new(RefCell::new(cloned))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{cell::RefCell, collections::HashMap, rc::Rc};
+
+    fn artifact_handle(name: &str, fields: Vec<(&str, Value)>) -> ArtifactHandle {
+        let mut map = HashMap::new();
+        let mut order = Vec::new();
+        for (key, value) in fields {
+            let key_string = key.to_string();
+            order.push(key_string.clone());
+            map.insert(key_string, value);
+        }
+        Rc::new(RefCell::new(ArtifactValue {
+            type_name: name.to_string(),
+            fields: map,
+            field_order: order,
+        }))
+    }
+
+    fn line() -> Option<LineInfo> {
+        Some(LineInfo::new(2, 3))
+    }
+
+    #[test]
+    fn value_to_eval_result_handles_artifacts_and_scalars() {
+        let rune = Value::Rune(Rc::new("sigil".to_string()));
+        match value_to_eval_result(&rune) {
+            EvalResult::Data(Value::Rune(text)) => assert_eq!(text.as_ref(), "sigil"),
+            other => panic!("expected rune data, got {:?}", other),
+        }
+
+        let handle = artifact_handle("Glyph", vec![("power", Value::Arcana(3))]);
+        match value_to_eval_result(&Value::Artifact(handle.clone())) {
+            EvalResult::Artifact(result_handle) => assert!(Rc::ptr_eq(&handle, &result_handle)),
+            other => panic!("expected artifact handle, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn eval_result_to_value_checked_overrides_line_info() {
+        let info = line();
+        let err = eval_result_to_value_checked(EvalResult::Resume(None), info.clone())
+            .expect_err("control flow should error");
+        match err {
+            EvalError::InvalidOperation(_, returned) => {
+                let returned = returned.expect("line info should propagate");
+                assert_eq!((returned.line, returned.column), (2, 3));
+            }
+            other => panic!("unexpected error {:?}", other),
+        }
+    }
+
+    #[test]
+    fn convert_to_typed_value_validates_types_and_clones() {
+        let info = line();
+        let arcana =
+            convert_to_typed_value(EvalResult::data(Value::Arcana(5)), &Type::Arcana, &info)
+                .expect("arcana conversion should pass");
+        assert!(matches!(arcana, Value::Arcana(5)));
+
+        let rune_err = convert_to_typed_value(
+            EvalResult::data(Value::Rune(Rc::new("sigil".into()))),
+            &Type::Arcana,
+            &info,
+        )
+        .expect_err("type mismatch should error");
+        match rune_err {
+            EvalError::TypeError(_, info) => assert!(info.is_some()),
+            other => panic!("expected type error, got {:?}", other),
+        }
+
+        let handle = artifact_handle("Sigil", vec![("power", Value::Arcana(9))]);
+        let info = line();
+        let materia =
+            convert_to_typed_value(EvalResult::artifact(handle.clone()), &Type::Materia, &info)
+                .expect("materia should accept artifact");
+        let cloned_handle = match materia {
+            Value::Artifact(h) => h,
+            other => panic!("expected artifact value, got {:?}", other),
+        };
+        assert!(!Rc::ptr_eq(&handle, &cloned_handle));
+        assert_eq!(handle.borrow().type_name, cloned_handle.borrow().type_name);
+
+        let info = line();
+        let artifact = convert_to_typed_value(
+            EvalResult::artifact(handle.clone()),
+            &Type::Artifact("Sigil".into()),
+            &info,
+        )
+        .expect("matching artifact type should pass");
+        assert!(matches!(artifact, Value::Artifact(_)));
+
+        let info = line();
+        let wrong_artifact = convert_to_typed_value(
+            EvalResult::artifact(handle.clone()),
+            &Type::Artifact("Glyph".into()),
+            &info,
+        )
+        .expect_err("mismatched artifact type should fail");
+        match wrong_artifact {
+            EvalError::TypeError(msg, _) => assert!(msg.contains("Glyph")),
+            other => panic!("expected type error, got {:?}", other),
+        }
+
+        let info = line();
+        let control_err = convert_to_typed_value(EvalResult::Resume(None), &Type::Arcana, &info)
+            .expect_err("control flow should not convert");
+        match control_err {
+            EvalError::InvalidOperation(_, _) => {}
+            other => panic!("expected invalid operation, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn extractors_return_expected_types() {
+        let info = line();
+        let arcana = extract_arcana(&EvalResult::data(Value::Arcana(7)), &info)
+            .expect("arcana extraction should pass");
+        assert_eq!(arcana, 7);
+
+        let info = line();
+        let aether = extract_aether(&EvalResult::data(Value::Aether(3.5)), &info)
+            .expect("aether extraction should pass");
+        assert!((aether - 3.5).abs() < f64::EPSILON);
+
+        let info = line();
+        let rune = extract_rune(
+            &EvalResult::data(Value::Rune(Rc::new("sigil".into()))),
+            &info,
+        )
+        .expect("rune extraction should pass");
+        assert_eq!(rune, "sigil");
+
+        let info = line();
+        let omen = extract_omen(&EvalResult::data(Value::Omen(true)), &info)
+            .expect("omen extraction should pass");
+        assert!(omen);
+    }
+
+    #[test]
+    fn extractors_error_on_wrong_type() {
+        let info = line();
+        let err = extract_rune(&EvalResult::data(Value::Arcana(1)), &info).unwrap_err();
+        match err {
+            EvalError::TypeError(_, info) => assert!(info.is_some()),
+            other => panic!("expected type error, got {:?}", other),
+        }
+
+        let resume = EvalResult::Resume(None);
+        let info = line();
+        let err = extract_aether(&resume, &info).unwrap_err();
+        match err {
+            EvalError::TypeError(_, info) => assert!(info.is_some()),
+            other => panic!("expected type error from control value, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn describe_value_matches_variants() {
+        assert_eq!(describe_value(&Value::Omen(true)), "omen");
+        assert_eq!(describe_value(&Value::Arcana(1)), "arcana");
+        assert_eq!(describe_value(&Value::Aether(2.0)), "aether");
+        assert_eq!(describe_value(&Value::Rune(Rc::new(String::new()))), "rune");
+        assert_eq!(describe_value(&Value::Abyss), "abyss");
+        assert_eq!(
+            describe_value(&Value::Scroll(Rc::new(RefCell::new(Vec::new())))),
+            "scroll"
+        );
+        assert_eq!(
+            describe_value(&Value::Lexicon(Rc::new(RefCell::new(HashMap::new())))),
+            "lexicon"
+        );
+        assert_eq!(
+            describe_value(&Value::Artifact(artifact_handle("Sigil", vec![]))),
+            "artifact"
+        );
+    }
+
+    #[test]
+    fn clone_value_performs_deep_copies() {
+        let scroll = Value::Scroll(Rc::new(RefCell::new(vec![Value::Arcana(1)])));
+        let cloned_scroll = clone_value(&scroll);
+        if let (Value::Scroll(orig), Value::Scroll(cloned)) = (&scroll, &cloned_scroll) {
+            assert!(!Rc::ptr_eq(orig, cloned));
+            orig.borrow_mut().push(Value::Arcana(2));
+            assert_eq!(cloned.borrow().len(), 1);
+        } else {
+            panic!("expected scroll clone");
+        }
+
+        let lexicon = Value::Lexicon(Rc::new(RefCell::new(HashMap::from([(
+            "sigil".into(),
+            Value::Arcana(1),
+        )]))));
+        let cloned_lexicon = clone_value(&lexicon);
+        if let (Value::Lexicon(orig), Value::Lexicon(cloned)) = (&lexicon, &cloned_lexicon) {
+            assert!(!Rc::ptr_eq(orig, cloned));
+            orig.borrow_mut().insert("new".into(), Value::Arcana(2));
+            assert_eq!(cloned.borrow().len(), 1);
+        } else {
+            panic!("expected lexicon clone");
+        }
+
+        let artifact = Value::Artifact(artifact_handle("Sigil", vec![("power", Value::Arcana(1))]));
+        let cloned_artifact = clone_value(&artifact);
+        if let (Value::Artifact(orig), Value::Artifact(cloned)) = (&artifact, &cloned_artifact) {
+            assert!(!Rc::ptr_eq(orig, cloned));
+            assert_eq!(orig.borrow().fields.len(), cloned.borrow().fields.len());
+        } else {
+            panic!("expected artifact clone");
+        }
+    }
+}

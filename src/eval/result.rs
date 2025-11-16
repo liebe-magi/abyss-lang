@@ -74,3 +74,67 @@ pub fn display_error_with_source(script: &str, line_info: Option<LineInfo>, erro
         eprintln!("{}", format!("Error: {}", error_message).red());
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::env::ArtifactValue;
+    use colored::control;
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+    use std::rc::Rc;
+
+    fn sample_handle(name: &str) -> ArtifactHandle {
+        Rc::new(RefCell::new(ArtifactValue {
+            type_name: name.to_string(),
+            fields: HashMap::new(),
+            field_order: Vec::new(),
+        }))
+    }
+
+    #[test]
+    fn abyss_constructor_returns_abyss_value() {
+        match EvalResult::abyss() {
+            EvalResult::Data(Value::Abyss) => {}
+            other => panic!("expected abyss value, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn data_constructor_wraps_value() {
+        match EvalResult::data(Value::Arcana(42)) {
+            EvalResult::Data(Value::Arcana(v)) => assert_eq!(v, 42),
+            other => panic!("expected arcana value, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn artifact_constructor_preserves_handle() {
+        let handle = sample_handle("Sigil");
+        match EvalResult::artifact(handle.clone()) {
+            EvalResult::Artifact(result_handle) => {
+                assert!(Rc::ptr_eq(&result_handle, &handle))
+            }
+            other => panic!("expected artifact handle, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn display_error_with_valid_line_highlights_source() {
+        control::set_override(false);
+        let script = "sigil = 1\nhex = sigil + 2";
+        display_error_with_source(script, Some(LineInfo::new(2, 5)), "invalid operation");
+    }
+
+    #[test]
+    fn display_error_without_matching_line_falls_back_to_generic() {
+        control::set_override(false);
+        display_error_with_source("sigil = 1", Some(LineInfo::new(3, 1)), "out of range");
+    }
+
+    #[test]
+    fn display_error_without_line_info_still_prints_message() {
+        control::set_override(false);
+        display_error_with_source("sigil = 1", None, "missing context");
+    }
+}

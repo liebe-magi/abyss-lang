@@ -137,3 +137,58 @@ fn normalize_negative_literals(tokens: Vec<SpannedToken>) -> Vec<SpannedToken> {
 
     result
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ordered_float::OrderedFloat;
+
+    fn span(start: usize, end: usize) -> SimpleSpan<usize> {
+        SimpleSpan::new(start, end)
+    }
+
+    #[test]
+    fn splits_negative_arcana_after_value_tokens() {
+        let tokens = vec![
+            (Token::Arcana(1), span(0, 1)),
+            (Token::Arcana(-2), span(1, 3)),
+        ];
+
+        let normalized = normalize_negative_literals(tokens);
+
+        let expected = vec![
+            (Token::Arcana(1), span(0, 1)),
+            (Token::Minus, span(1, 2)),
+            (Token::Arcana(2), span(2, 3)),
+        ];
+
+        assert_eq!(normalized, expected);
+    }
+
+    #[test]
+    fn keeps_unary_negative_literals_intact_after_operators() {
+        let tokens = vec![(Token::Minus, span(0, 1)), (Token::Arcana(-2), span(1, 3))];
+
+        let normalized = normalize_negative_literals(tokens.clone());
+
+        assert_eq!(normalized, tokens);
+    }
+
+    #[test]
+    fn splits_negative_aether_after_closing_delimiters() {
+        let tokens = vec![
+            (Token::CloseParen, span(0, 1)),
+            (Token::Aether(OrderedFloat::from(-1.25)), span(1, 5)),
+        ];
+
+        let normalized = normalize_negative_literals(tokens);
+
+        let expected = vec![
+            (Token::CloseParen, span(0, 1)),
+            (Token::Minus, span(1, 2)),
+            (Token::Aether(OrderedFloat::from(1.25)), span(2, 5)),
+        ];
+
+        assert_eq!(normalized, expected);
+    }
+}

@@ -1,5 +1,7 @@
 [![Crates.io Version](https://img.shields.io/crates/v/abyss-lang)](https://crates.io/crates/abyss-lang)
+[![Crates.io](https://img.shields.io/crates/l/abyss-lang)](https://github.com/liebe-magi/abyss-lang/blob/main/LICENSE)
 [![Build](https://github.com/liebe-magi/abyss/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/liebe-magi/abyss/actions/workflows/build.yml)
+[![Coverage](https://codecov.io/gh/liebe-magi/abyss-lang/branch/develop/graph/badge.svg)](https://app.codecov.io/gh/liebe-magi/abyss-lang)
 
 # **AbySS: Advanced-scripting by Symbolic Syntax**
 
@@ -58,6 +60,8 @@ For test coverage with `cargo-llvm-cov`, install the tool as follows:
 rustup component add llvm-tools-preview
 cargo install cargo-llvm-cov
 ```
+
+The CI pipeline runs `cargo llvm-cov --all-features --lcov --output-path lcov.info` and uploads the report to Codecov via `.github/workflows/build.yml`. If you are working in a fork, create a repository secret named `CODECOV_TOKEN` that matches the token shown on your Codecov dashboard. Forks can inherit coverage uploads through organization-level secrets, while the upstream repository uses its configured token. You can preview the same report locally with `cargo llvm-cov --open` or upload it manually with `codecov --file lcov.info` if needed.
 
 ## **Getting Started**
 

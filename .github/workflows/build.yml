@@ -142,8 +142,6 @@ jobs:
 
       - name: Build release version
         run: cargo build --verbose --release --target=${{ matrix.target }}
-        env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ env.CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER }}
 
       - name: Export properties
         id: properties
@@ -258,6 +256,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.upload-url.outputs.url }}
-          asset_path: ./build/target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+          asset_path: ./build/${{ matrix.artifact_name }}
           asset_name: abyss-${{ matrix.target }}-${{ needs.build.outputs.version }}${{ matrix.release_name_suffix }}
           asset_content_type: application/octet-stream

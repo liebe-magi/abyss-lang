@@ -1,6 +1,4 @@
-use abyss_lang::ast::{
-    AST, ArtifactField, ArtifactMethodTarget, AssignmentOp, ConditionalAssignment, Type,
-};
+use abyss_lang::ast::{AST, ArtifactField, ArtifactMethodTarget, AssignmentOp, Type};
 use abyss_lang::format::format_ast;
 
 fn arcana(value: i64) -> Box<AST> {
@@ -196,11 +194,7 @@ fn format_control_flow_and_functions() {
 
     let oracle = AST::Oracle {
         is_match: false,
-        conditionals: vec![ConditionalAssignment {
-            variable: "sigil".into(),
-            expression: rune("alpha"),
-            line_info: None,
-        }],
+        conditionals: Vec::new(),
         branches: vec![
             AST::OracleBranch {
                 pattern: vec![AST::Arcana(1, None)],
@@ -222,7 +216,7 @@ fn format_control_flow_and_functions() {
         line_info: None,
     };
     let oracle_expected = concat!(
-        "oracle (sigil = \"alpha\") {\n",
+        "oracle {\n",
         "    (1) => reveal spark\n",
         "    // fallback\n",
         "    (_) => reveal \"wild\"\n",

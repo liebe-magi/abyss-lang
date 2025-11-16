@@ -51,3 +51,71 @@ The evaluator SHALL provide a builtin method named `trans` on every `materia` va
 - **WHEN** the evaluator resolves the glyph parameter to `Type::Scroll`
 - **THEN** it SHALL raise an `EvalError` indicating runes cannot be converted to `scroll`, mirroring the existing conversion matrix.
 
+### Requirement: Oracle statement evaluation semantics
+The evaluator SHALL execute `oracle` statements in one of two modes based on the AST marker emitted by the parser, and it SHALL branch on that mode marker to select the semantics.
+
+#### Scenario: Evaluate if-else mode (no parentheses)
+- **GIVEN** an `oracle { ... }` AST without parentheses after the keyword
+- **WHEN** the evaluator processes the statement
+- **THEN** it SHALL evaluate each branch guard expression from top to bottom, execute the first branch whose guard yields `boon`, and exit the statement after running that block.
+
+#### Scenario: Evaluate match mode (with parentheses)
+- **GIVEN** an `oracle (<expr>) { ... }` AST whose parentheses wrap the scrutinee expression
+- **WHEN** the evaluator processes the statement
+- **THEN** it SHALL evaluate the scrutinee expression exactly once, cache the resulting value, and compare it against each branch pattern according to the pattern semantics until a matching branch executes.
+
+The match-mode `oracle` evaluator SHALL evaluate the scrutinee expression exactly once at the beginning of the statement and SHALL store the resulting value for use in each guard comparison block.
+
+**Reason**: Removing the inline mutation syntax keeps the `oracle` evaluation modes clearly separated.
+**Reason**: Eliminating the ambiguous inline binding form is necessary; `forge` statements and `if-else` mode `oracle` serve as the replacement.
+The evaluator SHALL treat any legacy AST node that encodes inline scrutinee bindings as invalid and MUST report an error rather than executing it.
+
+#### Scenario: Removed behavior
+- **GIVEN** an AST for `oracle (z = y * 2) { ... }`
+- **WHEN** the evaluator inspects the node
+- **THEN** it SHALL reject the node (or raise an error) because inline bindings inside the parentheses are no longer allowed.
+
+### Requirement: Artifact Methods Register With Schemas
+The evaluator SHALL associate every `engrave Type::method(core ...)` definition with the owning artifact schema, capturing metadata such as method name, parameter list, return type, and whether the receiver is mutable, so runtime dispatch can resolve methods by artifact type.
+
+#### Scenario: Register method on artifact
+- **GIVEN** artifact `Player` and source `engrave Player::get_level(core) -> arcana { reveal core.level; }`
+- **WHEN** the script is evaluated and declarations are loaded into the environment
+- **THEN** the resulting artifact schema for `Player` SHALL include a method entry named `get_level` marked immutable with its parameter/return signature, making it discoverable by later method calls.
+
+#### Scenario: Reject duplicate method names
+- **GIVEN** two definitions `engrave Player::get_level(core) { ... }` in the same compilation unit
+- **WHEN** the environment attempts to register the second definition
+- **THEN** it SHALL raise an `EvalError` indicating the method already exists on `Player`, preventing ambiguity during dispatch.
+
+### Requirement: Method Call Evaluation
+The evaluator SHALL execute `AST::MethodCall` nodes by evaluating the receiver expression, resolving the method from the receiver's artifact type, implicitly binding the receiver value to the `core` parameter, and evaluating the remaining arguments before invoking the method body.
+
+#### Scenario: Invoke immutable method
+- **GIVEN** `forge hero: Player = Player { level: 10 };` and method `engrave Player::get_level(core) -> arcana { reveal core.level; }`
+- **WHEN** the program executes `unveil(hero.get_level());`
+- **THEN** the evaluator SHALL resolve `get_level` on `Player`, bind `hero` to `core`, pass zero explicit arguments, and reveal `10` without requiring the caller to supply the receiver explicitly.
+
+#### Scenario: Unknown method error
+- **GIVEN** `forge hero: Player = Player { level: 10 };`
+- **WHEN** the program executes `hero.promote();` without a corresponding method definition
+- **THEN** the evaluator SHALL raise an `EvalError` indicating `promote` is undefined for artifact `Player` and SHALL not attempt fallback to global `engrave` functions.
+
+### Requirement: Method Mutability Enforcement
+The evaluator SHALL enforce that methods declared with `morph core` run only when the receiver value originates from a variable, field, or temporary marked mutable, and SHALL surface a runtime error when an immutable receiver attempts to invoke a mutable method.
+
+#### Scenario: Mutable method succeeds on morph variable
+- **GIVEN** `forge morph hero: Player = Player { level: 10 };` and `engrave Player::set_level(morph core, next: arcana) -> abyss { core.level = next; }`
+- **WHEN** the program executes `hero.set_level(11);`
+- **THEN** the evaluator SHALL allow the call, mutate `hero.level` to `11`, and continue execution normally.
+
+#### Scenario: Mutable method fails on immutable variable
+- **GIVEN** `forge hero: Player = Player { level: 10 };` (immutable) and the same `set_level` method
+- **WHEN** the program executes `hero.set_level(11);`
+- **THEN** the evaluator SHALL raise an `EvalError` explaining that `hero` is immutable and cannot call a method requiring `morph core`.
+
+#### Scenario: Immutable method callable on either receiver
+- **GIVEN** both immutable `hero` and mutable `morph ally: Player`
+- **WHEN** they each execute `get_level()`
+- **THEN** the evaluator SHALL allow both invocations because the method is tagged immutable, demonstrating that the mutability restriction only applies when `morph core` is specified.
+

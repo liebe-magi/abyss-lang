@@ -7,6 +7,17 @@ use std::rc::Rc;
 pub type BuiltinFunc =
     fn(&mut Environment, Vec<CallArg>, Option<LineInfo>) -> Result<EvalResult, EvalError>;
 
+pub type BuiltinMethodHandler = fn(
+    &mut Environment,
+    &AST,
+    Option<&str>,
+    Value,
+    Vec<CallArg>,
+    &Option<LineInfo>,
+) -> Result<EvalResult, EvalError>;
+
+pub type BuiltinMethodRegistry = HashMap<Type, HashMap<String, BuiltinMethodHandler>>;
+
 #[derive(Debug)]
 pub struct CallArg {
     pub value: EvalResult,
@@ -56,6 +67,7 @@ pub struct Environment {
     scopes: Vec<HashMap<String, VarInfo>>, // Variable scopes
     function_scopes: Vec<HashMap<String, Callable>>, // Function scopes
     artifact_scopes: Vec<HashMap<String, ArtifactSchema>>, // Artifact schemas per scope
+    builtin_methods: BuiltinMethodRegistry,
 }
 
 impl Environment {
@@ -65,6 +77,7 @@ impl Environment {
             scopes: vec![HashMap::new()],
             function_scopes: vec![HashMap::new()],
             artifact_scopes: vec![HashMap::new()],
+            builtin_methods: HashMap::new(),
         }
     }
 
@@ -260,6 +273,14 @@ impl Environment {
             .and_then(|schema| schema.method(method_name))
             .cloned()
     }
+
+    pub fn set_builtin_methods(&mut self, methods: BuiltinMethodRegistry) {
+        self.builtin_methods = methods;
+    }
+
+    pub fn builtin_methods(&self) -> &BuiltinMethodRegistry {
+        &self.builtin_methods
+    }
 }
 
 impl Default for Environment {
@@ -268,8 +289,8 @@ impl Default for Environment {
     }
 }
 
-/// Represents the value stored in a variable, which can be a boolean (Omen), integer (Arcana),
-/// floating-point number (Aether), string (Rune), list (Scroll), or map (Lexicon).
+/// Represents the value stored in a variable, including primitive scalars, collections,
+/// glyphs (type handles), and artifact instances.
 #[derive(Debug, Clone)]
 pub enum Value {
     Omen(bool),
@@ -279,6 +300,7 @@ pub enum Value {
     Abyss,
     Scroll(Rc<RefCell<Vec<Value>>>),
     Lexicon(Rc<RefCell<HashMap<String, Value>>>),
+    Glyph(Type),
     Artifact(ArtifactHandle),
 }
 

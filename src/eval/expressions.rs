@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 use crate::ast::{AST, LineInfo, Type};
 use crate::env::{CallArg, Callable, EngravedFunction, Environment, Value};
+use crate::stdlib::methods;
 
 use super::artifacts::{
     collect_field_chain, compare_artifacts, ensure_field_exists, expect_artifact_from_eval,
@@ -190,75 +191,6 @@ pub(crate) fn try_evaluate_expression(
                 ));
             }
         },
-        AST::Trans(expr, target_type, line_info) => {
-            let value = statements::evaluate(expr, env)?;
-            match target_type {
-                Type::Arcana => match value {
-                    EvalResult::Data(Value::Aether(n)) => EvalResult::data(Value::Arcana(n as i64)),
-                    EvalResult::Data(Value::Rune(s)) => s
-                        .as_ref()
-                        .parse::<i64>()
-                        .map(|parsed| EvalResult::data(Value::Arcana(parsed)))
-                        .map_err(|_| {
-                            EvalError::InvalidOperation(
-                                "Failed to convert Rune to Arcana".to_string(),
-                                line_info.clone(),
-                            )
-                        })?,
-                    _ => {
-                        return Err(EvalError::InvalidOperation(
-                            "Invalid cast to Arcana".to_string(),
-                            line_info.clone(),
-                        ));
-                    }
-                },
-                Type::Aether => match value {
-                    EvalResult::Data(Value::Arcana(n)) => EvalResult::data(Value::Aether(n as f64)),
-                    EvalResult::Data(Value::Rune(s)) => s
-                        .as_ref()
-                        .parse::<f64>()
-                        .map(|parsed| EvalResult::data(Value::Aether(parsed)))
-                        .map_err(|_| {
-                            EvalError::InvalidOperation(
-                                "Failed to convert Rune to Aether".to_string(),
-                                line_info.clone(),
-                            )
-                        })?,
-                    _ => {
-                        return Err(EvalError::InvalidOperation(
-                            "Invalid cast to Aether".to_string(),
-                            line_info.clone(),
-                        ));
-                    }
-                },
-                Type::Rune => match value {
-                    EvalResult::Data(Value::Arcana(n)) => {
-                        EvalResult::data(Value::Rune(Rc::new(n.to_string())))
-                    }
-                    EvalResult::Data(Value::Aether(n)) => {
-                        EvalResult::data(Value::Rune(Rc::new(n.to_string())))
-                    }
-                    _ => {
-                        return Err(EvalError::InvalidOperation(
-                            "Invalid cast to Rune".to_string(),
-                            line_info.clone(),
-                        ));
-                    }
-                },
-                Type::Omen => {
-                    return Err(EvalError::InvalidOperation(
-                        "Casting to Omen is not supported".to_string(),
-                        line_info.clone(),
-                    ));
-                }
-                _ => {
-                    return Err(EvalError::InvalidOperation(
-                        format!("Unsupported cast to type {:?}", target_type),
-                        line_info.clone(),
-                    ));
-                }
-            }
-        }
         AST::IndexAccess {
             target,
             index,
@@ -495,33 +427,13 @@ fn evaluate_method_call(
     line_info: &Option<LineInfo>,
 ) -> Result<EvalResult, EvalError> {
     let receiver_result = statements::evaluate(receiver, env)?;
-    let receiver_handle = expect_artifact_from_eval(receiver_result, line_info)?;
-    let schema = lookup_schema_from_handle(env, &receiver_handle, line_info)?;
-    let artifact_name = schema.name.clone();
-    let artifact_method = env
-        .get_artifact_method(&artifact_name, method_name)
-        .ok_or_else(|| {
-            EvalError::InvalidOperation(
-                format!("Method {}::{} is not defined", artifact_name, method_name),
-                line_info.clone(),
-            )
-        })?;
-
-    if artifact_method.requires_mutable_receiver {
-        ensure_method_receiver_mutability(env, receiver, &artifact_name, method_name, line_info)?;
-    }
-
-    let mut evaluated_args = Vec::with_capacity(args.len() + 1);
     let receiver_var_name = if let AST::Var(var_name, _) = receiver {
         Some(var_name.clone())
     } else {
         None
     };
-    evaluated_args.push(CallArg {
-        value: EvalResult::Artifact(receiver_handle),
-        var_name: receiver_var_name,
-    });
 
+    let mut evaluated_args = Vec::with_capacity(args.len());
     for arg in args {
         let evaluated_arg = statements::evaluate(arg, env)?;
         let var_name = if let AST::Var(var_name, _) = arg {
@@ -535,12 +447,42 @@ fn evaluate_method_call(
         });
     }
 
-    evaluate_engraved_function(
-        env,
-        evaluated_args,
-        artifact_method.function.clone(),
-        line_info,
-    )
+    match receiver_result {
+        EvalResult::Artifact(handle) => evaluate_artifact_method_call(
+            env,
+            receiver,
+            receiver_var_name,
+            handle,
+            method_name,
+            evaluated_args,
+            line_info,
+        ),
+        EvalResult::Data(Value::Artifact(handle)) => evaluate_artifact_method_call(
+            env,
+            receiver,
+            receiver_var_name,
+            handle,
+            method_name,
+            evaluated_args,
+            line_info,
+        ),
+        EvalResult::Data(value) => methods::dispatch_builtin_method(
+            env,
+            receiver,
+            receiver_var_name.as_deref(),
+            value,
+            method_name,
+            evaluated_args,
+            line_info,
+        ),
+        control => Err(EvalError::InvalidOperation(
+            format!(
+                "Cannot invoke method {} on control-flow result {:?}",
+                method_name, control
+            ),
+            line_info.clone(),
+        )),
+    }
 }
 
 fn ensure_method_receiver_mutability(
@@ -574,6 +516,51 @@ fn ensure_method_receiver_mutability(
         ),
         line_info.clone(),
     ))
+}
+
+fn evaluate_artifact_method_call(
+    env: &mut Environment,
+    receiver_ast: &AST,
+    receiver_var_name: Option<String>,
+    receiver_handle: crate::env::ArtifactHandle,
+    method_name: &str,
+    arg_values: Vec<CallArg>,
+    line_info: &Option<LineInfo>,
+) -> Result<EvalResult, EvalError> {
+    let schema = lookup_schema_from_handle(env, &receiver_handle, line_info)?;
+    let artifact_name = schema.name.clone();
+    let artifact_method = env
+        .get_artifact_method(&artifact_name, method_name)
+        .ok_or_else(|| {
+            EvalError::InvalidOperation(
+                format!("Method {}::{} is not defined", artifact_name, method_name),
+                line_info.clone(),
+            )
+        })?;
+
+    if artifact_method.requires_mutable_receiver {
+        ensure_method_receiver_mutability(
+            env,
+            receiver_ast,
+            &artifact_name,
+            method_name,
+            line_info,
+        )?;
+    }
+
+    let mut evaluated_args = Vec::with_capacity(arg_values.len() + 1);
+    evaluated_args.push(CallArg {
+        value: EvalResult::Artifact(receiver_handle),
+        var_name: receiver_var_name,
+    });
+    evaluated_args.extend(arg_values);
+
+    evaluate_engraved_function(
+        env,
+        evaluated_args,
+        artifact_method.function.clone(),
+        line_info,
+    )
 }
 
 fn evaluate_function_call(

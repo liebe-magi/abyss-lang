@@ -49,8 +49,8 @@ cargo install abyss-lang
 Alternatively, you can install AbySS by cloning the repository and building it locally. `cargo-llvm-cov` is supported for test coverage analysis.
 
 ```bash
-git clone https://github.com/your-repository/abyss.git
-cd abyss
+git clone https://github.com/liebe-magi/abyss-lang.git
+cd abyss-lang
 cargo install --path .
 ```
 
@@ -125,6 +125,7 @@ AbySS supports the following primitive types:
 - **scroll**: Ordered collections that can mix any element types.
 - **lexicon**: Rune-keyed dictionaries for structured data.
 - **materia**: A dynamically typed slot that can store any runtime value.
+- **glyph**: A compile-time type token used as an argument to `.trans(...)` or runtime APIs that need to refer to types by name.
 - **artifact**: Custom structs you define with `artifact Name { field: Type; }`, enforcing field presence, types, and read/write rules.
 
 ```abyss
@@ -145,17 +146,17 @@ forge essence: materia = 99;
 - `scroll`: Modeled after arcane parchment rolls, scroll values are indexed by arcana and preserve insertion order, making them ideal for spell queues or mixed data payloads.
 - `lexicon`: Inspired by grimoires and dictionaries, lexicon values map rune keys to arbitrary entries and allow quick lookups by string-like identifiers.
 - `materia`: Named after alchemical prime matter, materia variables willingly hold any type; they are perfect for staging data before you know its final shape or when writing polymorphic helpers.
+- `glyph`: Describes the runic representation of a type itself—think "type handle" rather than a runtime value. Glyphs travel through APIs like `.trans(glyph)` to describe the target type of a conversion without instantiating a real value.
 - `artifact`: Formalizes bespoke records. Declare a schema once and instantiate typed literals anywhere, with the evaluator ensuring every required field is provided exactly once and that nested fields honor their declared types.
 
 ### **Type Casting**
 
-In AbySS, type casting is achieved using the `trans` keyword.
-This allows the conversion of values from one type to another.
+Type casting in AbySS uses the builtin `.trans(glyph)` method that every runtime value inherits via the universal `materia` receiver. Pass a glyph describing the destination type and the interpreter handles the conversion in-place.
 
-`trans`: Short for "transformation," `trans` enables the conversion of one type into another, reflecting the idea of magical transformations in programming.
+`trans`: Short for "transformation," `trans` works as a method call registered in the stdlib's builtin method table. Because the dispatcher falls back to the `materia` table, you can call `.trans(...)` on any value without manual pattern matches.
 
 ```abyss
-forge x: arcana = trans(3.14 as arcana);
+forge x: arcana = 3.14.trans(arcana);
 ```
 
 ### **Variable Declaration**
@@ -455,26 +456,29 @@ Mutation requires the `morph` keyword, ensuring immutable data stays safe by def
 
 #### Collection rituals
 
-The standard library exposes helper spells for manipulating collections:
+The standard library exposes helper spells as methods so every collection trick rides the same dot syntax as artifacts:
 
-- `measure(collection)` – returns the length of a scroll or lexicon as `arcana`.
-- `inscribe(scroll, value)` – appends to a morph scroll.
-- `retract(scroll)` – pops and returns the last entry of a morph scroll.
-- `expunge(lexicon, "key")` – removes a rune key from a morph lexicon.
-- `contents(lexicon)` – reveals a scroll of the stored rune keys.
+- `scroll.tally()` – returns the length of a scroll as `arcana`.
+- `scroll.scribe(value)` – appends to a morph scroll.
+- `scroll.extract()` – pops and returns the last entry of a morph scroll.
+- `lexicon.tally()` – reports the number of rune entries as `arcana`.
+- `lexicon.define("key", value)` – inserts or updates a rune key on a morph lexicon.
+- `lexicon.expunge("key")` – removes a rune key from a morph lexicon.
+- `lexicon.glossary()` – reveals a scroll of the stored rune keys.
 
 ```abyss
 forge morph pack: scroll = ["ember"];
-inscribe(pack, "frost");
-unveil(measure(pack)); // 2
-unveil(retract(pack)); // "frost"
+pack.scribe("frost");
+unveil(pack.tally());   // 2
+unveil(pack.extract()); // "frost"
 
 forge morph ledger: lexicon = {"alpha": 1, "beta": 2};
-expunge(ledger, "alpha");
-unveil(contents(ledger)); // ["beta"]
+ledger.expunge("alpha");
+ledger.define("gamma", 3);
+unveil(ledger.glossary()); // ["beta", "gamma"]
 ```
 
-These rituals operate on runtime `EvalResult`s directly, so you can pass nested scrolls or lexicons without additional boilerplate.
+The evaluator enforces `morph` semantics for mutating calls, so attempting to `scribe` or `define` through an immutable binding surfaces a friendly runtime diagnostic instead of silently cloning the collection.
 
 ### **Artifacts**
 
@@ -547,18 +551,18 @@ unveil("x + 42 = ", x + 42);
 In the example above, the second `unveil` statement prints both the string `"x + 42 = "` and the result of the expression `x + 42` on the same line.
 
 For input, AbySS provides the `summon` function to read user input during script execution.
-The `summon` function takes a prompt message, always returns a `rune`, and callers can use `trans` to convert it into other types when needed.
+The `summon` function takes a prompt message, always returns a `rune`, and callers can use the `.trans(glyph)` method to convert it into other types when needed.
 
-- `summon`: Represents the act of calling forth something from the user, summon is used for standard input operations. Provide a prompt rune, and use `trans` to coerce the response into `arcana` or `aether` when numerical input is required.
+- `summon`: Represents the act of calling forth something from the user, summon is used for standard input operations. Provide a prompt rune, and use `.trans(arcana)` or `.trans(aether)` to coerce the response when numerical input is required.
 
 ```abyss
 forge name: rune = summon("Input your name: ");
-forge age: arcana = trans(summon("Input your age: ") as arcana);
+forge age: arcana = summon("Input your age: ").trans(arcana);
 unveil("Hello, ", name, "! You are ", age, " years old.");
 ```
 
 In this example, the user is prompted to enter their name and age.
-The string inputs are stored directly for `name`, while `age` is converted from the returned rune into an `arcana` using `trans` before being printed with `unveil`.
+The string inputs are stored directly for `name`, while `age` is converted from the returned rune into an `arcana` using `.trans(arcana)` before being printed with `unveil`.
 
 ## **VSCode Extension**
 

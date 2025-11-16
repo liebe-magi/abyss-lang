@@ -1,39 +1,40 @@
 mod test_base;
 
-use abyss_lang::eval::EvalResult;
+use abyss_lang::eval::{EvalError, EvalResult};
 use test_base::{Value, test_base};
 
 #[test]
-fn measure_handles_scroll_and_lexicon() {
+fn tally_handles_scroll_and_lexicon() {
     let script = r#"
         forge pack: scroll = [1, 2, 3];
-        measure(pack);
-        measure({"alpha": 1, "beta": 2});
+        forge ledger: lexicon = {"alpha": 1, "beta": 2};
+        pack.tally();
+        ledger.tally();
     "#;
 
     let results = test_base(script).expect("execution failed");
-    assert!(results.len() >= 3, "expected at least three statements");
-
-    match &results[1] {
-        EvalResult::Data(Value::Arcana(value)) => assert_eq!(*value, 3),
-        other => panic!("expected arcana from first measure, got {other:?}"),
-    }
+    assert!(results.len() >= 4, "expected at least four statements");
 
     match &results[2] {
+        EvalResult::Data(Value::Arcana(value)) => assert_eq!(*value, 3),
+        other => panic!("expected arcana from pack.tally(), got {other:?}"),
+    }
+
+    match &results[3] {
         EvalResult::Data(Value::Arcana(value)) => assert_eq!(*value, 2),
-        other => panic!("expected arcana from second measure, got {other:?}"),
+        other => panic!("expected arcana from ledger.tally(), got {other:?}"),
     }
 }
 
 #[test]
-fn inscribe_and_retract_mutate_scroll() {
+fn scribe_and_extract_mutate_scroll() {
     let script = r#"
         forge morph pack: scroll = [1];
-        inscribe(pack, 2);
-        inscribe(pack, 3);
-        measure(pack);
-        retract(pack);
-        measure(pack);
+        pack.scribe(2);
+        pack.scribe(3);
+        pack.tally();
+        pack.extract();
+        pack.tally();
     "#;
 
     let results = test_base(script).expect("execution failed");
@@ -41,29 +42,27 @@ fn inscribe_and_retract_mutate_scroll() {
 
     match &results[3] {
         EvalResult::Data(Value::Arcana(value)) => assert_eq!(*value, 3),
-        other => panic!("expected arcana from first measure, got {other:?}"),
+        other => panic!("expected arcana from first tally, got {other:?}"),
     }
 
     match &results[4] {
         EvalResult::Data(Value::Arcana(value)) => assert_eq!(*value, 3),
-        other => {
-            panic!("expected arcana from value returned by retract (popped value), got {other:?}")
-        }
+        other => panic!("expected arcana from extract result, got {other:?}"),
     }
 
     match &results[5] {
         EvalResult::Data(Value::Arcana(value)) => assert_eq!(*value, 2),
-        other => panic!("expected arcana from second measure, got {other:?}"),
+        other => panic!("expected arcana from second tally, got {other:?}"),
     }
 }
 
 #[test]
-fn expunge_and_contents_update_lexicon() {
+fn lexicon_methods_update_contents() {
     let script = r#"
         forge morph ledger: lexicon = {"alpha": 1, "beta": 2};
-        expunge(ledger, "alpha");
-        contents(ledger);
-        measure(ledger);
+        ledger.expunge("alpha");
+        ledger.glossary();
+        ledger.tally();
     "#;
 
     let results = test_base(script).expect("execution failed");
@@ -78,11 +77,118 @@ fn expunge_and_contents_update_lexicon() {
                 other => panic!("expected rune key, got {other:?}"),
             }
         }
-        other => panic!("expected scroll result from contents, got {other:?}"),
+        other => panic!("expected scroll result from glossary, got {other:?}"),
     }
 
     match &results[3] {
         EvalResult::Data(Value::Arcana(value)) => assert_eq!(*value, 1),
-        other => panic!("expected arcana from measure after expunge, got {other:?}"),
+        other => panic!("expected arcana from tally after expunge, got {other:?}"),
+    }
+}
+
+#[test]
+fn define_handles_insert_and_update() {
+    let script = r#"
+        forge morph ledger: lexicon = {"alpha": 1};
+        ledger.define("beta", 2);
+        ledger.define("alpha", 3);
+        ledger.glossary();
+        ledger.tally();
+    "#;
+
+    let results = test_base(script).expect("execution failed");
+    assert!(results.len() >= 5, "expected at least five statements");
+
+    match &results[3] {
+        EvalResult::Data(Value::Scroll(items)) => {
+            let borrowed = items.borrow();
+            assert_eq!(
+                borrowed.len(),
+                2,
+                "expected two rune keys after define calls"
+            );
+            let mut seen = borrowed
+                .iter()
+                .map(|value| match value {
+                    Value::Rune(text) => text.as_ref().clone(),
+                    other => panic!("expected rune key, got {other:?}"),
+                })
+                .collect::<std::collections::HashSet<_>>();
+            assert!(seen.remove("alpha"));
+            assert!(seen.remove("beta"));
+            assert!(seen.is_empty());
+        }
+        other => panic!("expected scroll result from glossary, got {other:?}"),
+    }
+
+    match &results[4] {
+        EvalResult::Data(Value::Arcana(value)) => assert_eq!(*value, 2),
+        other => panic!("expected arcana from tally after define, got {other:?}"),
+    }
+}
+
+#[test]
+fn scribe_requires_morph_scroll() {
+    let script = r#"
+        forge pack: scroll = [1];
+        pack.scribe(2);
+    "#;
+
+    match test_base(script) {
+        Ok(_) => panic!("expected immutability error"),
+        Err(err) => match err.downcast_ref::<EvalError>() {
+            Some(EvalError::InvalidOperation(message, _)) => {
+                assert!(
+                    message.contains("scroll::scribe"),
+                    "unexpected message: {}",
+                    message
+                );
+            }
+            other => panic!("expected invalid operation error, found {other:?}"),
+        },
+    }
+}
+
+#[test]
+fn expunge_requires_morph_lexicon() {
+    let script = r#"
+        forge ledger: lexicon = {"alpha": 1};
+        ledger.expunge("alpha");
+    "#;
+
+    match test_base(script) {
+        Ok(_) => panic!("expected immutability error"),
+        Err(err) => match err.downcast_ref::<EvalError>() {
+            Some(EvalError::InvalidOperation(message, _)) => {
+                assert!(
+                    message.contains("lexicon::expunge"),
+                    "unexpected message: {}",
+                    message
+                );
+            }
+            other => panic!("expected invalid operation error, found {other:?}"),
+        },
+    }
+}
+
+#[test]
+fn define_requires_rune_key() {
+    let script = r#"
+        forge morph ledger: lexicon = {"alpha": 1};
+        ledger.define(1, 2);
+    "#;
+
+    match test_base(script) {
+        Ok(_) => panic!("expected key type error"),
+        Err(err) => match err.downcast_ref::<EvalError>() {
+            Some(EvalError::TypeError(message, _)) => {
+                assert!(
+                    message.contains("key must be a rune"),
+                    "unexpected message: {}",
+                    message
+                );
+            }
+            other => panic!("expected type error, found {other:?}"),
+        },
     }
 }

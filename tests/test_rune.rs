@@ -116,7 +116,7 @@ fn test_unveil_rune_3() {
 #[test]
 fn test_trans_in_string_concatenation() {
     let input = r#"
-    forge x: rune = "answer: " + trans(42 as rune);
+    forge x: rune = "answer: " + 42.trans(rune);
     x;
     "#;
     match test_base(input) {
@@ -132,7 +132,7 @@ fn test_trans_in_string_concatenation() {
 #[test]
 fn test_trans_in_arithmetic_expression() {
     let input = r#"
-    forge y: arcana = trans("42" as arcana) + 8;
+    forge y: arcana = "42".trans(arcana) + 8;
     y;
     "#;
     match test_base(input) {
@@ -147,7 +147,7 @@ fn test_trans_in_arithmetic_expression() {
 fn test_trans_with_assignment_operator() {
     let input = r#"
     forge morph z: rune = "answer: ";
-    z += trans(42 as rune);
+    z += 42.trans(rune);
     z;
     "#;
     match test_base(input) {

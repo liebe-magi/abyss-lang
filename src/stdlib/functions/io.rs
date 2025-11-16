@@ -1,4 +1,4 @@
-use crate::ast::LineInfo;
+use crate::ast::{LineInfo, Type};
 use crate::env::{CallArg, Environment, Value};
 use crate::eval::{EvalError, EvalResult};
 use std::io::{self, Write};
@@ -132,6 +132,21 @@ pub(crate) fn format_eval_result(
     }
 }
 
+fn glyph_label(var_type: &Type) -> String {
+    match var_type {
+        Type::Arcana => "arcana".to_string(),
+        Type::Aether => "aether".to_string(),
+        Type::Rune => "rune".to_string(),
+        Type::Omen => "omen".to_string(),
+        Type::Abyss => "abyss".to_string(),
+        Type::Scroll => "scroll".to_string(),
+        Type::Lexicon => "lexicon".to_string(),
+        Type::Materia => "materia".to_string(),
+        Type::Glyph => "glyph".to_string(),
+        Type::Artifact(name) => name.clone(),
+    }
+}
+
 pub(crate) fn format_value(value: &Value, line: &Option<LineInfo>) -> Result<String, EvalError> {
     match value {
         Value::Omen(b) => Ok(if *b { "boon" } else { "hex" }.to_string()),
@@ -155,6 +170,7 @@ pub(crate) fn format_value(value: &Value, line: &Option<LineInfo>) -> Result<Str
             }
             Ok(format!("{{{}}}", pieces.join(", ")))
         }
+        Value::Glyph(var_type) => Ok(glyph_label(var_type)),
         Value::Artifact(handle) => format_artifact(handle, line),
     }
 }

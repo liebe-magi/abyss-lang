@@ -1138,7 +1138,6 @@ fn primary_expr_parser<'src>(
     expression: BoxedParser<'src, SpannedAst>,
 ) -> BoxedParser<'src, SpannedAst> {
     choice((
-        trans_parser(ctx.clone(), expression.clone()),
         list_literal_parser(ctx.clone(), expression.clone()),
         map_literal_parser(ctx.clone(), expression.clone()),
         artifact_literal_parser(ctx.clone(), expression.clone()),
@@ -1305,31 +1304,6 @@ fn create_index_access(
         },
         span,
     )
-}
-
-fn trans_parser<'src>(
-    ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
-    let ctx_for_map = ctx.clone();
-    just(Token::Trans)
-        .map_with(|_, extra| extra.span())
-        .then_ignore(just(Token::OpenParen))
-        .then(expression.clone())
-        .then_ignore(just(Token::As))
-        .then(type_parser())
-        .then(just(Token::CloseParen).map_with(|_, extra| extra.span()))
-        .map(
-            move |(((trans_span, expr_node), (target_type, _)), close_span)| {
-                let span = SimpleSpan::new(trans_span.start(), close_span.end());
-                let info = ctx_for_map.info(span);
-                (
-                    AST::Trans(Box::new(expr_node.0), target_type, info.clone()),
-                    span,
-                )
-            },
-        )
-        .boxed()
 }
 
 fn func_call_parser<'src>(
@@ -1517,7 +1491,7 @@ fn literal_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedAst> {
 
 fn identifier_node<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_map = ctx.clone();
-    select! { Token::Identifier(name) => name, Token::Core => "core".to_string() }
+    select! { Token::Identifier(name) => name, Token::Core => "core".to_string(), Token::Type(ty) => type_keyword_name(&ty) }
         .map_with(move |name, extra| {
             let span = extra.span();
             let info = ctx_for_map.info(span);
@@ -1552,4 +1526,20 @@ fn type_parser<'src>() -> BoxedParser<'src, (Type, SimpleSpan<usize>)> {
             .map_with(|name, extra| (Type::Artifact(name), extra.span())),
     ))
     .boxed()
+}
+
+fn type_keyword_name(ty: &Type) -> String {
+    match ty {
+        Type::Arcana => "arcana",
+        Type::Aether => "aether",
+        Type::Rune => "rune",
+        Type::Omen => "omen",
+        Type::Abyss => "abyss",
+        Type::Scroll => "scroll",
+        Type::Lexicon => "lexicon",
+        Type::Materia => "materia",
+        Type::Glyph => "glyph",
+        Type::Artifact(name) => name,
+    }
+    .to_string()
 }

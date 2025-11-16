@@ -7,13 +7,14 @@ AbySS is a custom, magic-themed scripting language with its own interpreter, for
 - Example programs and tests that document the language surface area and ensure backwards-compatible behaviour.
 
 ## Tech Stack
-- Rust stable toolchain (edition 2021) for the interpreter, CLI, and library code.
-- `chumsky` 0.9 for parser combinators and incremental-friendly grammar definitions.
-- `ariadne` 0.3 for themed diagnostic rendering.
+- Rust stable toolchain (edition 2024) for the interpreter, CLI, and library code.
+- `chumsky` 0.11 for parser combinators and incremental-friendly grammar definitions.
+- `ariadne` 0.6 for themed diagnostic rendering.
 - `clap` 4 for the multi-command CLI interface (`cast`, `invoke`, `align`).
 - `rustyline` 17 for the REPL editor and history management.
 - `colored` 3 for terminal styling and diagnostics.
 - `dirs` 6 for OS-specific config directory discovery.
+- `ordered-float` 5 for deterministic floating-point ordering during comparisons and formatting.
 
 ## Project Conventions
 
@@ -28,6 +29,7 @@ AbySS is a custom, magic-themed scripting language with its own interpreter, for
 - **Interpreter**: `start_interpreter` in `main.rs` powers the REPL, orchestrating input buffering, brace balancing, AST inspection (debug mode), and evaluation.
 - **Formatter**: `format::format_ast` pretty-prints AST nodes for both CLI formatting and REPL output capture.
 - **Library/CLI split**: Core language functionality remains in `abyss_lang` so editor tooling and tests can consume the same APIs as the CLI.
+- **Stdlib builtin dispatch**: `stdlib::methods` registers per-type method tables (scroll, lexicon, materia, etc.) plus a fallback dispatcher so evaluator code routes every `value.method(...)` invocation through a unified lookup instead of ad-hoc branching.
 - **Examples**: Canonical `.aby` programs sit in `examples/` and serve both documentation and manual regression testing.
 
 ### Testing Strategy
@@ -43,7 +45,7 @@ AbySS is a custom, magic-themed scripting language with its own interpreter, for
 - GitHub Actions run build/test workflows and must pass before merging. Sync `develop` frequently to minimise conflicts.
 
 ## Domain Context
-- Language types map to magical concepts: `arcana` (integers), `aether` (floats), `rune` (strings), `omen` (booleans using `boon`/`hex`), `abyss` (unit).
+- Language types map to magical concepts: `arcana` (integers), `aether` (floats), `rune` (strings), `omen` (booleans using `boon`/`hex`), `abyss` (unit), `scroll`/`lexicon` (collections), `materia` (untyped slot), and `glyph` (type tokens passed to conversion APIs).
 - Control flow uses themed keywords: `oracle` (conditionals/patterns), `orbit` (loops with `resume`/`eject`), `engrave` (function def), `summon` (input), `unveil` (output).
 - Statements terminate with semicolons; block structure relies on braces, so formatter and REPL brace counting must remain accurate.
 - Error reporting surfaces evaluation line info using `EvalError` variants; CLI paths should render coloured diagnostics via `display_error_with_source`.

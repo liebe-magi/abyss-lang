@@ -51,7 +51,6 @@ pub enum AST {
         line_info: Option<LineInfo>,
     },
     Var(String, Option<LineInfo>),
-    Trans(Box<AST>, Type, Option<LineInfo>),
     Reveal(Box<AST>, Option<LineInfo>),
     Oracle {
         is_match: bool,
@@ -180,6 +179,7 @@ pub enum Type {
     Scroll,
     Lexicon,
     Materia,
+    Glyph,
     Artifact(String),
 }
 

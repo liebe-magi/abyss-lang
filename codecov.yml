@@ -1,3 +1,15 @@
+codecov:
+  branch: develop
+
+coverage:
+  status:
+    project:
+      default:
+        target: 80%
+    patch:
+      default:
+        target: 70%
+
 comment:
   layout: "diff, flags, files"
   behavior: default

@@ -10,6 +10,7 @@ fn type_keyword(var_type: &Type) -> String {
         Type::Scroll => "scroll".to_string(),
         Type::Lexicon => "lexicon".to_string(),
         Type::Materia => "materia".to_string(),
+        Type::Glyph => "glyph".to_string(),
         Type::Artifact(name) => name.clone(),
     }
 }
@@ -164,13 +165,6 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
             false => "hex".to_string(),
         },
         AST::Abyss(_) => "abyss".to_string(),
-        AST::Trans(value, var_type, _) => {
-            format!(
-                "trans({} as {})",
-                format_ast(value, indent_level),
-                type_keyword(var_type)
-            )
-        }
         AST::Reveal(value, _) => {
             let val = format_ast(value, indent_level);
             let trimmed_val = val.trim();

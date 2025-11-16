@@ -65,9 +65,6 @@ fn format_basic_expressions_and_assignments() {
     assert_eq!(format_ast(&AST::Omen(true, None), 0), "boon");
     assert_eq!(format_ast(&AST::Abyss(None), 0), "abyss");
 
-    let trans = AST::Trans(rune("alpha"), Type::Artifact("Glyph".into()), None);
-    assert_eq!(format_ast(&trans, 0), "trans(\"alpha\" as Glyph)");
-
     let reveal_core = AST::Reveal(var("sigil"), None);
     assert_eq!(format_ast(&reveal_core, 0), "reveal sigil");
 
@@ -316,6 +313,7 @@ fn format_type_keyword_variants() {
         (Type::Scroll, "scroll".to_string()),
         (Type::Lexicon, "lexicon".to_string()),
         (Type::Materia, "materia".to_string()),
+        (Type::Glyph, "glyph".to_string()),
         (Type::Artifact("Relic".into()), "Relic".to_string()),
     ];
 

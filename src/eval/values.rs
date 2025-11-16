@@ -107,6 +107,13 @@ pub(crate) fn convert_to_typed_value(
                 line_info.clone(),
             )),
         },
+        Type::Glyph => match value {
+            Value::Glyph(_) => Ok(value),
+            _ => Err(EvalError::TypeError(
+                "Expected glyph value".to_string(),
+                line_info.clone(),
+            )),
+        },
         Type::Artifact(expected) => match value {
             Value::Artifact(handle) => {
                 let borrowed = handle.borrow();
@@ -191,6 +198,7 @@ pub(crate) fn describe_value(value: &Value) -> &'static str {
         Value::Abyss => "abyss",
         Value::Scroll(_) => "scroll",
         Value::Lexicon(_) => "lexicon",
+        Value::Glyph(_) => "glyph",
         Value::Artifact(_) => "artifact",
     }
 }
@@ -217,6 +225,7 @@ fn clone_value(value: &Value) -> Value {
         Value::Abyss => Value::Abyss,
         Value::Scroll(values) => Value::Scroll(clone_scroll(values)),
         Value::Lexicon(entries) => Value::Lexicon(clone_lexicon(entries)),
+        Value::Glyph(ty) => Value::Glyph(ty.clone()),
         Value::Artifact(handle) => Value::Artifact(clone_artifact_handle(handle)),
     }
 }

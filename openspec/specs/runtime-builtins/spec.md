@@ -76,40 +76,55 @@ The evaluator SHALL construct `Rc<RefCell<_>>` handles for literal nodes, clone 
 - **WHEN** the evaluator executes the assignment
 - **THEN** it SHALL verify `bag` is mutable, borrow the shared scroll mutably, update index `0`, and both `bag` and `alias` SHALL observe the new value because they share the same handle.
 
-### Requirement: Stdlib registers collection helpers
-The stdlib SHALL expose collection-oriented builtins via `Callable::Builtin` so scripts can introspect and mutate shared collections consistently by borrowing the underlying `Rc<RefCell<_>>` handles rather than replacing entire vectors or maps.
+### Requirement: Stdlib exposes collection methods
+The stdlib SHALL expose collection-oriented helpers as themed builtin methods attached to `scroll` and `lexicon` receivers so scripts call them via dot syntax (`bag.tally()`, `lex.define(...)`). The runtime SHALL enforce `morph core` restrictions on mutating helpers by checking the receiver's mutability before borrowing the shared collection handles.
 
-#### Scenario: measure returns length
-- **GIVEN** `measure([1, 2, 3])`
-- **WHEN** the builtin executes
-- **THEN** it SHALL borrow the scroll immutably, return an `arcana` count of `3`, and avoid cloning the collection data.
+#### Scenario: tally returns scroll length
+- **GIVEN** `forge bag: scroll = [1, 2, 3];`
+- **WHEN** code executes `forge count: arcana = bag.tally();`
+- **THEN** the builtin SHALL borrow the scroll immutably and return `EvalResult::Data(Value::Arcana(3))`.
 
-#### Scenario: inscribe appends value
-- **GIVEN** `morph bag: scroll = []; forge alias: materia = bag; inscribe(alias, "sigil");`
-- **WHEN** the builtin runs
-- **THEN** it SHALL borrow `bag`'s shared handle mutably, append the rune, and both `bag` and `alias` SHALL report the appended element afterwards.
+#### Scenario: scribe appends via morph core
+- **GIVEN** `forge morph bag: scroll = [];`
+- **WHEN** the program calls `bag.scribe("sigil");`
+- **THEN** the builtin SHALL verify the receiver is mutable, borrow the shared scroll mutably, push the rune, and return `abyss`.
 
-#### Scenario: retract pops and returns element
-- **GIVEN** `morph bag: scroll = [1]; forge last: materia = retract(bag);`
-- **WHEN** the builtin executes
-- **THEN** it SHALL borrow the scroll mutably, remove the final element, return it as `EvalResult::Data(Value::Arcana(1))`, and share the mutated scroll with all aliases.
+#### Scenario: scribe rejects immutable receiver
+- **GIVEN** `forge bag: scroll = [];`
+- **WHEN** the program calls `bag.scribe(1);`
+- **THEN** the builtin SHALL raise an `EvalError` explaining that the receiver must be declared with `morph` before a mutating method may run, leaving the scroll unchanged.
 
-#### Scenario: expunge removes lexicon key
-- **GIVEN** `morph data: lexicon = {"id": 1}; forge alias: materia = data; expunge(alias, "id");`
-- **WHEN** the builtin runs
-- **THEN** it SHALL borrow the shared lexicon mutably, delete the `"id"` entry, and both bindings SHALL observe the deletion.
+#### Scenario: extract pops last element
+- **GIVEN** `forge morph bag: scroll = [1];`
+- **WHEN** code executes `forge last: materia = bag.extract();`
+- **THEN** the builtin SHALL borrow the scroll mutably, remove the final entry, and return the removed value as `EvalResult::Data`.
 
-#### Scenario: contents lists lexicon keys
-- **GIVEN** `contents({"id": 1, "name": "abyss"})`
-- **WHEN** the builtin executes
-- **THEN** it SHALL borrow the lexicon immutably, collect rune keys into a new `Value::Scroll(Rc<RefCell<Vec<Value>>>)`, and return it via `EvalResult::Data`.
+#### Scenario: lexicon tally counts entries
+- **GIVEN** `forge codex: lexicon = {"id": 7};`
+- **WHEN** code runs `codex.tally();`
+- **THEN** the builtin SHALL return the number of keys as an `arcana` without mutating the map.
+
+#### Scenario: define writes lexicon entry
+- **GIVEN** `forge morph codex: lexicon = {};`
+- **WHEN** the program calls `codex.define("id", 7);`
+- **THEN** the builtin SHALL verify mutability, borrow the lexicon mutably, insert the key/value pair, and return `abyss`.
+
+#### Scenario: expunge removes lexicon entry
+- **GIVEN** `forge morph codex: lexicon = {"id": 7};`
+- **WHEN** the program executes `codex.expunge("id");`
+- **THEN** the builtin SHALL delete the entry, returning `abyss`, and subsequent lookups SHALL observe the missing key.
+
+#### Scenario: glossary returns lexicon keys
+- **GIVEN** `forge codex: lexicon = {"id": 7, "name": "abyss"};`
+- **WHEN** the program calls `forge keys: scroll = codex.glossary();`
+- **THEN** the builtin SHALL borrow the lexicon immutably, collect rune keys into a new `scroll`, and return it through `EvalResult::Data`.
 
 ### Requirement: Shared heap-backed values
 The runtime SHALL store every heap-backed `Value` variant (`rune`, `scroll`, `lexicon`) in reference-counted pointers with interior mutability so aliases share one allocation, and SHALL wrap runtime data in `EvalResult::Data(Value)` so interpreter code has a single data representation.
 
 #### Scenario: Assignment keeps shared handle
 - **GIVEN** `forge a: scroll = [1]; forge b: materia = a;`
-- **WHEN** the evaluator executes `inscribe(b, 9);`
+- **WHEN** the evaluator executes `b.scribe(9);`
 - **THEN** `a` and `b` SHALL reference the same `Rc<RefCell<Vec<Value>>>`
 - **AND** reading `a` afterwards SHALL observe the appended `9` without copying the entire scroll.
 
@@ -300,4 +315,36 @@ The runtime SHALL implement equality checks for artifact instances by comparing 
 - **WHEN** compared for equality
 - **THEN** the result SHALL be `hex` (false) as they are different types
 - **AND** no field comparison SHALL occur.
+
+### Requirement: Stdlib centralises builtin method dispatch
+The runtime stdlib SHALL own a registry of builtin methods keyed first by runtime type (e.g., `Type::Scroll`, `Type::Lexicon`, `Type::Materia`) and then by method name so the evaluator can remain agnostic of stdlib behavior. The registry SHALL live inside `stdlib::methods` alongside Rust implementations for each supported receiver type, and SHALL expose a single dispatcher that accepts the receiver `Value`, method name, argument list, and evaluation context.
+
+#### Scenario: Register method tables during startup
+- **WHEN** `stdlib::create_global_environment` runs
+- **THEN** it SHALL call `stdlib::methods::get_all_builtin_methods()` (or equivalent) to build a per-type method table
+- **AND** it SHALL store the resulting registry in the global environment so every scope can reuse the dispatcher.
+
+#### Scenario: Evaluator delegates method calls
+- **GIVEN** user code invokes `bag.tally()` on a scroll
+- **WHEN** the evaluator resolves the receiver value and observes its runtime type
+- **THEN** it SHALL pass the receiver, method name (`"tally"`), and arguments into the stdlib dispatcher
+- **AND** the dispatcher SHALL look up the scroll method table and execute the registered Rust implementation.
+
+#### Scenario: Unknown method surfaces coherent error
+- **GIVEN** user code calls `lexicon.unknown()`
+- **WHEN** the dispatcher fails to find the requested method in the lexicon table
+- **THEN** it SHALL raise a runtime error that identifies the receiver type and method name, leaving the evaluator logic unchanged.
+
+### Requirement: Materia Trans Method
+The stdlib SHALL register a builtin method named `trans` for the universal `materia` type so any runtime value can invoke conversions through dot syntax. The method SHALL be discoverable through the method dispatch table, accept exactly one glyph argument, and delegate to the evaluator's conversion helpers.
+
+#### Scenario: Register trans as builtin method
+- **GIVEN** the interpreter initialises the stdlib tables
+- **WHEN** the environment requests the method metadata for a `materia` receiver named `trans`
+- **THEN** it SHALL receive a `Callable::Builtin` entry referencing the Rust implementation, marked immutable because it does not mutate the receiver.
+
+#### Scenario: Method call reaches builtin
+- **GIVEN** source `"1".trans(arcana)`
+- **WHEN** method dispatch resolves the call
+- **THEN** it SHALL route to the registered builtin, passing both the receiver and glyph argument without going through the legacy global `trans` function symbol.
 

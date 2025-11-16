@@ -1,4 +1,5 @@
 use abyss_lang::{
+    env::Value,
     eval::{EvalError, EvalResult, display_error_with_source, evaluate},
     format::format_ast,
     parser::{ParserDiagnostic, emit_diagnostics, parse},
@@ -197,15 +198,21 @@ fn start_interpreter(debug: bool) {
                                 current_session_code.push_str(&format_ast(&ast, 0));
                                 current_session_code.push('\n');
                                 match result {
-                                    EvalResult::Omen(true) => println!("{}", "boon".green()),
-                                    EvalResult::Omen(false) => println!("{}", "hex".green()),
-                                    EvalResult::Arcana(n) => {
+                                    EvalResult::Data(Value::Omen(true)) => {
+                                        println!("{}", "boon".green())
+                                    }
+                                    EvalResult::Data(Value::Omen(false)) => {
+                                        println!("{}", "hex".green())
+                                    }
+                                    EvalResult::Data(Value::Arcana(n)) => {
                                         println!("{}", format!("{}", n).green())
                                     }
-                                    EvalResult::Aether(n) => {
+                                    EvalResult::Data(Value::Aether(n)) => {
                                         println!("{}", format!("{}", n).green())
                                     }
-                                    EvalResult::Rune(s) => println!("{}", s.green()),
+                                    EvalResult::Data(Value::Rune(r)) => {
+                                        println!("{}", r.as_ref().green())
+                                    }
                                     _ => {}
                                 }
                             }

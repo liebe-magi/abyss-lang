@@ -5,7 +5,7 @@ forge morph profile: lexicon = {
 	"focus": summon("What is your favorite spell focus? ")
 };
 
-profile["age"] = trans(summon("Input your age: ") as arcana);
+profile["age"] = summon("Input your age: ").trans(arcana);
 
 unveil(
 	"Greetings, ",

@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "develop"]
   pull_request:
 
 jobs:
@@ -38,11 +38,22 @@ jobs:
           profile: minimal
           toolchain: stable
           override: true
+          components: llvm-tools-preview
 
-      - name: Run cargo test
-        uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@0be4756f42223b67aa4b7df5effad59010cbf4b9 # v2
         with:
-          command: test
+          tool: cargo-llvm-cov
+
+      - name: Run tests and generate coverage report
+        run: cargo llvm-cov --all-features --lcov --output-path lcov.info
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@5a1091511ad55cbe89839c7260b706298ca349f7 # v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./lcov.info
+          fail_ci_if_error: true
 
   lints:
     name: Lints
@@ -77,44 +88,77 @@ jobs:
         target:
           - x86_64-unknown-linux-gnu
           - x86_64-apple-darwin
+          - x86_64-pc-windows-msvc
+          - aarch64-unknown-linux-gnu
           - aarch64-apple-darwin
+          - aarch64-pc-windows-msvc
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
+            artifact_name: abyss
           - target: x86_64-apple-darwin
             os: macos-latest
+            artifact_name: abyss
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            artifact_name: abyss.exe
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact_name: abyss
           - target: aarch64-apple-darwin
             os: macos-latest
+            artifact_name: abyss
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+            artifact_name: abyss.exe
 
     runs-on: ${{ matrix.os }}
     outputs:
       version: ${{ steps.properties.outputs.version }}
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+
       - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1
         with:
           toolchain: stable
           profile: minimal
           target: ${{ matrix.target }}
           override: true
+      - name: Install cross-compilation tools (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Set linker for Linux ARM64
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
+      - name: Install cross-compilation tools (Windows ARM64)
+        if: matrix.target == 'aarch64-pc-windows-msvc'
+        run: rustup target add aarch64-pc-windows-msvc
+
       - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2
+
       - name: Build release version
         run: cargo build --verbose --release --target=${{ matrix.target }}
+
       - name: Export properties
         id: properties
         shell: bash
         run: |
-          VERSION=$(cargo run -- --version | awk '{print $2}')
+          VERSION=$(grep '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Upload artifact
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         with:
           name: build-${{ matrix.target }}-${{steps.properties.outputs.version}}
-          path: target/${{ matrix.target }}/release/abyss
+          path: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
 
   draft-release:
     name: Release Draft
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [build]
     runs-on: ubuntu-latest
     steps:
@@ -130,22 +174,23 @@ jobs:
             | jq '.[] | select(.draft == true) | .id' \
             | xargs -I '{}' \
           curl -X DELETE -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/$GITHUB_REPOSITORY/releases/{}
+
       - name: Create a draft release
         uses: actions/create-release@0cb9c9b65d5d1901c1f53e5e66eaf4afd303e70e # v1
         id: createDraftRelease
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ needs.build.outputs.version }}
-          release_name: ${{ needs.build.outputs.version }}
-          body: |
-            ## Changelog
-            - [ ]
+          tag_name: v${{ needs.build.outputs.version }}
+          release_name: v${{ needs.build.outputs.version }}
+          body: ""
           draft: true
           prerelease: false
+
       - name: Save upload url of this draft release.
         run: |
           echo '${{ steps.createDraftRelease.outputs.upload_url }}' > release_upload_url.txt
+
       - name: Upload `release_upload_url.txt`
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
         env:
@@ -160,14 +205,35 @@ jobs:
         target:
           - x86_64-unknown-linux-gnu
           - x86_64-apple-darwin
+          - x86_64-pc-windows-msvc
+          - aarch64-unknown-linux-gnu
           - aarch64-apple-darwin
+          - aarch64-pc-windows-msvc
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
+            artifact_name: abyss
+            release_name_suffix: ""
           - target: x86_64-apple-darwin
             os: macos-latest
+            artifact_name: abyss
+            release_name_suffix: ""
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            artifact_name: abyss.exe
+            release_name_suffix: ".exe"
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            artifact_name: abyss
+            release_name_suffix: ""
           - target: aarch64-apple-darwin
             os: macos-latest
+            artifact_name: abyss
+            release_name_suffix: ""
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+            artifact_name: abyss.exe
+            release_name_suffix: ".exe"
 
     needs: [build, draft-release]
     runs-on: ubuntu-latest
@@ -175,20 +241,21 @@ jobs:
       - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           name: draft-release
+
       - id: upload-url
         run: |
           echo "url=$(cat release_upload_url.txt)" >> $GITHUB_OUTPUT
+
       - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           name: build-${{ matrix.target }}-${{ needs.build.outputs.version }}
           path: build/
-      - name: zip the artifact
-        run: zip -j build/abyss.zip build/abyss
+
       - uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.upload-url.outputs.url }}
-          asset_path: ./build/abyss.zip
-          asset_name: abyss-${{ matrix.target }}-${{ needs.build.outputs.version }}.zip
-          asset_content_type: application/zip
+          asset_path: ./build/${{ matrix.artifact_name }}
+          asset_name: abyss-${{ matrix.target }}-${{ needs.build.outputs.version }}${{ matrix.release_name_suffix }}
+          asset_content_type: application/octet-stream

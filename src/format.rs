@@ -1,15 +1,17 @@
 use crate::ast::{AST, AssignmentOp, Type};
 
-fn type_keyword(var_type: &Type) -> &'static str {
+fn type_keyword(var_type: &Type) -> String {
     match var_type {
-        Type::Arcana => "arcana",
-        Type::Aether => "aether",
-        Type::Rune => "rune",
-        Type::Omen => "omen",
-        Type::Abyss => "abyss",
-        Type::Scroll => "scroll",
-        Type::Lexicon => "lexicon",
-        Type::Materia => "materia",
+        Type::Arcana => "arcana".to_string(),
+        Type::Aether => "aether".to_string(),
+        Type::Rune => "rune".to_string(),
+        Type::Omen => "omen".to_string(),
+        Type::Abyss => "abyss".to_string(),
+        Type::Scroll => "scroll".to_string(),
+        Type::Lexicon => "lexicon".to_string(),
+        Type::Materia => "materia".to_string(),
+        Type::Glyph => "glyph".to_string(),
+        Type::Artifact(name) => name.clone(),
     }
 }
 
@@ -39,7 +41,7 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
         AST::Mul(_, _, _) | AST::Div(_, _, _) | AST::Mod(_, _, _) => 60,
         AST::PowArcana(_, _, _) | AST::PowAether(_, _, _) => 70,
         AST::LogicalNot(_, _) => 80,
-        AST::IndexAccess { .. } => 90,
+        AST::IndexAccess { .. } | AST::FieldAccess { .. } => 90,
         _ => 100,
     };
 
@@ -146,6 +148,9 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
             }
         },
         AST::Var(name, _) => name.clone(),
+        AST::FieldAccess { target, field, .. } => {
+            format!("{}.{}", format_ast(target, indent_level), field)
+        }
         AST::Arcana(value, _) => format!("{}", value),
         AST::Aether(value, _) => {
             if value.fract() == 0.0 {
@@ -160,13 +165,6 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
             false => "hex".to_string(),
         },
         AST::Abyss(_) => "abyss".to_string(),
-        AST::Trans(value, var_type, _) => {
-            format!(
-                "trans({} as {})",
-                format_ast(value, indent_level),
-                type_keyword(var_type)
-            )
-        }
         AST::Reveal(value, _) => {
             let val = format_ast(value, indent_level);
             let trimmed_val = val.trim();
@@ -274,37 +272,61 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
             params,
             return_type,
             body,
+            method_target,
             ..
         } => {
             let return_type_str = match return_type {
-                Type::Abyss => "",
-                _ => type_keyword(return_type),
+                Type::Abyss => None,
+                _ => Some(type_keyword(return_type)),
             };
-            let params_str = params
-                .iter()
-                .map(|param| format_ast(param, indent_level))
-                .collect::<Vec<_>>()
-                .join(", ");
+            let mut param_strings = Vec::new();
+            let mut iter = params.iter();
+            if let Some(target) = method_target {
+                let receiver = if target.requires_morph {
+                    "morph core"
+                } else {
+                    "core"
+                };
+                param_strings.push(receiver.to_string());
+                debug_assert!(
+                    !params.is_empty(),
+                    "Artifact method with method_target must have at least one parameter (the receiver)"
+                );
+                iter.next();
+            }
+            for param in iter {
+                param_strings.push(format_ast(param, indent_level));
+            }
+            let params_str = param_strings.join(", ");
+            let qualified_name = if let Some(target) = method_target {
+                format!("{}::{}", target.artifact, name)
+            } else {
+                name.clone()
+            };
             match return_type_str {
-                "" => format!(
+                None => format!(
                     "engrave {}({}) {}",
-                    name,
+                    qualified_name,
                     params_str,
                     format_ast(body, indent_level)
                 ),
-                _ => format!(
+                Some(ret) => format!(
                     "engrave {}({}) -> {} {}",
-                    name,
+                    qualified_name,
                     params_str,
-                    return_type_str,
+                    ret,
                     format_ast(body, indent_level)
                 ),
             }
         }
         AST::EngraveParam {
-            name, param_type, ..
+            name,
+            param_type,
+            is_morph,
+            ..
         } => {
-            format!("{}: {}", name, type_keyword(param_type))
+            let qualifier = if *is_morph { "morph " } else { "" };
+            format!("{}{}: {}", qualifier, name, type_keyword(param_type))
         }
         AST::FuncCall { name, args, .. } => {
             let args_str = args
@@ -330,6 +352,20 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
                 .join(", ");
             format!("{{{}}}", contents)
         }
+        AST::ArtifactLiteral {
+            type_name, fields, ..
+        } => {
+            if fields.is_empty() {
+                format!("{} {{}}", type_name)
+            } else {
+                let contents = fields
+                    .iter()
+                    .map(|(field, value)| format!("{}: {}", field, format_ast(value, indent_level)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{} {{ {} }}", type_name, contents)
+            }
+        }
         AST::IndexAccess { target, index, .. } => {
             format!(
                 "{}[{}]",
@@ -348,6 +384,48 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
             format_ast(index, indent_level),
             format_ast(value, indent_level)
         ),
+        AST::FieldAssignment {
+            target,
+            field,
+            value,
+            ..
+        } => format!(
+            "{}.{} = {}",
+            format_ast(target, indent_level),
+            field,
+            format_ast(value, indent_level)
+        ),
+        AST::MethodCall {
+            receiver,
+            method,
+            args,
+            ..
+        } => {
+            let args_str = args
+                .iter()
+                .map(|arg| format_ast(arg, indent_level))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(
+                "{}.{}({})",
+                format_ast(receiver, indent_level),
+                method,
+                args_str
+            )
+        }
+        AST::ArtifactDef { name, fields, .. } => {
+            let mut result = format!("artifact {} {{\n", name);
+            for field in fields {
+                result.push_str(&format!(
+                    "{}{}: {};\n",
+                    "    ".repeat(indent_level + 1),
+                    field.name,
+                    type_keyword(&field.field_type)
+                ));
+            }
+            result.push_str(&format!("{}}}", indent));
+            result
+        }
         AST::Comment(text, _) => text.clone(),
         _ => format!("Not implemented: {:?}", ast),
     }

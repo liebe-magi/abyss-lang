@@ -1,7 +1,7 @@
 mod test_base;
 
 use abyss_lang::eval::EvalResult;
-use test_base::test_base;
+use test_base::{Value, test_base};
 
 #[test]
 fn test_oracle_simple_positive() {
@@ -15,7 +15,9 @@ fn test_oracle_simple_positive() {
     "#;
     match test_base(input) {
         Ok(results) => {
-            assert!(matches!(results[1], EvalResult::Rune(ref s) if s == "x is positive"))
+            assert!(
+                matches!(results[1], EvalResult::Data(Value::Rune(ref s)) if s.as_ref() == "x is positive")
+            )
         }
         Err(e) => panic!("Error: {:?}", e),
     }
@@ -32,7 +34,9 @@ fn test_oracle_simple_zero() {
     };
     "#;
     match test_base(input) {
-        Ok(results) => assert!(matches!(results[1], EvalResult::Rune(ref s) if s == "x is zero")),
+        Ok(results) => assert!(
+            matches!(results[1], EvalResult::Data(Value::Rune(ref s)) if s.as_ref() == "x is zero")
+        ),
         Err(e) => panic!("Error: {:?}", e),
     }
 }
@@ -48,7 +52,9 @@ fn test_oracle_with_omen_hex() {
     "#;
     match test_base(input) {
         Ok(results) => {
-            assert!(matches!(results[1], EvalResult::Rune(ref s) if s == "x is negative or zero"))
+            assert!(
+                matches!(results[1], EvalResult::Data(Value::Rune(ref s)) if s.as_ref() == "x is negative or zero")
+            )
         }
         Err(e) => panic!("Error: {:?}", e),
     }
@@ -66,7 +72,9 @@ fn test_oracle_with_computation() {
     "#;
     match test_base(input) {
         Ok(results) => {
-            assert!(matches!(results[1], EvalResult::Rune(ref s) if s == "y is greater than 100"))
+            assert!(
+                matches!(results[1], EvalResult::Data(Value::Rune(ref s)) if s.as_ref() == "y is greater than 100")
+            )
         }
         Err(e) => panic!("Error: {:?}", e),
     }
@@ -82,7 +90,9 @@ fn test_oracle_with_string_comparison() {
     };
     "#;
     match test_base(input) {
-        Ok(results) => assert!(matches!(results[1], EvalResult::Rune(ref s) if s == "a is abyss")),
+        Ok(results) => assert!(
+            matches!(results[1], EvalResult::Data(Value::Rune(ref s)) if s.as_ref() == "a is abyss")
+        ),
         Err(e) => panic!("Error: {:?}", e),
     }
 }
@@ -101,7 +111,9 @@ fn test_oracle_with_multiple_conditions_1() {
     "#;
     match test_base(input) {
         Ok(results) => {
-            assert!(matches!(results[2], EvalResult::Rune(ref s) if s == "a is not 1 and b is 2"))
+            assert!(
+                matches!(results[2], EvalResult::Data(Value::Rune(ref s)) if s.as_ref() == "a is not 1 and b is 2")
+            )
         }
         Err(e) => panic!("Error: {:?}", e),
     }
@@ -119,7 +131,9 @@ fn test_oracle_with_multiple_conditions_2() {
     "#;
     match test_base(input) {
         Ok(results) => {
-            assert!(matches!(results[0], EvalResult::Rune(ref s) if s == "a is 1 and b is not 2"))
+            assert!(
+                matches!(results[0], EvalResult::Data(Value::Rune(ref s)) if s.as_ref() == "a is 1 and b is not 2")
+            )
         }
         Err(e) => panic!("Error: {:?}", e),
     }
@@ -142,7 +156,7 @@ fn test_oracle_with_block_and_reveal() {
     y;
     "#;
     match test_base(input) {
-        Ok(results) => assert!(matches!(results[2], EvalResult::Arcana(-15))),
+        Ok(results) => assert!(matches!(results[2], EvalResult::Data(Value::Arcana(-15)))),
         Err(e) => panic!("Error: {:?}", e),
     }
 }

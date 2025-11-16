@@ -51,7 +51,6 @@ pub enum AST {
         line_info: Option<LineInfo>,
     },
     Var(String, Option<LineInfo>),
-    Trans(Box<AST>, Type, Option<LineInfo>),
     Reveal(Box<AST>, Option<LineInfo>),
     Oracle {
         is_match: bool,
@@ -86,11 +85,13 @@ pub enum AST {
         params: Vec<AST>,
         return_type: Type,
         body: Box<AST>,
+        method_target: Option<ArtifactMethodTarget>,
         line_info: Option<LineInfo>,
     },
     EngraveParam {
         name: String,
         param_type: Type,
+        is_morph: bool,
         line_info: Option<LineInfo>,
     },
     FuncCall {
@@ -117,6 +118,46 @@ pub enum AST {
         value: Box<AST>,
         line_info: Option<LineInfo>,
     },
+    ArtifactDef {
+        name: String,
+        fields: Vec<ArtifactField>,
+        line_info: Option<LineInfo>,
+    },
+    ArtifactLiteral {
+        type_name: String,
+        fields: Vec<(String, AST)>,
+        line_info: Option<LineInfo>,
+    },
+    FieldAccess {
+        target: Box<AST>,
+        field: String,
+        line_info: Option<LineInfo>,
+    },
+    FieldAssignment {
+        target: Box<AST>,
+        field: String,
+        value: Box<AST>,
+        line_info: Option<LineInfo>,
+    },
+    MethodCall {
+        receiver: Box<AST>,
+        method: String,
+        args: Vec<AST>,
+        line_info: Option<LineInfo>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct ArtifactField {
+    pub name: String,
+    pub field_type: Type,
+    pub line_info: Option<LineInfo>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ArtifactMethodTarget {
+    pub artifact: String,
+    pub requires_morph: bool,
 }
 
 /// Represents a conditional assignment within an oracle statement.
@@ -138,6 +179,8 @@ pub enum Type {
     Scroll,
     Lexicon,
     Materia,
+    Glyph,
+    Artifact(String),
 }
 
 /// Represents an assignment operation.

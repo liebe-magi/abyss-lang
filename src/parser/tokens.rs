@@ -10,14 +10,14 @@ use super::SimpleSpan;
 pub enum Token {
     Forge,
     Morph,
+    Core,
     Oracle,
     Orbit,
     Resume,
     Eject,
     Engrave,
     Reveal,
-    Trans,
-    As,
+    Artifact,
     Identifier(String),
     Type(Type),
     OmenLiteral(bool),
@@ -29,6 +29,7 @@ pub enum Token {
     Comma,
     Arrow,
     FatArrow,
+    DoubleColon,
     Assign,
     AddAssign,
     SubAssign,
@@ -61,6 +62,7 @@ pub enum Token {
     CloseBracket,
     RangeInclusive,
     RangeExclusive,
+    Dot,
 }
 
 pub type SpannedToken = (Token, SimpleSpan<usize>);
@@ -70,14 +72,14 @@ impl fmt::Display for Token {
         match self {
             Token::Forge => write!(f, "forge"),
             Token::Morph => write!(f, "morph"),
+            Token::Core => write!(f, "core"),
             Token::Oracle => write!(f, "oracle"),
             Token::Orbit => write!(f, "orbit"),
             Token::Resume => write!(f, "resume"),
             Token::Eject => write!(f, "eject"),
             Token::Engrave => write!(f, "engrave"),
             Token::Reveal => write!(f, "reveal"),
-            Token::Trans => write!(f, "trans"),
-            Token::As => write!(f, "as"),
+            Token::Artifact => write!(f, "artifact"),
             Token::Identifier(name) => write!(f, "identifier `{name}`"),
             Token::Type(ty) => write!(f, "type `{ty:?}`"),
             Token::OmenLiteral(true) => write!(f, "boon"),
@@ -90,6 +92,7 @@ impl fmt::Display for Token {
             Token::Comma => write!(f, ","),
             Token::Arrow => write!(f, "->"),
             Token::FatArrow => write!(f, "=>"),
+            Token::DoubleColon => write!(f, "::"),
             Token::Assign => write!(f, "="),
             Token::AddAssign => write!(f, "+="),
             Token::SubAssign => write!(f, "-="),
@@ -122,6 +125,7 @@ impl fmt::Display for Token {
             Token::CloseBracket => write!(f, "]"),
             Token::RangeInclusive => write!(f, "..="),
             Token::RangeExclusive => write!(f, ".."),
+            Token::Dot => write!(f, "."),
         }
     }
 }
@@ -189,14 +193,16 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<SpannedToken>, LexerExt
     let ident = text::ident::<_, LexerExtra<'src>>().map(|ident: &'src str| match ident {
         "forge" => Token::Forge,
         "morph" => Token::Morph,
+        "core" => Token::Core,
         "oracle" => Token::Oracle,
         "orbit" => Token::Orbit,
         "resume" => Token::Resume,
         "eject" => Token::Eject,
         "engrave" => Token::Engrave,
         "reveal" => Token::Reveal,
-        "trans" => Token::Trans,
-        "as" => Token::As,
+        "trans" => Token::Identifier("trans".to_string()),
+        "as" => Token::Identifier("as".to_string()),
+        "artifact" => Token::Artifact,
         "arcana" => Token::Type(Type::Arcana),
         "aether" => Token::Type(Type::Aether),
         "rune" => Token::Type(Type::Rune),
@@ -205,6 +211,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<SpannedToken>, LexerExt
         "scroll" => Token::Type(Type::Scroll),
         "lexicon" => Token::Type(Type::Lexicon),
         "materia" => Token::Type(Type::Materia),
+        "glyph" => Token::Type(Type::Glyph),
         "boon" => Token::OmenLiteral(true),
         "hex" => Token::OmenLiteral(false),
         _ => Token::Identifier(ident.to_string()),
@@ -220,6 +227,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<SpannedToken>, LexerExt
         just::<&str, _, LexerExtra<'src>>("/=").to(Token::DivAssign),
         just::<&str, _, LexerExtra<'src>>("%=").to(Token::ModAssign),
         just::<&str, _, LexerExtra<'src>>("=>").to(Token::FatArrow),
+        just::<&str, _, LexerExtra<'src>>("::").to(Token::DoubleColon),
         just::<&str, _, LexerExtra<'src>>("->").to(Token::Arrow),
         just::<&str, _, LexerExtra<'src>>("||").to(Token::DoublePipe),
         just::<&str, _, LexerExtra<'src>>("&&").to(Token::DoubleAmpersand),
@@ -251,6 +259,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<SpannedToken>, LexerExt
         just::<char, _, LexerExtra<'src>>('}').to(Token::CloseBrace),
         just::<char, _, LexerExtra<'src>>('[').to(Token::OpenBracket),
         just::<char, _, LexerExtra<'src>>(']').to(Token::CloseBracket),
+        just::<char, _, LexerExtra<'src>>('.').to(Token::Dot),
     ));
 
     let token = choice((

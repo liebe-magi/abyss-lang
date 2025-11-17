@@ -22,6 +22,9 @@
 			"include": "#operators"
 		},
 		{
+			"include": "#artifact_tokens"
+		},
+		{
 			"include": "#strings"
 		},
 		{
@@ -49,7 +52,7 @@
 			"patterns": [
 				{
 					"name": "keyword.control.abyss",
-					"match": "\\b(forge|unveil|oracle|trans|orbit|resume|eject|reveal|morph|engrave|summon)\\b"
+					"match": "\\b(forge|morph|core|oracle|orbit|resume|eject|engrave|reveal|artifact)\\b"
 				}
 			]
 		},
@@ -57,7 +60,7 @@
 			"patterns": [
 				{
 					"name": "storage.type.abyss",
-					"match": "\\b(omen|aether|arcana|rune|abyss)\\b"
+					"match": "\\b(arcana|aether|rune|omen|abyss|scroll|lexicon|materia|glyph)\\b"
 				}
 			]
 		},
@@ -73,7 +76,7 @@
 			"patterns": [
 				{
 					"name": "support.function.abyss",
-					"match": "\\b(unveil|trans|engrave|summon)\\b"
+					"match": "\\b(unveil|summon|trans)\\b"
 				}
 			]
 		},
@@ -81,7 +84,37 @@
 			"patterns": [
 				{
 					"name": "keyword.operator.abyss",
-					"match": "\\+|\\-|\\*|\\/|\\^|\\*\\*|%|\\bas\\b|==|!=|<=|>=|<|>|\\+=|\\-=|\\*=|\\/=|%=|\\^=|\\*\\*=|\\..|\\..="
+					"match": "\\+|\\-|\\*|\\/|\\^|\\*\\*|%|==|!=|<=|>=|<|>|=|\\+=|\\-=|\\*=|\\/=|%=|\\^=|\\*\\*=|::|=>|->|&&|\\|\\||!|\\bas\\b|\\.\\.=|\\.\\."
+				}
+			]
+		},
+		"artifact_tokens": {
+			"patterns": [
+				{
+					"match": "\\bartifact\\s+([A-Z][A-Za-z0-9_]*)",
+					"captures": {
+						"1": {
+							"name": "entity.name.type.abyss"
+						}
+					}
+				},
+				{
+					"name": "entity.name.type.abyss",
+					"match": "\\b([A-Z][A-Za-z0-9_]*)\\b(?=\\s*::)",
+					"captures": {
+						"1": {
+							"name": "entity.name.type.abyss"
+						}
+					}
+				},
+				{
+					"name": "entity.name.type.abyss",
+					"match": "\\b([A-Z][A-Za-z0-9_]*)\\b(?=\\s*\\{)",
+					"captures": {
+						"1": {
+							"name": "entity.name.type.abyss"
+						}
+					}
 				}
 			]
 		},

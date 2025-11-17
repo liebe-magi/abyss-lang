@@ -99,7 +99,6 @@
 					}
 				},
 				{
-					"name": "entity.name.type.abyss",
 					"match": "\\b([A-Z][A-Za-z0-9_]*)\\b(?=\\s*::)",
 					"captures": {
 						"1": {
@@ -108,7 +107,6 @@
 					}
 				},
 				{
-					"name": "entity.name.type.abyss",
 					"match": "\\b([A-Z][A-Za-z0-9_]*)\\b(?=\\s*\\{)",
 					"captures": {
 						"1": {

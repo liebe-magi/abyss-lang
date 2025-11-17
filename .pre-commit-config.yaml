@@ -34,3 +34,20 @@ repos:
         language: system
         files: \.rs$
         pass_filenames: false
+
+      - id: bun-extension-build
+        name: bun run compile (VS Code extension)
+        description: Compile the AbySS Codex Familiar extension via Bun before committing
+        entry: bash
+        language: system
+        pass_filenames: false
+        files: ^editors/code/
+        args:
+          - -c
+          - |
+            cd editors/code
+            if ! bun install --frozen-lockfile; then
+              echo "error: Lockfile is out of sync. Please run 'bun install' in editors/code and commit the updated lockfile." >&2
+              exit 1
+            fi
+            bun run compile

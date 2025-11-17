@@ -1,0 +1,116 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "AbySS",
+	"scopeName": "source.abyss",
+	"patterns": [
+		{
+			"include": "#comments"
+		},
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#types"
+		},
+		{
+			"include": "#constants"
+		},
+		{
+			"include": "#functions"
+		},
+		{
+			"include": "#operators"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#numbers"
+		},
+		{
+			"include": "#identifiers"
+		}
+	],
+	"repository": {
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.line.double-slash.abyss",
+					"match": "//.*$"
+				},
+				{
+					"name": "comment.block.abyss",
+					"begin": "/\\*",
+					"end": "\\*/"
+				}
+			]
+		},
+		"keywords": {
+			"patterns": [
+				{
+					"name": "keyword.control.abyss",
+					"match": "\\b(forge|unveil|oracle|trans|orbit|resume|eject|reveal|morph|engrave|summon)\\b"
+				}
+			]
+		},
+		"types": {
+			"patterns": [
+				{
+					"name": "storage.type.abyss",
+					"match": "\\b(omen|aether|arcana|rune|abyss)\\b"
+				}
+			]
+		},
+		"constants": {
+			"patterns": [
+				{
+					"name": "constant.language.abyss",
+					"match": "\\b(boon|hex)\\b"
+				}
+			]
+		},
+		"functions": {
+			"patterns": [
+				{
+					"name": "support.function.abyss",
+					"match": "\\b(unveil|trans|engrave|summon)\\b"
+				}
+			]
+		},
+		"operators": {
+			"patterns": [
+				{
+					"name": "keyword.operator.abyss",
+					"match": "\\+|\\-|\\*|\\/|\\^|\\*\\*|%|\\bas\\b|==|!=|<=|>=|<|>|\\+=|\\-=|\\*=|\\/=|%=|\\^=|\\*\\*=|\\..|\\..="
+				}
+			]
+		},
+		"strings": {
+			"name": "string.quoted.double.abyss",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.abyss",
+					"match": "\\\\."
+				}
+			]
+		},
+		"numbers": {
+			"patterns": [
+				{
+					"name": "constant.numeric.abyss",
+					"match": "\\b[+-]?\\d+\\.?\\d*\\b"
+				}
+			]
+		},
+		"identifiers": {
+			"patterns": [
+				{
+					"name": "variable.abyss",
+					"match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
+				}
+			]
+		}
+	}
+}

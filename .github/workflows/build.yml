@@ -224,8 +224,6 @@ jobs:
           name: extension-vsix
           path: editors/code/${{ steps.package.outputs.vsix_name }}
 
-
-
   draft-release:
     name: Release Draft
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

@@ -176,53 +176,8 @@ jobs:
           name: build-${{ matrix.target }}-${{steps.properties.outputs.version}}
           path: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
 
-  draft-release:
-    name: Release Draft
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [build]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Fetch Sources
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
-
-      - name: Remove Old Release Drafts
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/$GITHUB_REPOSITORY/releases \
-            | tr '\r\n' ' ' \
-            | jq '.[] | select(.draft == true) | .id' \
-            | xargs -I '{}' \
-          curl -X DELETE -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/$GITHUB_REPOSITORY/releases/{}
-
-      - name: Create a draft release
-        uses: actions/create-release@0cb9c9b65d5d1901c1f53e5e66eaf4afd303e70e # v1
-        id: createDraftRelease
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v${{ needs.build.outputs.version }}
-          release_name: v${{ needs.build.outputs.version }}
-          body: ""
-          draft: true
-          prerelease: false
-
-      - name: Save upload url of this draft release.
-        run: |
-          echo '${{ steps.createDraftRelease.outputs.upload_url }}' > release_upload_url.txt
-
-      - name: Upload `release_upload_url.txt`
-        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          name: draft-release
-          path: release_upload_url.txt
-
   extension-package:
     name: Extension Package
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [build]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -268,6 +223,51 @@ jobs:
         with:
           name: extension-vsix
           path: editors/code/${{ steps.package.outputs.vsix_name }}
+
+
+
+  draft-release:
+    name: Release Draft
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Sources
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+
+      - name: Remove Old Release Drafts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/$GITHUB_REPOSITORY/releases \
+            | tr '\r\n' ' ' \
+            | jq '.[] | select(.draft == true) | .id' \
+            | xargs -I '{}' \
+          curl -X DELETE -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/repos/$GITHUB_REPOSITORY/releases/{}
+
+      - name: Create a draft release
+        uses: actions/create-release@0cb9c9b65d5d1901c1f53e5e66eaf4afd303e70e # v1
+        id: createDraftRelease
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ needs.build.outputs.version }}
+          release_name: v${{ needs.build.outputs.version }}
+          body: ""
+          draft: true
+          prerelease: false
+
+      - name: Save upload url of this draft release.
+        run: |
+          echo '${{ steps.createDraftRelease.outputs.upload_url }}' > release_upload_url.txt
+
+      - name: Upload `release_upload_url.txt`
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          name: draft-release
+          path: release_upload_url.txt
 
   attach-assets-to-release:
     strategy:

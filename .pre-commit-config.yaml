@@ -46,5 +46,8 @@ repos:
           - -c
           - |
             cd editors/code
-            bun install --frozen-lockfile
+            if ! bun install --frozen-lockfile; then
+              echo "error: Lockfile is out of sync. Please run 'bun install' in editors/code and commit the updated lockfile." >&2
+              exit 1
+            fi
             bun run compile

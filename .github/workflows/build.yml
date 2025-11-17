@@ -244,8 +244,21 @@ jobs:
       - name: Package VS Code extension
         id: package
         run: |
-          EXT_NAME=$(jq -r '.name' package.json)
-          EXT_VERSION=$(jq -r '.version' package.json)
+          set -euo pipefail
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "Error: jq is not installed. Please ensure jq is available in the runner environment." >&2
+            exit 1
+          fi
+          EXT_NAME=$(jq -r '.name // empty' package.json)
+          EXT_VERSION=$(jq -r '.version // empty' package.json)
+          if [[ -z "$EXT_NAME" ]]; then
+            echo "Error: Could not extract 'name' from package.json or it is empty." >&2
+            exit 1
+          fi
+          if [[ -z "$EXT_VERSION" ]]; then
+            echo "Error: Could not extract 'version' from package.json or it is empty." >&2
+            exit 1
+          fi
           VSIX_NAME="${EXT_NAME}-${EXT_VERSION}.vsix"
           bunx vsce package -o "$VSIX_NAME"
           echo "vsix_name=$VSIX_NAME" >> $GITHUB_OUTPUT
@@ -294,7 +307,7 @@ jobs:
             release_name_suffix: ".exe"
           - target: extension
             os: ubuntu-latest
-            artifact_name: abyss-codex-familiar.vsix
+            artifact_name: ${{ needs.extension-package.outputs.vsix_name }}
             release_name_suffix: ""
     needs: [build, draft-release, extension-package]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -327,14 +340,14 @@ jobs:
           asset_content_type: application/octet-stream
 
       - name: Download VSIX artifact
-        if: matrix.target == 'extension'
+        if: matrix.target == 'extension' && needs.extension-package.result == 'success'
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           name: extension-vsix
           path: extension/
 
       - name: Upload VSIX release asset
-        if: matrix.target == 'extension'
+        if: matrix.target == 'extension' && needs.extension-package.result == 'success'
         uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,35 @@
+---
+title: Types
+description: Primitive values, collections, and magical data forms.
+---
+
+AbySS values borrow names from arcane lore while mapping cleanly to familiar runtime primitives.
+
+## Primitive Runes
+
+| Rune      | Meaning                                                                                             |
+|-----------|-----------------------------------------------------------------------------------------------------|
+| `arcana`  | Integer values; think Tarot numerals anchoring discrete counts.                                      |
+| `aether`  | Floating-point numbers that capture fluid, continuous quantities.                                   |
+| `rune`    | UTF-8 strings, channeling the idea that inscriptions carry power.                                   |
+| `omen`    | Boolean values with `boon` (`true`) and `hex` (`false`).                                            |
+| `abyss`   | The void type returned by spells that do not produce a value.                                       |
+| `scroll`  | Ordered collections mixing any elements.                                                             |
+| `lexicon` | Rune-keyed dictionaries for structured lookups.                                                     |
+| `materia` | Dynamically typed slot able to hold any runtime value.                                              |
+| `glyph`   | Compile-time token that names a type (used by casts such as `.trans(glyph)`).                       |
+| `artifact`| User-defined struct with typed fields and optional methods.                                         |
+
+## Example
+
+```abyss
+forge x: arcana = 10;
+forge pi: aether = 3.14;
+forge message: rune = "Hello, AbySS";
+forge is_active: omen = boon;
+forge spellbook: scroll = [1, boon, "sigil"];
+forge ledger: lexicon = {"sun": 1, "moon": 2};
+forge essence: materia = 99;
+```
+
+Each rune name hints at its intent: `glyph` tokens are passed into conversions, `artifact` declarations craft reusable records, and `materia` absorbs values whose final shape is still unknown.

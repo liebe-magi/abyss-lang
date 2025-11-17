@@ -1,0 +1,57 @@
+---
+title: Conditionals
+description: Direct control flow with the two faces of `oracle`.
+---
+
+`oracle` is AbySS's sole conditional construct. It supports if-else semantics and pattern matching.
+
+## If-Else Mode: `oracle { ... }`
+
+Each branch lists guard expressions that must evaluate to `boon`. `_` behaves like `else`.
+
+```abyss
+forge x: arcana = -5;
+oracle {
+    (x > 0) => unveil("x is positive");
+    (x < 0) => unveil("x is negative");
+    _ => unveil("x is zero");
+};
+```
+
+Compute helper values outside the guards if you need extra state:
+
+```abyss
+forge total: arcana = (x ^ 2) + 10;
+oracle {
+    (total > 50) => unveil("large");
+    (total == 50) => unveil("exact");
+    _ => unveil("small");
+};
+```
+
+## Match Mode: `oracle (expr) { ... }`
+
+Match mode evaluates its scrutinee once, then compares it with each pattern. Perfect for booleans, strings, tuples, and future enums.
+
+```abyss
+oracle (x > 0) {
+    (boon) => unveil("x is positive");
+    (hex) => unveil("x is non-positive");
+};
+
+forge name: rune = "abyss";
+oracle (name) {
+    ("abyss") => unveil("matched name");
+    _ => unveil("fallback");
+};
+
+forge a: arcana = 3;
+forge b: arcana = 2;
+oracle (a, b) {
+    (1, 2) => unveil("a is 1 and b is 2");
+    (3, 2) => unveil("a is 3 and b is 2");
+    (_, _) => unveil("other combination");
+};
+```
+
+Use `_` to ignore a tuple slot. Every non-wildcard literal must match the scrutinee's type.

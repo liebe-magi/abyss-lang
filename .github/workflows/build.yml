@@ -90,7 +90,7 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@a4eee05d68bf9e64304fc2c7273616743c411d56 # v2
+        uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
 

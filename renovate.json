@@ -78,6 +78,19 @@
         "major"
       ],
       "prPriority": 1
+    },
+    {
+      "matchManagers": [
+        "npm"
+      ],
+      "matchFileNames": [
+        "editors/code/package.json"
+      ],
+      "labels": [
+        "dependencies",
+        "extension"
+      ],
+      "groupName": "VS Code extension dependencies"
     }
   ]
 }

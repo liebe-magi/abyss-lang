@@ -34,3 +34,17 @@ repos:
         language: system
         files: \.rs$
         pass_filenames: false
+
+      - id: bun-extension-build
+        name: bun run compile (VS Code extension)
+        description: Compile the AbySS Codex Familiar extension via Bun before committing
+        entry: bash
+        language: system
+        pass_filenames: false
+        files: ^editors/code/
+        args:
+          - -c
+          - |
+            cd editors/code
+            bun install --frozen-lockfile
+            bun run compile

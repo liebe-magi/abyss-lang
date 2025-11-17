@@ -82,6 +82,26 @@ jobs:
           command: clippy
           args: --all-targets --all-features -- -D warnings
 
+  extension-check:
+    name: Extension Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@a4eee05d68bf9e64304fc2c7273616743c411d56 # v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: editors/code
+        run: bun install
+
+      - name: Type check extension
+        working-directory: editors/code
+        run: bun run check
+
   build:
     strategy:
       matrix:
@@ -199,6 +219,43 @@ jobs:
           name: draft-release
           path: release_upload_url.txt
 
+  extension-package:
+    name: Extension Package
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/code
+    outputs:
+      vsix_name: ${{ steps.package.outputs.vsix_name }}
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@a4eee05d68bf9e64304fc2c7273616743c411d56 # v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Package VS Code extension
+        id: package
+        run: |
+          EXT_NAME=$(jq -r '.name' package.json)
+          EXT_VERSION=$(jq -r '.version' package.json)
+          VSIX_NAME="${EXT_NAME}-${EXT_VERSION}.vsix"
+          bunx vsce package -o "$VSIX_NAME"
+          echo "vsix_name=$VSIX_NAME" >> $GITHUB_OUTPUT
+
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: extension-vsix
+          path: editors/code/${{ steps.package.outputs.vsix_name }}
+
   attach-assets-to-release:
     strategy:
       matrix:
@@ -209,6 +266,7 @@ jobs:
           - aarch64-unknown-linux-gnu
           - aarch64-apple-darwin
           - aarch64-pc-windows-msvc
+          - extension
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
@@ -234,9 +292,13 @@ jobs:
             os: windows-latest
             artifact_name: abyss.exe
             release_name_suffix: ".exe"
-
-    needs: [build, draft-release]
-    runs-on: ubuntu-latest
+          - target: extension
+            os: ubuntu-latest
+            artifact_name: abyss-codex-familiar.vsix
+            release_name_suffix: ""
+    needs: [build, draft-release, extension-package]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
@@ -246,16 +308,38 @@ jobs:
         run: |
           echo "url=$(cat release_upload_url.txt)" >> $GITHUB_OUTPUT
 
-      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+      - name: Download CLI artifact
+        if: matrix.target != 'extension'
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           name: build-${{ matrix.target }}-${{ needs.build.outputs.version }}
           path: build/
 
-      - uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1
+      - name: Upload CLI release asset
+        if: matrix.target != 'extension'
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.upload-url.outputs.url }}
           asset_path: ./build/${{ matrix.artifact_name }}
           asset_name: abyss-${{ matrix.target }}-${{ needs.build.outputs.version }}${{ matrix.release_name_suffix }}
+          asset_content_type: application/octet-stream
+
+      - name: Download VSIX artifact
+        if: matrix.target == 'extension'
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: extension-vsix
+          path: extension/
+
+      - name: Upload VSIX release asset
+        if: matrix.target == 'extension'
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.upload-url.outputs.url }}
+          asset_path: ./extension/${{ needs.extension-package.outputs.vsix_name }}
+          asset_name: ${{ needs.extension-package.outputs.vsix_name }}
           asset_content_type: application/octet-stream

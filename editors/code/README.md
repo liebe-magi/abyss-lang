@@ -19,7 +19,7 @@ AbySS Codex Familiar is a Visual Studio Code extension that provides custom supp
 
 ## Requirements
 
-- Visual Studio Code version 1.50.0 or higher.
+- Visual Studio Code version 1.92.0 or higher.
 
 ## Known Issues
 

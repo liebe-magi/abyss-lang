@@ -6,6 +6,16 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+## [v0.3.0] - 2025-11-18
+
+### Changed
+
+- Extension version numbers now stay in lockstep with the `abyss-lang` crate (starting at v0.3.0) so grammar parity is always obvious.
+
+### Updated
+
+- TextMate grammar now mirrors the full AbySS v0.3.0 syntax: all reserved keywords, artifact/glyph types, collection literals, range/match operators, and builtin functions highlight consistently with `src/parser/tokens.rs` and the top-level README samples.
+
 ## [v0.0.2] - 2024-08-24
 
 ### Added

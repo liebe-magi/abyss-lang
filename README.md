@@ -18,7 +18,7 @@ AbySS (Advanced-scripting by Symbolic Syntax) is a programming language designed
 - **Arcane Collections**: Native `scroll`, `lexicon`, and `materia` types provide first-class list/dictionary semantics plus built-in rituals for inspecting and mutating data.
 - **Artifact Structs**: Declare `artifact` schemas to craft strongly typed records with literal instantiation, nested fields, and guarded mutation rules.
 - **Rust-native Parser & Diagnostics**: The compiler core uses `chumsky` combinators paired with `ariadne` to provide resilient parsing and AbySS-themed error messages.
-- **VSCode Extension**: Syntax highlighting, code completion, and snippets are available through the [AbySS Codex Familiar](./editors/code) VSCode extension that now lives inside this monorepo.
+- **VSCode Extension**: Syntax highlighting, code completion, and snippets are available through the [AbySS Codex Familiar](./editors/code) VSCode extension, which now tracks the full AbySS v0.3.0 grammar (collection types, artifact methods, glyph-based conversions) and lives inside this monorepo.
 
 ## **Table of Contents**
 - [Installation](#installation)
@@ -559,9 +559,10 @@ The string inputs are stored directly for `name`, while `age` is converted from 
 ## **VSCode Extension**
 
 The [AbySS Codex Familiar](./editors/code) VSCode extension provides additional support for AbySS development, including:
-- Syntax highlighting for keywords, types, constants, and operators.
+- Syntax highlighting aligned with the AbySS v0.3.0 language surface (artifact definitions and methods, glyph-based casts, scroll/lexicon/materia literals, match/range operators, etc.).
 - Code snippets for common structures like `forge`, `unveil`, and `oracle`.
 - Auto-completion for key AbySS constructs.
+- Bundled TextMate grammar updates so README samples highlight exactly like the interpreter tokens (`src/parser/tokens.rs`).
 
 To install the extension, search for "[AbySS Codex Familiar](https://marketplace.visualstudio.com/items?itemName=liebe-magi.abyss-codex-familiar)" in the Visual Studio Code Extensions Marketplace, or download the packaged `.vsix` from the [AbySS monorepo releases](https://github.com/liebe-magi/abyss-lang/releases).
 

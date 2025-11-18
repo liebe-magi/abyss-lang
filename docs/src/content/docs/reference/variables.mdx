@@ -1,0 +1,31 @@
+---
+title: Variables
+description: Forge values, opt into mutation, and keep bindings explicit.
+---
+
+AbySS favors explicitness: you always declare the type and whether the binding may change.
+
+## Immutable Bindings
+
+Use `forge` to create an immutable value.
+
+```abyss
+forge x: arcana = 42;
+forge greeting: rune = "Welcome to AbySS!";
+```
+
+## Mutable Bindings
+
+Introduce `morph` when the variable must change over time.
+
+```abyss
+forge morph counter: arcana = 10;
+counter += 5;
+```
+
+### Keyword Origins
+
+- `forge` evokes crafting something new at the anvil.
+- `morph` signals that the binding may shift form mid-spell.
+
+Prefer immutable bindings unless mutation communicates intent or improves clarity.

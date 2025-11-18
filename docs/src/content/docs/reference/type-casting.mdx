@@ -1,0 +1,18 @@
+---
+title: Type Casting
+description: Convert values through the universal `.trans(glyph)` ritual.
+---
+
+All runtime values inherit the `trans` ritual via the universal `materia` receiver. Provide a `glyph` describing the destination type and AbySS performs the conversion in place.
+
+## Syntax
+
+```abyss
+forge x: arcana = 3.14.trans(arcana);
+```
+
+- `.trans(arcana)` converts the left-hand value to the `arcana` rune.
+- Because `materia` exposes the dispatcher, you can call `.trans(...)` on any value without manual pattern matching.
+- `glyph` arguments work like type handles, letting APIs request conversions without constructing temporary instances.
+
+Use casts sparingly—most code reads best when values are forged with the type you ultimately need.

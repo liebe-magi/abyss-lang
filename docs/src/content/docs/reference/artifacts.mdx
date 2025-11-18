@@ -1,0 +1,53 @@
+---
+title: Artifacts
+description: Define structured records with typed fields and methods.
+---
+
+Artifacts are statically typed records that guarantee field presence and types. Declare the schema once, then instantiate literals anywhere.
+
+```abyss
+artifact Stats {
+    hp: arcana;
+    max_hp: arcana;
+};
+
+artifact Player {
+    name: rune;
+    stats: Stats;
+};
+
+forge morph hero: Player = Player {
+    name: "Kaia",
+    stats: Stats { hp: 90, max_hp: 120 }
+};
+
+hero.stats.hp = hero.stats.hp - 15;
+unveil(hero);
+```
+
+## Methods
+
+Attach behavior with `engrave Artifact::method`. The implicit receiver is named `core` and may be marked `morph` to require mutable callers.
+
+```abyss
+artifact Player { name: rune; level: arcana; };
+
+engrave Player::get_level(core) -> arcana {
+    reveal core.level;
+};
+
+engrave Player::set_level(morph core, next: arcana) -> abyss {
+    core.level = next;
+};
+
+forge morph hero: Player = Player { name: "Kaia", level: 3 };
+unveil("Level", hero.get_level());
+hero.set_level(4);
+unveil("Updated", hero.get_level());
+```
+
+Key guarantees:
+
+- Every declared field must appear exactly once in literals (nesting included).
+- Mutating methods (`morph core`) fail fast when called on immutable bindings.
+- Artifact printing is deterministic, making structured logs easy to parse.

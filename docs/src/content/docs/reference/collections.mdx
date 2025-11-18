@@ -1,0 +1,46 @@
+---
+title: Collections
+description: Manipulate scrolls and lexicons with literal-friendly syntax.
+---
+
+Scrolls behave like ordered lists; lexicons are rune-keyed dictionaries. Literals mimic JSON, and indexing uses familiar brackets.
+
+```abyss
+forge spellbook: scroll = ["ignite", 42, boon];
+forge grimoire: lexicon = {
+    "sun": "radiant",
+    "moon": "serene",
+};
+
+unveil(spellbook[0]);        // "ignite"
+unveil(grimoire["moon"]);   // "serene"
+
+forge morph satchel: scroll = [1, 2];
+satchel[1] = 3;
+```
+
+## Collection Rituals
+
+Methods keep APIs uniform with artifact calls.
+
+- `scroll.tally()` → length as `arcana`.
+- `scroll.scribe(value)` → append to a morph scroll.
+- `scroll.extract()` → pop the last entry from a morph scroll.
+- `lexicon.tally()` → number of rune entries.
+- `lexicon.define("key", value)` → insert/update.
+- `lexicon.expunge("key")` → remove an entry.
+- `lexicon.glossary()` → returns a scroll of rune keys.
+
+```abyss
+forge morph pack: scroll = ["ember"];
+pack.scribe("frost");
+unveil(pack.tally());   // 2
+unveil(pack.extract()); // "frost"
+
+forge morph ledger: lexicon = {"alpha": 1, "beta": 2};
+ledger.expunge("alpha");
+ledger.define("gamma", 3);
+unveil(ledger.glossary()); // ["beta", "gamma"]
+```
+
+Mutating calls require `morph` bindings—the evaluator surfaces diagnostics instead of cloning data accidentally.

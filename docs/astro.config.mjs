@@ -3,12 +3,12 @@ import starlight from '@astrojs/starlight';
 import { defineConfig } from 'astro/config';
 
 import vercel from '@astrojs/vercel';
-import abyssGrammar from '../editors/code/syntaxes/abyss.tmLanguage.json' assert { type: 'json' };
+import abyssGrammar from '../editors/code/syntaxes/abyss.tmLanguage.json' with { type: 'json' };
 
 const abyssLanguage = {
     ...abyssGrammar,
     name: 'abyss',
-    scopeName: abyssGrammar.scopeName ?? 'source.abyss',
+    scopeName: abyssGrammar.scopeName,
     aliases: ['abyss-lang'],
 };
 

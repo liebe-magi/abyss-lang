@@ -3,25 +3,6 @@
 [![Build](https://github.com/liebe-magi/abyss/actions/workflows/build.yml/badge.svg?branch=main)](https://github.com/liebe-magi/abyss/actions/workflows/build.yml)
 [![Coverage](https://codecov.io/gh/liebe-magi/abyss-lang/branch/develop/graph/badge.svg)](https://app.codecov.io/gh/liebe-magi/abyss-lang)
 
-counter += 5;
-oracle {
-oracle {
-oracle (name) {
-oracle (a, b) {
-orbit {
-unveil(i); // Prints 100 after loop termination
-unveil(result); // Outputs: 8
-unveil(result); // Outputs: 6
-unveil(result); // Outputs: 120
-unveil(grimoire["moon"]);   // "serene"
-satchel[1] = 3;               // morph required for mutation
-unveil(pack.tally());   // 2
-unveil(ledger.glossary()); // ["beta", "gamma"]
-unveil(hero);
-unveil("Level", hero.get_level());
-unveil("Updated", hero.get_level());
-unveil("x + 42 = ", x + 42);
-unveil("Hello, ", name, "! You are ", age, " years old.");
 # **AbySS: Advanced-scripting by Symbolic Syntax**
 
 ![logo](./docs/public/img/logo_256.png)
@@ -42,7 +23,6 @@ cargo install abyss-lang
 Or build from source:
 
 ```bash
-
 cd abyss-lang
 cargo install --path .
 ```
@@ -75,4 +55,3 @@ Every ` ```abyss` sample on the site uses the same grammar as the VS Code extens
 ## License
 
 MIT License © [liebe-magi](LICENSE)
-### **Running Scripts**

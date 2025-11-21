@@ -5,7 +5,7 @@
 
 # **AbySS: Advanced-scripting by Symbolic Syntax**
 
-![logo](./docs/public/img/logo_256.png)
+![logo](./docs/public/img/logo_512.jpg)
 
 AbySS blends symbolic, spell-inspired syntax with a fast Rust core. Use it to iterate in an interpreter, script automation, or explore new language ideas—all while staying in a magical frame of mind.
 

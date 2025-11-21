@@ -12,20 +12,25 @@ oracle (x > 0) {
     (hex) => unveil("x is negative or zero");
 };
 
-// 条件文にOmen型以外を使う場合
-oracle (y = x ^ 2) {
+// 事前に値を計算してからif-elseモードで比較する場合
+forge y: arcana = x ^ 2;
+oracle {
     (y > 100) => unveil("y is greater than 100");
     (y == 100) => unveil("y is equal to 100");
     _ => unveil("y is less than 100");
 };
 
-oracle (a = "abyss-lang") {
-    (a == "abyss") => unveil("a is abyss");
+// matchモードで文字列を照合する場合
+forge a: rune = "abyss-lang";
+oracle (a) {
+    ("abyss") => unveil("a is abyss");
     _ => unveil("a is not abyss");
 };
 
 // 条件文に複数の条件を使う場合
-oracle (a = 3, b = 2) {
+forge a: arcana = 3;
+forge b: arcana = 2;
+oracle {
     (a == 1 && b == 2) => unveil("a is 1 and b is 2");
     (a != 1 && b == 2) => unveil("a is not 1 and b is 2");
     (a == 1 && b != 2) => unveil("a is 1 and b is not 2");

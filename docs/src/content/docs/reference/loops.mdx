@@ -1,0 +1,73 @@
+---
+title: Loops
+description: Orbit over ranges, tuples, or open-ended rituals.
+---
+
+`orbit` controls iteration in AbySS. Pair it with `resume` and `eject` for fine-grained flow.
+
+## Simple Range
+
+```abyss
+orbit (i = 0..5) {
+    unveil(i);
+}
+```
+
+`0..5` is half-open; swap in `..=` for inclusive bounds.
+
+```abyss
+orbit (i = 0..=10) {
+    unveil(i);
+}
+```
+
+## Infinite Orbit
+
+Omit bounds to loop forever and break with `eject`.
+
+```abyss
+forge morph i: arcana = 0;
+orbit {
+    oracle (i == 100) {
+        (boon) => eject; // break
+    };
+    i += 1;
+};
+```
+
+## Multiple Induction Variables
+
+```abyss
+orbit (i = 0..3, j = 0..3) {
+    unveil(i, " ", j);
+}
+```
+
+## Flow Control
+
+- `resume <loop-var>` skips to the next iteration of the named loop.
+- `eject <loop-var>` breaks out of the specified loop.
+
+```abyss
+orbit (i = 0..3) {
+    orbit (j = 0..3) {
+        oracle (i == j) {
+            (boon) => resume j;
+        };
+        unveil(i, " ", j);
+    }
+}
+```
+
+```abyss
+orbit (i = 0..3) {
+    orbit (j = 0..3) {
+        unveil(i, " ", j);
+        oracle (i == 2) {
+            (boon) => eject i;
+        };
+    }
+}
+```
+
+`resume` and `eject` understand nesting, so you maintain readable flow even in complex rituals.

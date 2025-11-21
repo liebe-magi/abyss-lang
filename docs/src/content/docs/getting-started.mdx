@@ -1,0 +1,63 @@
+---
+title: Getting Started
+description: Install AbySS, run your first spell, and keep the toolchain in sync.
+---
+
+AbySS ships as a Cargo crate plus a bundled CLI. Follow these steps to install it, cast your first spell, and configure optional tooling like the formatter and coverage reports.
+
+## Installation
+
+### Install from crates.io
+
+```bash
+cargo install abyss-lang
+```
+
+### Build from source
+
+```bash
+git clone https://github.com/liebe-magi/abyss-lang.git
+cd abyss-lang
+cargo install --path .
+```
+
+### Optional: Coverage tooling
+
+```bash
+rustup component add llvm-tools-preview
+cargo install cargo-llvm-cov
+```
+
+CI runs `cargo llvm-cov --all-features --lcov --output-path lcov.info` and uploads the artifact to Codecov. Forks should supply a `CODECOV_TOKEN` secret to keep uploads working.
+
+## Run the Interpreter
+
+Launch the interactive REPL to experiment with expressions and spell snippets inline:
+
+```bash
+abyss cast
+```
+
+## Run Scripts
+
+Execute any `.aby` file with `invoke`. Example programs live under `examples/`.
+
+```bash
+abyss invoke examples/artifact.aby
+```
+
+## Format Code
+
+AbySS bundles a formatter named `align`. Use it to keep scripts consistent:
+
+```bash
+abyss align path/to/script.aby
+```
+
+## Try the VS Code extension
+
+The monorepo ships the **AbySS Codex Familiar** extension under `editors/code`. Install it from the Marketplace or load the `.vsix` from the repo to enable syntax highlighting, snippets, and completions that match the language reference.
+
+## Next Steps
+
+Head over to the **Reference** section for in-depth syntax guides, or review the **Roadmap** to see which rituals are landing next.

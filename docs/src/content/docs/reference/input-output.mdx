@@ -1,0 +1,25 @@
+---
+title: Input & Output
+description: Reveal results with `unveil` and gather data via `summon`.
+---
+
+## Output with `unveil`
+
+```abyss
+unveil("Hello, AbySS");
+unveil("x + 42 = ", x + 42);
+```
+
+`unveil` accepts multiple arguments, printing them on the same line. Use it for quick diagnostics or user-facing logs.
+
+## Input with `summon`
+
+```abyss
+forge name: rune = summon("Input your name: ");
+forge age: arcana = summon("Input your age: ").trans(arcana);
+unveil("Hello, ", name, "! You are ", age, " years old.");
+```
+
+`summon` always returns a `rune`. Chain `.trans(glyph)` to coerce into numeric runes as needed.
+
+These rituals keep the language's magical tone while retaining predictable console I/O behavior.

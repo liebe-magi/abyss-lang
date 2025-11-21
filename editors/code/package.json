@@ -1,0 +1,62 @@
+{
+  "name": "abyss-codex-familiar",
+  "displayName": "AbySS Codex Familiar",
+  "description": "Custom syntax highlighting for the AbySS programming language.",
+  "version": "0.3.0",
+  "publisher": "liebe-magi",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/liebe-magi/abyss-lang.git",
+    "directory": "editors/code"
+  },
+  "engines": {
+    "vscode": "^1.92.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "icon": "img/logo_256.png",
+  "scripts": {
+    "vscode:prepublish": "bun run compile",
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "check": "tsc --noEmit",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "main": "./out/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "languages": [
+      {
+        "id": "abyss",
+        "aliases": [
+          "AbySS",
+          "abyss"
+        ],
+        "extensions": [
+          ".aby"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "abyss",
+        "scopeName": "source.abyss",
+        "path": "./syntaxes/abyss.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "abyss",
+        "path": "./snippets/abyss.json"
+      }
+    ]
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.92.0",
+    "@vscode/vsce": "^3.0.0",
+    "typescript": "^5.5.4"
+  }
+}

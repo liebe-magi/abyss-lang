@@ -1,0 +1,52 @@
+---
+title: Functions
+description: Encapsulate reusable spells with `engrave`.
+---
+
+Functions (engraved spells) combine parameters, explicit return types, and clear ritual bodies.
+
+## Define a Function
+
+```abyss
+engrave add(a: arcana, b: arcana) -> arcana {
+    reveal a + b;
+};
+```
+
+## Call Functions
+
+```abyss
+forge result: arcana = add(3, 5);
+unveil(result); // 8
+```
+
+## Composition & Nesting
+
+```abyss
+engrave add_three_numbers(x: arcana, y: arcana, z: arcana) -> arcana {
+    reveal add(add(x, y), z);
+};
+```
+
+## Return Values
+
+Use `reveal` to emit a value. Omit it to return `abyss`.
+
+```abyss
+engrave greet() -> rune {
+    reveal "Hello, AbySS!";
+};
+```
+
+## Recursion
+
+```abyss
+engrave factorial(n: arcana) -> arcana {
+    oracle (n <= 1) {
+        (boon) => reveal 1;
+    };
+    reveal n * factorial(n - 1);
+};
+```
+
+`engrave` evokes carving rituals into stone—clear intent, explicit types, predictable outcomes.

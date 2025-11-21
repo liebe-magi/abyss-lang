@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6
 
       - name: Install stable toolchain
         uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1
@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6
 
       - name: Install stable toolchain
         uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1
@@ -41,7 +41,7 @@ jobs:
           components: llvm-tools-preview
 
       - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@0be4756f42223b67aa4b7df5effad59010cbf4b9 # v2
+        uses: taiki-e/install-action@132c875eef0d3e3be95c2d08d74e8559cbf74bdb # v2
         with:
           tool: cargo-llvm-cov
 
@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout sources
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6
 
       - name: Install stable toolchain
         uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1
@@ -81,6 +81,26 @@ jobs:
         with:
           command: clippy
           args: --all-targets --all-features -- -D warnings
+
+  extension-check:
+    name: Extension Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: editors/code
+        run: bun install
+
+      - name: Type check extension
+        working-directory: editors/code
+        run: bun run check
 
   build:
     strategy:
@@ -116,7 +136,7 @@ jobs:
     outputs:
       version: ${{ steps.properties.outputs.version }}
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+      - uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6
 
       - uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1
         with:
@@ -156,6 +176,54 @@ jobs:
           name: build-${{ matrix.target }}-${{steps.properties.outputs.version}}
           path: target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
 
+  extension-package:
+    name: Extension Package
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/code
+    outputs:
+      vsix_name: ${{ steps.package.outputs.vsix_name }}
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Package VS Code extension
+        id: package
+        run: |
+          set -euo pipefail
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "Error: jq is not installed. Please ensure jq is available in the runner environment." >&2
+            exit 1
+          fi
+          EXT_NAME=$(jq -r '.name // empty' package.json)
+          EXT_VERSION=$(jq -r '.version // empty' package.json)
+          if [[ -z "$EXT_NAME" ]]; then
+            echo "Error: Could not extract 'name' from package.json or it is empty." >&2
+            exit 1
+          fi
+          if [[ -z "$EXT_VERSION" ]]; then
+            echo "Error: Could not extract 'version' from package.json or it is empty." >&2
+            exit 1
+          fi
+          VSIX_NAME="${EXT_NAME}-${EXT_VERSION}.vsix"
+          bunx vsce package -o "$VSIX_NAME"
+          echo "vsix_name=$VSIX_NAME" >> $GITHUB_OUTPUT
+
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: extension-vsix
+          path: editors/code/${{ steps.package.outputs.vsix_name }}
+
   draft-release:
     name: Release Draft
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -163,7 +231,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Fetch Sources
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6
 
       - name: Remove Old Release Drafts
         env:
@@ -209,6 +277,7 @@ jobs:
           - aarch64-unknown-linux-gnu
           - aarch64-apple-darwin
           - aarch64-pc-windows-msvc
+          - extension
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
@@ -234,9 +303,13 @@ jobs:
             os: windows-latest
             artifact_name: abyss.exe
             release_name_suffix: ".exe"
-
-    needs: [build, draft-release]
-    runs-on: ubuntu-latest
+          - target: extension
+            os: ubuntu-latest
+            artifact_name: ${{ needs.extension-package.outputs.vsix_name }}
+            release_name_suffix: ""
+    needs: [build, draft-release, extension-package]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
@@ -246,16 +319,38 @@ jobs:
         run: |
           echo "url=$(cat release_upload_url.txt)" >> $GITHUB_OUTPUT
 
-      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+      - name: Download CLI artifact
+        if: matrix.target != 'extension'
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           name: build-${{ matrix.target }}-${{ needs.build.outputs.version }}
           path: build/
 
-      - uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1
+      - name: Upload CLI release asset
+        if: matrix.target != 'extension'
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.upload-url.outputs.url }}
           asset_path: ./build/${{ matrix.artifact_name }}
           asset_name: abyss-${{ matrix.target }}-${{ needs.build.outputs.version }}${{ matrix.release_name_suffix }}
+          asset_content_type: application/octet-stream
+
+      - name: Download VSIX artifact
+        if: matrix.target == 'extension'
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: extension-vsix
+          path: extension/
+
+      - name: Upload VSIX release asset
+        if: matrix.target == 'extension'
+        uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.upload-url.outputs.url }}
+          asset_path: ./extension/${{ needs.extension-package.outputs.vsix_name }}
+          asset_name: ${{ needs.extension-package.outputs.vsix_name }}
           asset_content_type: application/octet-stream

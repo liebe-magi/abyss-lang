@@ -11,7 +11,7 @@ def get_cargo_version(cargo_path):
             # Look for version = "x.y.z" in the [package] section
             # This is a simple regex and might need adjustment if Cargo.toml is complex
             # but usually version is at the top under [package]
-            match = re.search(r'^version\s*=\s*"(.*?)"', content, re.MULTILINE)
+            match = re.search(r'^version\s*=\s*"(\d+\.\d+\.\d+(?:-[\w.]+)?)"', content, re.MULTILINE)
             if match:
                 return match.group(1)
             else:
@@ -25,6 +25,9 @@ def get_package_json_version(package_path):
     try:
         with open(package_path, 'r') as f:
             data = json.load(f)
+            if 'version' not in data:
+                print("Could not find version in package.json")
+                sys.exit(1)
             return data['version']
     except Exception as e:
         print(f"Error reading package.json: {e}")

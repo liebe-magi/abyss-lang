@@ -5,3 +5,8 @@ lcov.info
 # Lock files (project uses bun.lock)
 package-lock.json
 yarn.lock
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class

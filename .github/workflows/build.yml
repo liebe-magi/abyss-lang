@@ -338,14 +338,14 @@ jobs:
           asset_content_type: application/octet-stream
 
       - name: Download VSIX artifact
-        if: matrix.target == 'extension' && needs.extension-package.result == 'success'
+        if: matrix.target == 'extension'
         uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
         with:
           name: extension-vsix
           path: extension/
 
       - name: Upload VSIX release asset
-        if: matrix.target == 'extension' && needs.extension-package.result == 'success'
+        if: matrix.target == 'extension'
         uses: actions/upload-release-asset@e8f9f06c4b078e705bd2ea027f0926603fc9b4d5 # v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

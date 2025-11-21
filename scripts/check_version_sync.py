@@ -53,7 +53,8 @@ def main():
     print(f"Package version: {package_version}")
 
     if cargo_version != package_version:
-        print("Error: Versions do not match!")
+        print(f"Error: Versions do not match! Cargo.toml has '{cargo_version}' but package.json has '{package_version}'")
+        print("Please update the version in one of these files to match the other.")
         sys.exit(1)
     
     print("Versions match.")

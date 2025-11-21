@@ -22,16 +22,32 @@ export default defineConfig({
             social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/liebe-magi/abyss-lang' }],
             sidebar: [
                 {
-                    label: 'Overview',
+                    label: 'Start Here',
                     items: [
                         { label: 'Welcome', slug: 'index' },
                         { label: 'Getting Started', slug: 'getting-started' },
-                        { label: 'Roadmap', slug: 'roadmap' },
                     ],
                 },
                 {
-                    label: 'Reference',
-                    autogenerate: { directory: 'reference' },
+                    label: 'The Grimoire',
+                    items: [
+                        { label: 'Basic Syntax', slug: 'reference/basic-syntax' },
+                        { label: 'Variables', slug: 'reference/variables' },
+                        { label: 'Data Types', slug: 'reference/types' },
+                        { label: 'Type Casting', slug: 'reference/type-casting' },
+                        { label: 'Input & Output', slug: 'reference/input-output' },
+                        { label: 'Control Flow: Conditionals', slug: 'reference/conditionals' },
+                        { label: 'Control Flow: Loops', slug: 'reference/loops' },
+                        { label: 'Functions', slug: 'reference/functions' },
+                        { label: 'Collections', slug: 'reference/collections' },
+                        { label: 'Artifacts', slug: 'reference/artifacts' },
+                    ],
+                },
+                {
+                    label: 'Project',
+                    items: [
+                        { label: 'Roadmap', slug: 'roadmap' },
+                    ],
                 },
             ],
             expressiveCode: {

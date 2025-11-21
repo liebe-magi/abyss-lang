@@ -25,6 +25,16 @@ jobs:
         with:
           command: check
 
+  version-check:
+    name: Version Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6
+
+      - name: Run version check
+        run: python3 scripts/check_version_sync.py
+
   test:
     name: Tests
     runs-on: ubuntu-latest

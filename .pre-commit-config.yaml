@@ -51,3 +51,11 @@ repos:
               exit 1
             fi
             bun run compile
+
+      - id: check-version-sync
+        name: check version sync
+        description: Check if Cargo.toml and package.json versions match
+        entry: python3 scripts/check_version_sync.py
+        language: system
+        pass_filenames: false
+        files: ^(Cargo\.toml|editors/code/package\.json)$

@@ -326,6 +326,7 @@ jobs:
           name: draft-release
 
       - id: upload-url
+        shell: bash
         run: |
           echo "url=$(cat release_upload_url.txt)" >> $GITHUB_OUTPUT
 

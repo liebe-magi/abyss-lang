@@ -15,7 +15,7 @@
   "categories": [
     "Programming Languages"
   ],
-  "icon": "img/logo_256.png",
+  "icon": "img/logo_512.png",
   "scripts": {
     "vscode:prepublish": "bun run compile",
     "compile": "tsc -p .",

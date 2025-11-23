@@ -15,3 +15,5 @@ This crate is designed to be lightweight and platform-agnostic, making it suitab
 - The main CLI interpreter (`abyss-lang`).
 - Future LSP (Language Server Protocol) implementations.
 - Future Wasm-based playgrounds (parsing only).
+
+For more information, see the [main repository](https://github.com/liebe-magi/abyss-lang).

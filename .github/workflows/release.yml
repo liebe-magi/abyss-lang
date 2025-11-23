@@ -30,7 +30,7 @@ jobs:
         shell: bash
         run: |
           # Get version from Cargo.toml
-          VERSION=$(grep '^version = ' crates/abyss-lang/Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+          VERSION=$(grep '^version = ' crates/abyss-cli/Cargo.toml | sed -E 's/version = "(.*)"/\1/')
           echo "Current version: $VERSION"
           
           # Get latest tag

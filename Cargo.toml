@@ -1,3 +1,9 @@
 [workspace]
 resolver = "2"
 members = ["crates/abyss-core", "crates/abyss-interpreter", "crates/abyss-lang"]
+
+[workspace.metadata.release]
+shared-version = true
+tag = false
+push = false
+publish = false

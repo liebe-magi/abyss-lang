@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@1af3b93b6815bc44a9784bd300feb67ff0d1eeb3 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Check for version bump
+        id: check_version
+        shell: bash
+        run: |
+          # Get version from Cargo.toml
+          VERSION=$(grep '^version = ' crates/abyss-lang/Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+          echo "Current version: $VERSION"
+          
+          # Get latest tag
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Latest tag: $LATEST_TAG"
+          
+          if [ "v$VERSION" != "$LATEST_TAG" ]; then
+            echo "Version bump detected!"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "bump=true" >> $GITHUB_OUTPUT
+          else
+            echo "No version bump detected."
+            echo "bump=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run tests
+        if: steps.check_version.outputs.bump == 'true'
+        run: cargo test --all-features
+
+      - name: Create Git Tag
+        if: steps.check_version.outputs.bump == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=${{ steps.check_version.outputs.version }}
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" -m "Release v$VERSION"
+          git push origin "v$VERSION"
+
+      - name: Create Release
+        if: steps.check_version.outputs.bump == 'true'
+        uses: actions/create-release@0cb9c9b65d5d1901c1f53e5e66eaf4afd303e70e # v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.check_version.outputs.version }}
+          release_name: v${{ steps.check_version.outputs.version }}
+          draft: true
+          prerelease: false
+
+      - name: Publish to crates.io
+        if: steps.check_version.outputs.bump == 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          # Publish in order of dependency
+          cargo publish -p abyss-core
+          # Wait a bit for crates.io to propagate
+          sleep 30
+          cargo publish -p abyss-interpreter
+          sleep 30
+          cargo publish -p abyss-lang

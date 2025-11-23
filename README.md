@@ -5,7 +5,7 @@
 
 # **AbySS: Advanced-scripting by Symbolic Syntax**
 
-![logo](./docs/public/img/logo_512.jpg)
+![logo](./assets/logo_512.jpg)
 
 AbySS blends symbolic, spell-inspired syntax with a fast Rust core. Use it to iterate in an interpreter, script automation, or explore new language ideas—all while staying in a magical frame of mind.
 
@@ -45,7 +45,7 @@ abyss align path/to/script.aby
 
 ## Documentation
 
-The full language reference, tutorials, and roadmap now live in the [Starlight docs](./docs).
+The full language reference, tutorials, and roadmap now live in the [Starlight docs](https://abyss-lang.dev).
 
 ```bash
 cd docs
@@ -57,8 +57,9 @@ Every ` ```abyss` sample on the site uses the same grammar as the VS Code extens
 
 ## Tooling
 
-- [AbySS Codex Familiar](./editors/code) – VS Code extension with highlighting, snippets, and completions.
-- `cargo llvm-cov` ready – run `cargo llvm-cov --open` for coverage reports; CI uploads to Codecov with the same command.
+- [AbySS Codex Familiar](https://marketplace.visualstudio.com/items?itemName=liebe-magi.abyss-codex-familiar) – VS Code extension with highlighting, snippets, and completions.
+
+![codex-logo](./editors/code/assets/logo_512.png)
 
 ## License
 

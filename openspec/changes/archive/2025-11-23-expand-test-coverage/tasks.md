@@ -1,0 +1,11 @@
+- [x] Move tests to `crates/abyss-core/tests/` and `crates/abyss-interpreter/tests/` <!-- id: move-tests -->
+- [x] Update imports in migrated tests <!-- id: update-imports -->
+- [x] Add unit tests for `SymbolTable` in `crates/abyss-core/src/semantic.rs` <!-- id: test-symbol-table -->
+- [x] Add unit tests for `expressions.rs` error paths <!-- id: test-expressions -->
+- [x] Add unit tests for `lexicon.rs` methods <!-- id: test-lexicon -->
+- [x] Add unit tests for `scroll.rs` methods <!-- id: test-scroll -->
+- [x] Add unit tests for `io.rs` functions <!-- id: test-io -->
+- [x] Add unit tests for `materia.rs` methods <!-- id: test-materia -->
+- [x] Add unit tests for `env.rs` edge cases <!-- id: test-env -->
+- [x] Investigate `cargo llvm-cov` warning "1 functions have mismatched data" <!-- id: investigate-cov-warning -->
+- [x] Rename `crates/abyss-lang` to `crates/abyss-cli` <!-- id: rename-cli-dir -->

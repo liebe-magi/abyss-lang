@@ -14,3 +14,5 @@ The "Engine" of the AbySS language. This crate handles the execution of AbySS pr
 This crate depends on `abyss-core` for AST definitions. It is used by:
 - The main CLI interpreter (`abyss-lang`).
 - Future Wasm-based playgrounds (execution engine).
+
+For more information, see the [main repository](https://github.com/liebe-magi/abyss-lang).

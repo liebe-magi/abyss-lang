@@ -90,3 +90,62 @@ fn convert_value_via_trans(
         )),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::env::Value;
+
+    fn dummy_args(val: Value) -> Vec<CallArg> {
+        vec![CallArg {
+            value: EvalResult::data(val),
+            var_name: None,
+        }]
+    }
+
+    #[test]
+    fn test_trans_arguments() {
+        let mut env = RuntimeEnv::new();
+        let result = materia_trans_method(
+            &mut env,
+            &AST::Abyss(None),
+            None,
+            Value::Abyss,
+            vec![], // Needs 1
+            &None,
+        );
+        assert!(matches!(
+            result,
+            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("expects exactly one glyph argument")
+        ));
+    }
+
+    #[test]
+    fn test_trans_invalid_target_type() {
+        let mut env = RuntimeEnv::new();
+        // Pass a non-glyph (e.g. integer) as target type
+        let args = dummy_args(Value::Arcana(1));
+
+        let result =
+            materia_trans_method(&mut env, &AST::Abyss(None), None, Value::Abyss, args, &None);
+
+        assert!(matches!(
+            result,
+            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("argument must be a glyph value")
+        ));
+    }
+
+    #[test]
+    fn test_trans_unknown_type() {
+        let mut env = RuntimeEnv::new();
+        let args = dummy_args(Value::Rune(Rc::new("unknown".to_string())));
+
+        let result =
+            materia_trans_method(&mut env, &AST::Abyss(None), None, Value::Abyss, args, &None);
+
+        assert!(matches!(
+            result,
+            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("argument must be a glyph value")
+        ));
+    }
+}

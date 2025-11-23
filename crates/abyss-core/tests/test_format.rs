@@ -1,5 +1,5 @@
-use abyss_lang::ast::{AST, ArtifactField, ArtifactMethodTarget, AssignmentOp, Type};
-use abyss_lang::format::format_ast;
+use abyss_core::ast::{AST, ArtifactField, ArtifactMethodTarget, AssignmentOp, Type};
+use abyss_core::format::format_ast;
 
 fn arcana(value: i64) -> Box<AST> {
     Box::new(AST::Arcana(value, None))

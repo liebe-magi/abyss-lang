@@ -378,4 +378,40 @@ mod tests {
                 .starts_with("Player {")
         );
     }
+
+    #[test]
+    fn native_unveil_requires_arguments() {
+        let mut env = RuntimeEnv::new();
+        let args = vec![];
+        let mut io = MockIo::default();
+        let result = native_unveil_with_io(&mut env, args, None, &mut io);
+        assert!(matches!(
+            result,
+            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("requires at least 1 argument")
+        ));
+    }
+
+    #[test]
+    fn native_summon_requires_exactly_one_argument() {
+        let mut env = RuntimeEnv::new();
+        let args = vec![];
+        let mut io = MockIo::default();
+        let result = native_summon_with_io(&mut env, args, None, &mut io);
+        assert!(matches!(
+            result,
+            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("requires exactly 1 argument")
+        ));
+    }
+
+    #[test]
+    fn native_summon_requires_rune_argument() {
+        let mut env = RuntimeEnv::new();
+        let args = vec![arg(EvalResult::data(Value::Arcana(1)))];
+        let mut io = MockIo::default();
+        let result = native_summon_with_io(&mut env, args, None, &mut io);
+        assert!(matches!(
+            result,
+            Err(EvalError::TypeError(msg, _)) if msg.contains("must be a Rune")
+        ));
+    }
 }

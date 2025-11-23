@@ -1,4 +1,4 @@
-use abyss_lang::parser::{ParserDiagnostic, SimpleSpan, emit_diagnostics, parse};
+use abyss_core::parser::{ParserDiagnostic, SimpleSpan, emit_diagnostics, parse};
 
 #[test]
 fn parse_reports_unexpected_token_with_help() {

@@ -1,6 +1,6 @@
 mod test_base;
 
-use abyss_lang::eval::{EvalError, EvalResult};
+use abyss_interpreter::eval::{EvalError, EvalResult};
 use test_base::{Value, test_base};
 
 #[test]

@@ -735,3 +735,89 @@ fn convert_morph_param_value(
         )),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dummy_line_info() -> Option<LineInfo> {
+        None
+    }
+
+    #[test]
+    fn test_pow_arcana_negative_exponent() {
+        let mut env = RuntimeEnv::new();
+        let left = AST::Arcana(2, dummy_line_info());
+        let right = AST::Arcana(-1, dummy_line_info());
+        let expr = AST::PowArcana(Box::new(left), Box::new(right), dummy_line_info());
+
+        let result = try_evaluate_expression(&expr, &mut env);
+        assert!(matches!(result, Err(EvalError::NegativeExponent(_))));
+    }
+
+    #[test]
+    fn test_pow_aether_invalid_types() {
+        let mut env = RuntimeEnv::new();
+        let left = AST::Arcana(2, dummy_line_info()); // Should be Aether
+        let right = AST::Aether(2.0, dummy_line_info());
+        let expr = AST::PowAether(Box::new(left), Box::new(right), dummy_line_info());
+
+        let result = try_evaluate_expression(&expr, &mut env);
+        assert!(matches!(
+            result,
+            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("requires two Aether")
+        ));
+    }
+
+    #[test]
+    fn test_logical_not_invalid_type() {
+        let mut env = RuntimeEnv::new();
+        let operand = AST::Arcana(1, dummy_line_info()); // Should be Omen
+        let expr = AST::LogicalNot(Box::new(operand), dummy_line_info());
+
+        let result = try_evaluate_expression(&expr, &mut env);
+        assert!(matches!(
+            result,
+            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("requires Omen")
+        ));
+    }
+
+    #[test]
+    fn test_index_access_out_of_bounds() {
+        let mut env = RuntimeEnv::new();
+        let scroll = AST::ListLiteral {
+            elements: vec![],
+            line_info: dummy_line_info(),
+        };
+        let index = AST::Arcana(0, dummy_line_info());
+        let expr = AST::IndexAccess {
+            target: Box::new(scroll),
+            index: Box::new(index),
+            line_info: dummy_line_info(),
+        };
+
+        let result = try_evaluate_expression(&expr, &mut env);
+        assert!(matches!(
+            result,
+            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("out of bounds")
+        ));
+    }
+
+    #[test]
+    fn test_index_access_invalid_target() {
+        let mut env = RuntimeEnv::new();
+        let target = AST::Arcana(1, dummy_line_info()); // Not a collection
+        let index = AST::Arcana(0, dummy_line_info());
+        let expr = AST::IndexAccess {
+            target: Box::new(target),
+            index: Box::new(index),
+            line_info: dummy_line_info(),
+        };
+
+        let result = try_evaluate_expression(&expr, &mut env);
+        assert!(matches!(
+            result,
+            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("only supported for scroll or lexicon")
+        ));
+    }
+}

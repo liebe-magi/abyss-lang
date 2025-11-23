@@ -108,3 +108,99 @@ fn expect_scroll(value: Value) -> Rc<RefCell<Vec<Value>>> {
         panic!("scroll builtin dispatched with non-scroll value");
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::env::Value;
+
+    fn dummy_scroll() -> Value {
+        Value::Scroll(Rc::new(RefCell::new(Vec::new())))
+    }
+
+    fn dummy_args(count: usize) -> Vec<CallArg> {
+        (0..count)
+            .map(|_| CallArg {
+                value: EvalResult::data(Value::Abyss),
+                var_name: None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_tally_arguments() {
+        let mut env = RuntimeEnv::new();
+        let result = scroll_tally(
+            &mut env,
+            &AST::Abyss(None),
+            None,
+            dummy_scroll(),
+            dummy_args(1),
+            &None,
+        );
+        assert!(matches!(
+            result,
+            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("does not take any arguments")
+        ));
+    }
+
+    #[test]
+    fn test_scribe_arguments() {
+        let mut env = RuntimeEnv::new();
+        env.set_var("list".to_string(), dummy_scroll(), Type::Scroll, true, None);
+
+        let result = scroll_scribe(
+            &mut env,
+            &AST::Var("list".to_string(), None),
+            Some("list"),
+            dummy_scroll(),
+            dummy_args(0), // Needs 1
+            &None,
+        );
+
+        assert!(matches!(
+            result,
+            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("expects exactly one argument")
+        ));
+    }
+
+    #[test]
+    fn test_extract_arguments() {
+        let mut env = RuntimeEnv::new();
+        env.set_var("list".to_string(), dummy_scroll(), Type::Scroll, true, None);
+
+        let result = scroll_extract(
+            &mut env,
+            &AST::Var("list".to_string(), None),
+            Some("list"),
+            dummy_scroll(),
+            dummy_args(1), // Needs 0
+            &None,
+        );
+
+        assert!(matches!(
+            result,
+            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("does not take any arguments")
+        ));
+    }
+
+    #[test]
+    fn test_extract_empty() {
+        let mut env = RuntimeEnv::new();
+        env.set_var("list".to_string(), dummy_scroll(), Type::Scroll, true, None);
+
+        let result = scroll_extract(
+            &mut env,
+            &AST::Var("list".to_string(), None),
+            Some("list"),
+            dummy_scroll(),
+            dummy_args(0),
+            &None,
+        );
+
+        assert!(matches!(
+            result,
+            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("cannot pop from an empty scroll")
+        ));
+    }
+}

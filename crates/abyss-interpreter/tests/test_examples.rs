@@ -6,6 +6,10 @@ use test_base::test_base;
 
 fn load_example(name: &str) -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .join("examples")
         .join(name);
     fs::read_to_string(path).expect("failed to read example script")

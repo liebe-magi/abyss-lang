@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/abyss-core", "crates/abyss-interpreter", "crates/abyss-lang"]
+members = ["crates/abyss-core", "crates/abyss-interpreter", "crates/abyss-cli"]
 
 [workspace.metadata.release]
 shared-version = true

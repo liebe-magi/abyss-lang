@@ -1,0 +1,7 @@
+- [ ] Add unit tests for `SymbolTable` in `crates/abyss-core/src/semantic.rs` <!-- id: test-symbol-table -->
+- [ ] Add unit tests for `expressions.rs` error paths <!-- id: test-expressions -->
+- [ ] Add unit tests for `lexicon.rs` methods <!-- id: test-lexicon -->
+- [ ] Add unit tests for `scroll.rs` methods <!-- id: test-scroll -->
+- [ ] Add unit tests for `io.rs` functions <!-- id: test-io -->
+- [ ] Add unit tests for `materia.rs` methods <!-- id: test-materia -->
+- [ ] Add unit tests for `env.rs` edge cases <!-- id: test-env -->

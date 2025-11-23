@@ -1,11 +1,11 @@
-use abyss_lang::{
+use abyss_core::parser::{emit_diagnostics, parse};
+use abyss_interpreter::{
     eval::{EvalError, EvalResult, display_error_with_source, evaluate},
-    parser::{emit_diagnostics, parse},
     stdlib,
 };
 
 #[allow(unused_imports)]
-pub use abyss_lang::env::Value;
+pub use abyss_interpreter::env::Value;
 
 pub fn test_base(input: &str) -> Result<Vec<EvalResult>, Box<dyn std::error::Error>> {
     let mut env = stdlib::create_global_environment();

@@ -165,3 +165,28 @@ pub(super) fn expect_glyph_argument(
         )),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::env::Value;
+
+    #[test]
+    fn test_dispatch_unknown_method() {
+        let mut env = RuntimeEnv::new();
+        let result = dispatch_builtin_method(
+            &mut env,
+            &AST::Abyss(None),
+            None,
+            Value::Abyss,
+            "unknown_method",
+            vec![],
+            &None,
+        );
+
+        assert!(matches!(
+            result,
+            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("Method unknown_method is not defined")
+        ));
+    }
+}

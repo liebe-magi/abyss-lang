@@ -32,7 +32,7 @@ Or build from source:
 
 ```bash
 cd abyss-lang
-cargo install --path crates/abyss-lang
+cargo install --path crates/abyss-cli
 ```
 
 ### Try it quickly

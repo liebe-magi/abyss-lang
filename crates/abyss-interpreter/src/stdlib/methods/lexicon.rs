@@ -149,3 +149,126 @@ fn expect_lexicon(value: Value) -> Rc<RefCell<HashMap<String, Value>>> {
         panic!("lexicon builtin dispatched with non-lexicon value");
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::env::Value;
+
+    fn dummy_lexicon() -> Value {
+        Value::Lexicon(Rc::new(RefCell::new(HashMap::new())))
+    }
+
+    fn dummy_args(count: usize) -> Vec<CallArg> {
+        (0..count)
+            .map(|_| CallArg {
+                value: EvalResult::data(Value::Abyss),
+                var_name: None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_tally_arguments() {
+        let mut env = RuntimeEnv::new();
+        let result = lexicon_tally(
+            &mut env,
+            &AST::Abyss(None),
+            None,
+            dummy_lexicon(),
+            dummy_args(1),
+            &None,
+        );
+        assert!(matches!(
+            result,
+            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("does not take any arguments")
+        ));
+    }
+
+    #[test]
+    fn test_define_arguments() {
+        let mut env = RuntimeEnv::new();
+        let _result = lexicon_define(
+            &mut env,
+            &AST::Abyss(None),
+            Some("lex"), // Mutable receiver needs a name
+            dummy_lexicon(),
+            dummy_args(1), // Needs 2
+            &None,
+        );
+        // Note: ensure_mutable_receiver might fail first if we don't set up env correctly,
+        // but here we are testing argument count which comes after mutable check?
+        // Actually, mutable check is first.
+        // So we need to mock the env to have the variable.
+        // But lexicon_define takes env.
+        // Let's just check the argument count logic if we can bypass mutable check?
+        // No, mutable check is hardcoded.
+        // We need to set up a mutable variable in env.
+
+        env.set_var(
+            "lex".to_string(),
+            dummy_lexicon(),
+            Type::Lexicon,
+            true,
+            None,
+        );
+
+        // Now call with wrong args
+        let result = lexicon_define(
+            &mut env,
+            &AST::Var("lex".to_string(), None),
+            Some("lex"),
+            dummy_lexicon(),
+            dummy_args(1),
+            &None,
+        );
+
+        assert!(matches!(
+            result,
+            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("expects a rune key and a value")
+        ));
+    }
+
+    #[test]
+    fn test_expunge_arguments() {
+        let mut env = RuntimeEnv::new();
+        env.set_var(
+            "lex".to_string(),
+            dummy_lexicon(),
+            Type::Lexicon,
+            true,
+            None,
+        );
+
+        let result = lexicon_expunge(
+            &mut env,
+            &AST::Var("lex".to_string(), None),
+            Some("lex"),
+            dummy_lexicon(),
+            dummy_args(0), // Needs 1
+            &None,
+        );
+
+        assert!(matches!(
+            result,
+            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("expects exactly one rune key")
+        ));
+    }
+
+    #[test]
+    fn test_glossary_arguments() {
+        let mut env = RuntimeEnv::new();
+        let result = lexicon_glossary(
+            &mut env,
+            &AST::Abyss(None),
+            None,
+            dummy_lexicon(),
+            dummy_args(1),
+            &None,
+        );
+        assert!(matches!(
+            result,
+            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("does not take any arguments")
+        ));
+    }
+}

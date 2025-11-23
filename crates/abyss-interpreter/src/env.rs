@@ -492,4 +492,49 @@ mod tests {
         let missing = env.add_artifact_method("Unknown", "ignite", method, &None);
         assert!(matches!(missing, Err(EvalError::InvalidOperation(_, _))));
     }
+    #[test]
+    fn test_update_var_type_mismatch() {
+        let mut env = RuntimeEnv::new();
+        env.set_var("x".to_string(), Value::Arcana(1), Type::Arcana, true, None);
+
+        let result = env.update_var("x", Value::Aether(1.0), Type::Aether, None);
+
+        assert!(matches!(
+            result,
+            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("Type mismatch")
+        ));
+    }
+
+    #[test]
+    fn test_update_var_immutable() {
+        let mut env = RuntimeEnv::new();
+        env.set_var("x".to_string(), Value::Arcana(1), Type::Arcana, false, None);
+
+        let result = env.update_var("x", Value::Arcana(2), Type::Arcana, None);
+
+        assert!(matches!(
+            result,
+            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("Cannot reassign to immutable variable")
+        ));
+    }
+
+    #[test]
+    fn test_define_artifact_conflict() {
+        let mut env = RuntimeEnv::new();
+        let schema = ArtifactSchema {
+            name: "Player".to_string(),
+            fields: Vec::new(),
+            methods: HashMap::new(),
+            line_info: None,
+        };
+
+        env.define_artifact(schema.clone())
+            .expect("failed to define artifact");
+
+        let result = env.define_artifact(schema);
+        assert!(matches!(
+            result,
+            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("Artifact Player is already defined")
+        ));
+    }
 }

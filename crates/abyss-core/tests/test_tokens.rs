@@ -1,4 +1,4 @@
-use abyss_lang::parser::{SimpleSpan, SpannedToken, Token, lexer};
+use abyss_core::parser::{SimpleSpan, SpannedToken, Token, lexer};
 use chumsky::Parser;
 use ordered_float::OrderedFloat;
 

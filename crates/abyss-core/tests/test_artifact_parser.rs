@@ -1,5 +1,5 @@
-use abyss_lang::ast::{AST, Type};
-use abyss_lang::parser::parse;
+use abyss_core::ast::{AST, Type};
+use abyss_core::parser::parse;
 
 fn parse_single(source: &str) -> Vec<AST> {
     let outcome = parse(source);

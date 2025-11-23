@@ -35,7 +35,7 @@ def get_package_json_version(package_path):
 
 def main():
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    cargo_path = os.path.join(root_dir, 'crates/abyss-lang/Cargo.toml')
+    cargo_path = os.path.join(root_dir, 'crates/abyss-cli/Cargo.toml')
     package_path = os.path.join(root_dir, 'editors/code/package.json')
 
     if not os.path.exists(cargo_path):

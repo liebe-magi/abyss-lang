@@ -1,0 +1,9 @@
+[package]
+name = "abyss-interpreter"
+version = "0.4.0"
+edition = "2024"
+
+[dependencies]
+abyss-core = { path = "../abyss-core" }
+colored = "3.0.0"
+ordered-float = "5"

@@ -14,6 +14,14 @@ AbySS blends symbolic, spell-inspired syntax with a fast Rust core. Use it to it
 - **VS Code tooling** (AbySS Codex Familiar) that shares the same TextMate grammar as the docs.
 - **Rust-powered compiler** built on `chumsky` and `ariadne` for resilient parsing and diagnostics.
 
+## Architecture
+
+AbySS is organized as a Cargo Workspace with the following crates:
+
+- **`abyss-core`**: The "Brain" of the language. Contains the AST, Parser, Lexer, Type definitions, and Static Analysis (SymbolTable). It is designed to be lightweight and suitable for future LSP implementation.
+- **`abyss-interpreter`**: The "Engine". Handles runtime values (`Value`), the dynamic environment (`RuntimeEnv`), evaluation logic, and the Standard Library.
+- **`abyss-lang`**: The "Interface". Provides the CLI (Command Line Interface), REPL, and file I/O operations. It connects the user to the interpreter.
+
 ## Quick Install
 
 ```bash
@@ -24,7 +32,7 @@ Or build from source:
 
 ```bash
 cd abyss-lang
-cargo install --path .
+cargo install --path crates/abyss-cli
 ```
 
 ### Try it quickly

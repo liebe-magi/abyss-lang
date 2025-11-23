@@ -2,9 +2,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use crate::ast::{AST, LineInfo, Type};
-use crate::env::{BuiltinMethodRegistry, CallArg, Environment, Value};
+use crate::env::{BuiltinMethodRegistry, CallArg, RuntimeEnv, Value};
 use crate::eval::{EvalError, EvalResult};
+use abyss_core::ast::{AST, LineInfo, Type};
 
 use super::{call_arg_to_value, ensure_mutable_receiver, method_table_for};
 
@@ -17,7 +17,7 @@ pub(super) fn register_methods(registry: &mut BuiltinMethodRegistry) {
 }
 
 fn lexicon_tally(
-    _env: &mut Environment,
+    _env: &mut RuntimeEnv,
     _receiver_ast: &AST,
     _receiver_var_name: Option<&str>,
     receiver_value: Value,
@@ -37,7 +37,7 @@ fn lexicon_tally(
 }
 
 fn lexicon_define(
-    env: &mut Environment,
+    env: &mut RuntimeEnv,
     receiver_ast: &AST,
     receiver_var_name: Option<&str>,
     receiver_value: Value,
@@ -77,7 +77,7 @@ fn lexicon_define(
 }
 
 fn lexicon_expunge(
-    env: &mut Environment,
+    env: &mut RuntimeEnv,
     receiver_ast: &AST,
     receiver_var_name: Option<&str>,
     receiver_value: Value,
@@ -119,7 +119,7 @@ fn lexicon_expunge(
 }
 
 fn lexicon_glossary(
-    _env: &mut Environment,
+    _env: &mut RuntimeEnv,
     _receiver_ast: &AST,
     _receiver_var_name: Option<&str>,
     receiver_value: Value,

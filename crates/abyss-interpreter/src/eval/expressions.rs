@@ -2,9 +2,9 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use crate::ast::{AST, LineInfo, Type};
-use crate::env::{CallArg, Callable, EngravedFunction, Environment, Value};
+use crate::env::{CallArg, Callable, EngravedFunction, RuntimeEnv, Value};
 use crate::stdlib::methods;
+use abyss_core::ast::{AST, LineInfo, Type};
 
 use super::artifacts::{
     collect_field_chain, compare_artifacts, ensure_field_exists, expect_artifact_from_eval,
@@ -20,7 +20,7 @@ use super::values::{
 
 pub(crate) fn try_evaluate_expression(
     ast: &AST,
-    env: &mut Environment,
+    env: &mut RuntimeEnv,
 ) -> Result<Option<EvalResult>, EvalError> {
     let result = match ast {
         AST::Omen(value, _) => return Ok(Some(EvalResult::data(Value::Omen(*value)))),
@@ -248,7 +248,7 @@ pub(crate) fn try_evaluate_expression(
 }
 
 fn binary_numeric_op<TArc, TAether>(
-    env: &mut Environment,
+    env: &mut RuntimeEnv,
     left: &AST,
     right: &AST,
     line_info: &Option<LineInfo>,
@@ -287,7 +287,7 @@ where
 }
 
 fn instantiate_artifact_literal(
-    env: &mut Environment,
+    env: &mut RuntimeEnv,
     type_name: &str,
     fields: &[(String, AST)],
     line_info: &Option<LineInfo>,
@@ -335,7 +335,7 @@ fn instantiate_artifact_literal(
 }
 
 fn compare_values(
-    env: &mut Environment,
+    env: &mut RuntimeEnv,
     left: &AST,
     right: &AST,
     line_info: &Option<LineInfo>,
@@ -369,7 +369,7 @@ fn compare_values(
 }
 
 fn order_values<F>(
-    env: &mut Environment,
+    env: &mut RuntimeEnv,
     left: &AST,
     right: &AST,
     line_info: &Option<LineInfo>,
@@ -396,7 +396,7 @@ where
 }
 
 fn logical_op<F>(
-    env: &mut Environment,
+    env: &mut RuntimeEnv,
     left: &AST,
     right: &AST,
     line_info: &Option<LineInfo>,
@@ -420,7 +420,7 @@ where
 }
 
 fn evaluate_method_call(
-    env: &mut Environment,
+    env: &mut RuntimeEnv,
     receiver: &AST,
     method_name: &str,
     args: &[AST],
@@ -486,7 +486,7 @@ fn evaluate_method_call(
 }
 
 fn ensure_method_receiver_mutability(
-    env: &Environment,
+    env: &RuntimeEnv,
     receiver: &AST,
     artifact_name: &str,
     method_name: &str,
@@ -519,7 +519,7 @@ fn ensure_method_receiver_mutability(
 }
 
 fn evaluate_artifact_method_call(
-    env: &mut Environment,
+    env: &mut RuntimeEnv,
     receiver_ast: &AST,
     receiver_var_name: Option<String>,
     receiver_handle: crate::env::ArtifactHandle,
@@ -564,7 +564,7 @@ fn evaluate_artifact_method_call(
 }
 
 fn evaluate_function_call(
-    env: &mut Environment,
+    env: &mut RuntimeEnv,
     name: &str,
     args: &[AST],
     line_info: &Option<LineInfo>,
@@ -602,7 +602,7 @@ fn evaluate_function_call(
 }
 
 fn evaluate_engraved_function(
-    env: &mut Environment,
+    env: &mut RuntimeEnv,
     evaluated_args: Vec<CallArg>,
     function: EngravedFunction,
     line_info: &Option<LineInfo>,

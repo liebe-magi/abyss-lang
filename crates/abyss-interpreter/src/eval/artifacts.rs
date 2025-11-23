@@ -1,7 +1,7 @@
-use crate::ast::{AST, ArtifactField, LineInfo, Type};
 use crate::env::{
-    ArtifactFieldSchema, ArtifactHandle, ArtifactSchema, ArtifactValue, Environment, Value,
+    ArtifactFieldSchema, ArtifactHandle, ArtifactSchema, ArtifactValue, RuntimeEnv, Value,
 };
+use abyss_core::ast::{AST, ArtifactField, LineInfo, Type};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -11,7 +11,7 @@ use super::values::describe_value;
 
 pub(crate) fn ensure_type_known(
     ty: &Type,
-    env: &Environment,
+    env: &RuntimeEnv,
     line_info: &Option<LineInfo>,
 ) -> Result<(), EvalError> {
     if let Type::Artifact(name) = ty
@@ -27,7 +27,7 @@ pub(crate) fn ensure_type_known(
 
 pub(crate) fn ensure_field_type_known(
     field: &ArtifactField,
-    env: &Environment,
+    env: &RuntimeEnv,
     current_artifact: &str,
 ) -> Result<(), EvalError> {
     match &field.field_type {
@@ -52,7 +52,7 @@ pub(crate) fn ensure_field_type_known(
 pub(crate) fn build_artifact_schema(
     name: &str,
     fields: &[ArtifactField],
-    env: &Environment,
+    env: &RuntimeEnv,
     line_info: &Option<LineInfo>,
 ) -> Result<ArtifactSchema, EvalError> {
     let mut seen = HashSet::new();
@@ -115,7 +115,7 @@ pub(crate) fn expect_artifact_from_eval(
 }
 
 pub(crate) fn lookup_schema_by_name<'a>(
-    env: &'a Environment,
+    env: &'a RuntimeEnv,
     type_name: &str,
     line_info: &Option<LineInfo>,
 ) -> Result<&'a ArtifactSchema, EvalError> {
@@ -128,7 +128,7 @@ pub(crate) fn lookup_schema_by_name<'a>(
 }
 
 pub(crate) fn lookup_schema_from_handle<'a>(
-    env: &'a Environment,
+    env: &'a RuntimeEnv,
     handle: &ArtifactHandle,
     line_info: &Option<LineInfo>,
 ) -> Result<&'a ArtifactSchema, EvalError> {
@@ -162,7 +162,7 @@ pub(crate) fn missing_field_error(
 }
 
 pub(crate) fn read_artifact_field(
-    env: &Environment,
+    env: &RuntimeEnv,
     handle: &ArtifactHandle,
     field: &str,
     line_info: &Option<LineInfo>,
@@ -190,7 +190,7 @@ pub(crate) fn instantiate_artifact_handle(
 }
 
 pub(crate) fn compare_artifacts(
-    env: &Environment,
+    env: &RuntimeEnv,
     left: &ArtifactHandle,
     right: &ArtifactHandle,
     line_info: &Option<LineInfo>,
@@ -248,7 +248,7 @@ pub(crate) fn collect_field_chain(ast: &AST) -> Option<(String, Vec<String>)> {
 }
 
 fn values_equal(
-    env: &Environment,
+    env: &RuntimeEnv,
     left: &Value,
     right: &Value,
     line_info: &Option<LineInfo>,
@@ -300,8 +300,8 @@ fn values_equal(
 mod tests {
     use super::*;
 
-    fn env_with_schema(name: &str, fields: Vec<(&str, Type)>) -> Environment {
-        let mut env = Environment::new();
+    fn env_with_schema(name: &str, fields: Vec<(&str, Type)>) -> RuntimeEnv {
+        let mut env = RuntimeEnv::new();
         env.define_artifact(ArtifactSchema {
             name: name.to_string(),
             fields: fields
@@ -351,7 +351,7 @@ mod tests {
 
     #[test]
     fn ensure_type_known_rejects_unknown_artifact_types() {
-        let env = Environment::new();
+        let env = RuntimeEnv::new();
         let err = ensure_type_known(&Type::Artifact("Sigil".into()), &env, &None).unwrap_err();
         match err {
             EvalError::TypeError(_, _) => {}

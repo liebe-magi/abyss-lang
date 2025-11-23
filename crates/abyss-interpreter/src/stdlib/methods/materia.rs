@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
-use crate::ast::{AST, LineInfo, Type};
-use crate::env::{BuiltinMethodRegistry, CallArg, Environment, Value};
+use crate::env::{BuiltinMethodRegistry, CallArg, RuntimeEnv, Value};
 use crate::eval::{EvalError, EvalResult};
+use abyss_core::ast::{AST, LineInfo, Type};
 
 use super::{expect_glyph_argument, method_table_for};
 
@@ -12,7 +12,7 @@ pub(super) fn register_methods(registry: &mut BuiltinMethodRegistry) {
 }
 
 fn materia_trans_method(
-    _env: &mut Environment,
+    _env: &mut RuntimeEnv,
     _receiver_ast: &AST,
     _receiver_var_name: Option<&str>,
     receiver_value: Value,

@@ -1,6 +1,6 @@
-use crate::ast::AST;
-use crate::ast::LineInfo;
 use crate::env::Value;
+use abyss_core::ast::AST;
+use abyss_core::ast::LineInfo;
 
 use super::result::{EvalError, EvalResult};
 

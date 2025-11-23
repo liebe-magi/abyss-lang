@@ -1,8 +1,10 @@
-use abyss_lang::{
-    env::Value,
-    eval::{EvalError, EvalResult, display_error_with_source, evaluate},
+use abyss_core::{
     format::format_ast,
     parser::{ParserDiagnostic, emit_diagnostics, parse},
+};
+use abyss_interpreter::{
+    env::Value,
+    eval::{EvalError, EvalResult, display_error_with_source, evaluate},
     stdlib,
 };
 use clap::{Parser, Subcommand};

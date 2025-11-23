@@ -1,7 +1,7 @@
+use crate::env::{ArtifactMethod, Callable, EngravedFunction, RuntimeEnv, Value};
 #[cfg(test)]
-use crate::ast::ConditionalAssignment;
-use crate::ast::{AST, AssignmentOp, LineInfo, Type};
-use crate::env::{ArtifactMethod, Callable, EngravedFunction, Environment, Value};
+use abyss_core::ast::ConditionalAssignment;
+use abyss_core::ast::{AST, AssignmentOp, LineInfo, Type};
 use std::rc::Rc;
 
 use super::artifacts::{
@@ -26,7 +26,7 @@ use super::values::{
 /// # Returns
 ///
 /// The result of the evaluation, or an `EvalError` if an error occurs.
-pub fn evaluate(ast: &AST, env: &mut Environment) -> Result<EvalResult, EvalError> {
+pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError> {
     if let Some(result) = try_evaluate_expression(ast, env)? {
         return Ok(result);
     }
@@ -778,7 +778,7 @@ mod tests {
         }))
     }
 
-    fn register_artifact(env: &mut Environment, name: &str, fields: Vec<(&str, Type)>) {
+    fn register_artifact(env: &mut RuntimeEnv, name: &str, fields: Vec<(&str, Type)>) {
         let schema = ArtifactSchema {
             name: name.to_string(),
             fields: fields
@@ -796,7 +796,7 @@ mod tests {
 
     #[test]
     fn arcana_assignment_supports_compound_ops() {
-        let mut env = Environment::new();
+        let mut env = RuntimeEnv::new();
         env.set_var("sigil".into(), Value::Arcana(2), Type::Arcana, true, line());
 
         let assignment = AST::Assignment {
@@ -816,7 +816,7 @@ mod tests {
 
     #[test]
     fn assignment_rejects_immutable_variables() {
-        let mut env = Environment::new();
+        let mut env = RuntimeEnv::new();
         env.set_var(
             "sigil".into(),
             Value::Arcana(2),
@@ -841,7 +841,7 @@ mod tests {
 
     #[test]
     fn index_assignment_updates_scroll_entries() {
-        let mut env = Environment::new();
+        let mut env = RuntimeEnv::new();
         env.set_var(
             "scroll".into(),
             scroll(vec![Value::Arcana(0), Value::Arcana(1)]),
@@ -872,7 +872,7 @@ mod tests {
 
     #[test]
     fn field_assignment_requires_artifact_target() {
-        let mut env = Environment::new();
+        let mut env = RuntimeEnv::new();
         let assignment = AST::FieldAssignment {
             target: Box::new(AST::Arcana(1, line())),
             field: "power".into(),
@@ -889,7 +889,7 @@ mod tests {
 
     #[test]
     fn field_assignment_reports_missing_variable() {
-        let mut env = Environment::new();
+        let mut env = RuntimeEnv::new();
         let assignment = AST::FieldAssignment {
             target: Box::new(AST::Var("missing".into(), line())),
             field: "power".into(),
@@ -906,7 +906,7 @@ mod tests {
 
     #[test]
     fn field_assignment_rejects_non_artifact_chain_segments() {
-        let mut env = Environment::new();
+        let mut env = RuntimeEnv::new();
         register_artifact(&mut env, "Glyph", vec![("power", Type::Arcana)]);
         register_artifact(
             &mut env,
@@ -950,7 +950,7 @@ mod tests {
 
     #[test]
     fn field_assignment_updates_nested_artifact_fields() {
-        let mut env = Environment::new();
+        let mut env = RuntimeEnv::new();
         register_artifact(&mut env, "Glyph", vec![("power", Type::Arcana)]);
         register_artifact(
             &mut env,
@@ -993,7 +993,7 @@ mod tests {
 
     #[test]
     fn oracle_match_branch_returns_revealed_value() {
-        let mut env = Environment::new();
+        let mut env = RuntimeEnv::new();
         let conditional = ConditionalAssignment {
             variable: "sigil".into(),
             expression: Box::new(AST::Arcana(1, line())),
@@ -1022,7 +1022,7 @@ mod tests {
 
     #[test]
     fn oracle_match_handles_aether_and_rune_patterns() {
-        let mut env = Environment::new();
+        let mut env = RuntimeEnv::new();
         let conditionals = vec![
             ConditionalAssignment {
                 variable: "flux".into(),
@@ -1058,7 +1058,7 @@ mod tests {
 
     #[test]
     fn oracle_guard_requires_omen_values() {
-        let mut env = Environment::new();
+        let mut env = RuntimeEnv::new();
         let guard_branch = AST::OracleBranch {
             pattern: vec![AST::Arcana(1, line())],
             body: Box::new(AST::Arcana(0, line())),
@@ -1087,7 +1087,7 @@ mod tests {
 
     #[test]
     fn oracle_pattern_length_mismatch_errors() {
-        let mut env = Environment::new();
+        let mut env = RuntimeEnv::new();
         let conditional = ConditionalAssignment {
             variable: "sigil".into(),
             expression: Box::new(AST::Arcana(1, line())),
@@ -1118,7 +1118,7 @@ mod tests {
 
     #[test]
     fn oracle_skips_comments_and_supports_dont_care_items() {
-        let mut env = Environment::new();
+        let mut env = RuntimeEnv::new();
         let conditional = ConditionalAssignment {
             variable: "arc".into(),
             expression: Box::new(AST::Arcana(99, line())),
@@ -1187,7 +1187,7 @@ mod tests {
 
     #[test]
     fn artifact_definition_creates_glyph_variable() {
-        let mut env = Environment::new();
+        let mut env = RuntimeEnv::new();
         let artifact = AST::ArtifactDef {
             name: "Relic".into(),
             fields: Vec::new(),

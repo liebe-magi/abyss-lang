@@ -1,14 +1,14 @@
-use crate::ast::{AST, LineInfo, Type};
 use crate::eval::{EvalError, EvalResult};
+use abyss_core::ast::{AST, LineInfo, Type};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 pub type BuiltinFunc =
-    fn(&mut Environment, Vec<CallArg>, Option<LineInfo>) -> Result<EvalResult, EvalError>;
+    fn(&mut RuntimeEnv, Vec<CallArg>, Option<LineInfo>) -> Result<EvalResult, EvalError>;
 
 pub type BuiltinMethodHandler = fn(
-    &mut Environment,
+    &mut RuntimeEnv,
     &AST,
     Option<&str>,
     Value,
@@ -63,17 +63,17 @@ pub struct VarInfo {
 /// Manages variable and function scopes in the execution environment, including
 /// both the global scope and any nested local scopes.
 #[derive(Debug, Clone)]
-pub struct Environment {
+pub struct RuntimeEnv {
     scopes: Vec<HashMap<String, VarInfo>>, // Variable scopes
     function_scopes: Vec<HashMap<String, Callable>>, // Function scopes
     artifact_scopes: Vec<HashMap<String, ArtifactSchema>>, // Artifact schemas per scope
     builtin_methods: BuiltinMethodRegistry,
 }
 
-impl Environment {
+impl RuntimeEnv {
     /// Creates a new environment with an initial global scope.
     pub fn new() -> Self {
-        Environment {
+        RuntimeEnv {
             scopes: vec![HashMap::new()],
             function_scopes: vec![HashMap::new()],
             artifact_scopes: vec![HashMap::new()],
@@ -283,7 +283,7 @@ impl Environment {
     }
 }
 
-impl Default for Environment {
+impl Default for RuntimeEnv {
     fn default() -> Self {
         Self::new()
     }
@@ -369,7 +369,7 @@ mod tests {
     }
 
     fn builtin(
-        _: &mut Environment,
+        _: &mut RuntimeEnv,
         _: Vec<CallArg>,
         _: Option<LineInfo>,
     ) -> Result<EvalResult, EvalError> {
@@ -378,7 +378,7 @@ mod tests {
 
     #[test]
     fn set_get_and_scope_resolution_of_vars() {
-        let mut env = Environment::new();
+        let mut env = RuntimeEnv::new();
         env.set_var("sigil".into(), Value::Arcana(1), Type::Arcana, true, None);
         assert!(
             matches!(env.get_var("sigil"), Some(info) if matches!(info.value, Value::Arcana(1)))
@@ -398,7 +398,7 @@ mod tests {
 
     #[test]
     fn update_var_respects_mutability_and_types() {
-        let mut env = Environment::new();
+        let mut env = RuntimeEnv::new();
         env.set_var("sigil".into(), Value::Arcana(1), Type::Arcana, false, None);
         let immutable_err = env
             .update_var("sigil", Value::Arcana(2), Type::Arcana, None)
@@ -431,7 +431,7 @@ mod tests {
 
     #[test]
     fn extend_functions_registers_all_callable_entries() {
-        let mut env = Environment::new();
+        let mut env = RuntimeEnv::new();
         env.extend_functions(vec![
             (
                 "summon".into(),
@@ -454,7 +454,7 @@ mod tests {
 
     #[test]
     fn artifacts_can_be_defined_and_retrieved_per_scope() {
-        let mut env = Environment::new();
+        let mut env = RuntimeEnv::new();
         env.define_artifact(artifact_schema("Relic")).unwrap();
         assert!(env.artifact_defined_in_current_scope("Relic"));
 
@@ -473,7 +473,7 @@ mod tests {
 
     #[test]
     fn add_artifact_method_registers_and_guards_duplicates() {
-        let mut env = Environment::new();
+        let mut env = RuntimeEnv::new();
         env.define_artifact(artifact_schema("Relic")).unwrap();
 
         let method = ArtifactMethod {

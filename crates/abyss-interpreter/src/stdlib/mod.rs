@@ -1,10 +1,10 @@
 pub mod functions;
 pub mod methods;
 
-use crate::ast::Type;
-use crate::env::{Environment, Value};
+use crate::env::{RuntimeEnv, Value};
+use abyss_core::ast::Type;
 
-fn seed_builtin_glyphs(env: &mut Environment) {
+fn seed_builtin_glyphs(env: &mut RuntimeEnv) {
     let glyphs = [
         ("arcana", Type::Arcana),
         ("aether", Type::Aether),
@@ -28,8 +28,8 @@ fn seed_builtin_glyphs(env: &mut Environment) {
     }
 }
 
-pub fn create_global_environment() -> Environment {
-    let mut env = Environment::new();
+pub fn create_global_environment() -> RuntimeEnv {
+    let mut env = RuntimeEnv::new();
     let functions = functions::get_all_global_functions();
     env.extend_functions(functions);
     let methods = methods::get_all_builtin_methods();

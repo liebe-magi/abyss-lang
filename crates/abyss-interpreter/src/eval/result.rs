@@ -1,5 +1,5 @@
-use crate::ast::LineInfo;
 use crate::env::{ArtifactHandle, Value};
+use abyss_core::ast::LineInfo;
 use colored::*;
 use std::fmt;
 

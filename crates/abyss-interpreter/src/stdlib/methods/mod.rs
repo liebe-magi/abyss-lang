@@ -2,12 +2,12 @@ mod lexicon;
 mod materia;
 mod scroll;
 
-use crate::ast::{AST, LineInfo, Type};
-use crate::env::{BuiltinMethodHandler, BuiltinMethodRegistry, CallArg, Environment, Value};
+use crate::env::{BuiltinMethodHandler, BuiltinMethodRegistry, CallArg, RuntimeEnv, Value};
 use crate::eval::artifacts::collect_field_chain;
 use crate::eval::values::describe_value;
 use crate::eval::values::eval_result_to_value_checked;
 use crate::eval::{EvalError, EvalResult};
+use abyss_core::ast::{AST, LineInfo, Type};
 use std::collections::HashMap;
 
 pub fn get_all_builtin_methods() -> BuiltinMethodRegistry {
@@ -19,7 +19,7 @@ pub fn get_all_builtin_methods() -> BuiltinMethodRegistry {
 }
 
 pub fn dispatch_builtin_method(
-    env: &mut Environment,
+    env: &mut RuntimeEnv,
     receiver_ast: &AST,
     receiver_var_name: Option<&str>,
     receiver_value: Value,
@@ -84,7 +84,7 @@ pub(super) fn method_table_for(
 }
 
 pub(super) fn ensure_mutable_receiver(
-    env: &Environment,
+    env: &RuntimeEnv,
     receiver_ast: &AST,
     receiver_var_name: Option<&str>,
     collection_kind: &str,

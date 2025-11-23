@@ -1,5 +1,5 @@
-use crate::ast::{LineInfo, Type};
 use crate::env::{ArtifactHandle, ArtifactValue, Value};
+use abyss_core::ast::{LineInfo, Type};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;

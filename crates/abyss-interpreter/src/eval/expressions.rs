@@ -687,7 +687,7 @@ fn evaluate_engraved_function(
                 param_type,
                 is_morph,
                 ..
-            } => (name, param_type, *is_morph),
+            } => (name, param_type, is_morph),
             _ => {
                 return Err(EvalError::InvalidOperation(
                     format!(
@@ -698,7 +698,7 @@ fn evaluate_engraved_function(
                 ));
             }
         };
-        let value = if is_morph_param {
+        let value = if *is_morph_param {
             convert_morph_param_value(evaluated_arg, param_type, line_info)?
         } else {
             convert_to_typed_value(evaluated_arg, param_type, line_info)?
@@ -707,7 +707,7 @@ fn evaluate_engraved_function(
             param_name.to_string(),
             value,
             param_type.clone(),
-            is_morph_param,
+            *is_morph_param,
             line_info.clone(),
         );
     }

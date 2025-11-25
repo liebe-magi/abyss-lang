@@ -1,4 +1,5 @@
 use abyss_core::{
+    analysis::{AnalysisError, SemanticAnalyzer},
     format::format_ast,
     parser::{ParserDiagnostic, emit_diagnostics, parse},
 };
@@ -82,6 +83,28 @@ fn report_diagnostics(source_id: &str, source: &str, diagnostics: &[ParserDiagno
     true
 }
 
+fn display_analysis_errors(script: &str, errors: &[AnalysisError]) {
+    for error in errors {
+        let message = match error {
+            AnalysisError::UndefinedVariable(name, _) => format!("Undefined variable: {}", name),
+            AnalysisError::TypeMismatch {
+                expected, found, ..
+            } => format!("Type mismatch: expected {:?}, found {:?}", expected, found),
+            AnalysisError::NonExhaustiveMatch(msg, _) => format!("Non-exhaustive match: {}", msg),
+            AnalysisError::DuplicateDefinition(msg, _) => format!("Duplicate definition: {}", msg),
+            AnalysisError::InvalidOperation(msg, _) => format!("Invalid operation: {}", msg),
+        };
+        let line_info = match error {
+            AnalysisError::UndefinedVariable(_, info) => info,
+            AnalysisError::TypeMismatch { line_info, .. } => line_info,
+            AnalysisError::NonExhaustiveMatch(_, info) => info,
+            AnalysisError::DuplicateDefinition(_, info) => info,
+            AnalysisError::InvalidOperation(_, info) => info,
+        };
+        display_error_with_source(script, line_info.clone(), &message);
+    }
+}
+
 /// Executes a given AbySS script by parsing and evaluating it in a new environment.
 ///
 /// # Arguments
@@ -90,6 +113,17 @@ fn execute_script(script: &str) {
     let mut env = stdlib::create_global_environment();
     let outcome = parse(script);
     if report_diagnostics("<script>", script, &outcome.diagnostics) {
+        return;
+    }
+
+    let mut analyzer = SemanticAnalyzer::new();
+    let mut analysis_errors = Vec::new();
+    for ast in &outcome.ast {
+        analysis_errors.extend(analyzer.analyze(ast));
+    }
+
+    if !analysis_errors.is_empty() {
+        display_analysis_errors(script, &analysis_errors);
         return;
     }
 
@@ -136,6 +170,7 @@ fn start_interpreter(debug: bool) {
     let mut current_session_code = String::new();
     let mut current_statement = String::new();
     let mut env = stdlib::create_global_environment();
+    let mut analyzer = SemanticAnalyzer::new();
 
     let history_path = get_history_file_path();
     let mut rl = Editor::<(), FileHistory>::new().expect("Error: Failed to create editor");
@@ -191,6 +226,17 @@ fn start_interpreter(debug: bool) {
                         continue;
                     }
 
+                    let mut analysis_errors = Vec::new();
+                    for ast in &outcome.ast {
+                        analysis_errors.extend(analyzer.analyze(ast));
+                    }
+
+                    if !analysis_errors.is_empty() {
+                        display_analysis_errors(&current_statement, &analysis_errors);
+                        current_statement.clear();
+                        continue;
+                    }
+
                     for ast in outcome.ast {
                         if debug {
                             println!("{}", format!("AST: {:?}", ast).yellow());
@@ -233,6 +279,7 @@ fn start_interpreter(debug: bool) {
                 current_session_code.clear();
                 current_statement.clear();
                 env = stdlib::create_global_environment();
+                analyzer = SemanticAnalyzer::new();
             }
             Err(ReadlineError::Eof) => {
                 println!("CTRL-D: Exiting interpreter...");

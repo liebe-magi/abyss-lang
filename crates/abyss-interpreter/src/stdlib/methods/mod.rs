@@ -73,6 +73,7 @@ fn receiver_type(value: &Value) -> Type {
         Value::Lexicon(_) => Type::Lexicon,
         Value::Glyph(_) => Type::Glyph,
         Value::Artifact(handle) => Type::Artifact(handle.borrow().type_name.clone()),
+        Value::Spectrum { name, .. } => Type::Spectrum(name.clone()),
     }
 }
 

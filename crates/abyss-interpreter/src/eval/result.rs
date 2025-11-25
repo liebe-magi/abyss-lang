@@ -34,6 +34,7 @@ pub enum EvalError {
     InvalidOperation(String, Option<LineInfo>),
     NegativeExponent(Option<LineInfo>),
     TypeError(String, Option<LineInfo>),
+    NonExhaustiveMatch(Option<LineInfo>),
 }
 
 impl fmt::Display for EvalError {
@@ -45,6 +46,12 @@ impl fmt::Display for EvalError {
                 write!(f, "PowArcana operation requires a non-negative exponent!")
             }
             EvalError::TypeError(var_type, _) => write!(f, "Type error: {}", var_type),
+            EvalError::NonExhaustiveMatch(_) => {
+                write!(
+                    f,
+                    "Non-exhaustive match: not all spectrum variants are covered!"
+                )
+            }
         }
     }
 }

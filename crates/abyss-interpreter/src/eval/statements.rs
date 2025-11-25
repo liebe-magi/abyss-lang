@@ -5,8 +5,8 @@ use abyss_core::ast::{AST, AssignmentOp, LineInfo, Type};
 use std::rc::Rc;
 
 use super::artifacts::{
-    build_artifact_schema, collect_field_chain, ensure_field_exists, ensure_type_known,
-    expect_artifact_handle, lookup_schema_from_handle, missing_field_error,
+    build_artifact_schema, build_spectrum_schema, collect_field_chain, ensure_field_exists,
+    ensure_type_known, expect_artifact_handle, lookup_schema_from_handle, missing_field_error,
 };
 use super::collections::{collect_index_chain, expect_arcana_index, expect_rune_key};
 use super::expressions::try_evaluate_expression;
@@ -15,6 +15,67 @@ use super::values::{
     convert_to_typed_value, describe_value, eval_result_to_value_checked, extract_aether,
     extract_arcana, extract_omen, extract_rune,
 };
+
+fn match_pattern(
+    env: &mut RuntimeEnv,
+    pattern: &AST,
+    value: &Value,
+    line_info: &Option<LineInfo>,
+) -> Result<bool, EvalError> {
+    match pattern {
+        AST::OracleDontCareItem(_) => Ok(true),
+        AST::PatternBinding { name, line_info } => {
+            env.set_var(
+                name.clone(),
+                value.clone(),
+                value.get_type(),
+                false,
+                line_info.clone(),
+            );
+            Ok(true)
+        }
+        AST::SpectrumPattern {
+            spectrum,
+            variant,
+            args,
+            line_info,
+        } => {
+            if let Value::Spectrum {
+                name: s_name,
+                variant: v_name,
+                data,
+            } = value
+            {
+                if spectrum != s_name || variant != v_name {
+                    return Ok(false);
+                }
+                if args.len() != data.len() {
+                    return Err(EvalError::InvalidOperation(
+                        format!(
+                            "Pattern args length mismatch: expected {}, got {}",
+                            data.len(),
+                            args.len()
+                        ),
+                        line_info.clone(),
+                    ));
+                }
+                for (arg_pattern, arg_value) in args.iter().zip(data.iter()) {
+                    if !match_pattern(env, arg_pattern, arg_value, line_info)? {
+                        return Ok(false);
+                    }
+                }
+                Ok(true)
+            } else {
+                Ok(false)
+            }
+        }
+        expr => {
+            let pattern_result = evaluate(expr, env)?;
+            let pattern_value = eval_result_to_value_checked(pattern_result, line_info.clone())?;
+            super::artifacts::values_equal(env, value, &pattern_value, line_info)
+        }
+    }
+}
 
 /// Evaluates an abstract syntax tree (AST) node in the given environment.
 ///
@@ -381,6 +442,15 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                     EvalResult::Data(Value::Aether(n)) => Value::Aether(n),
                     EvalResult::Data(Value::Rune(rune)) => Value::Rune(rune.clone()),
                     EvalResult::Data(Value::Omen(b)) => Value::Omen(b),
+                    EvalResult::Data(Value::Spectrum {
+                        name,
+                        variant,
+                        data,
+                    }) => Value::Spectrum {
+                        name,
+                        variant,
+                        data,
+                    },
                     other => {
                         env.pop_scope();
                         return Err(EvalError::InvalidOperation(
@@ -390,6 +460,17 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                     }
                 };
                 scrutinee_values.push(stored);
+            }
+
+            // Exhaustiveness check
+            if *is_match {
+                for value in &scrutinee_values {
+                    if let Value::Spectrum { name, .. } = value
+                        && let Some(schema) = env.get_spectrum(name)
+                    {
+                        check_exhaustiveness(env, schema, branches, line_info)?;
+                    }
+                }
             }
 
             for branch in branches {
@@ -418,56 +499,34 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                             ));
                         }
 
+                        env.push_scope(); // Scope for pattern bindings
                         let mut matched = true;
-                        for (idx, pattern) in pattern.iter().enumerate() {
-                            if let AST::OracleDontCareItem(_) = pattern {
-                                continue;
-                            }
-
+                        for (idx, pattern_item) in pattern.iter().enumerate() {
                             let Some(scrutinee_value) = scrutinee_values.get(idx) else {
-                                env.pop_scope();
+                                env.pop_scope(); // Pop pattern scope
+                                env.pop_scope(); // Pop oracle scope
                                 return Err(EvalError::InvalidOperation(
                                     "Oracle branch references missing scrutinee".to_string(),
                                     line_info.clone(),
                                 ));
                             };
 
-                            let pattern_result = evaluate(pattern, env)?;
-
-                            match (scrutinee_value, pattern_result) {
-                                (Value::Arcana(cond_n), EvalResult::Data(Value::Arcana(pat_n))) => {
-                                    if *cond_n != pat_n {
-                                        matched = false;
-                                        break;
-                                    }
+                            match match_pattern(env, pattern_item, scrutinee_value, line_info) {
+                                Ok(true) => {}
+                                Ok(false) => {
+                                    matched = false;
+                                    break;
                                 }
-                                (Value::Aether(cond_n), EvalResult::Data(Value::Aether(pat_n))) => {
-                                    if (*cond_n - pat_n).abs() >= f64::EPSILON {
-                                        matched = false;
-                                        break;
-                                    }
-                                }
-                                (Value::Rune(cond_s), EvalResult::Data(Value::Rune(pat_s))) => {
-                                    if cond_s.as_ref() != pat_s.as_ref() {
-                                        matched = false;
-                                        break;
-                                    }
-                                }
-                                (Value::Omen(cond_b), EvalResult::Data(Value::Omen(pat_b))) => {
-                                    if *cond_b != pat_b {
-                                        matched = false;
-                                        break;
-                                    }
-                                }
-                                _ => {
-                                    env.pop_scope();
-                                    return Err(EvalError::InvalidOperation(
-                                        "Oracle branch pattern type must match scrutinee type"
-                                            .to_string(),
-                                        line_info.clone(),
-                                    ));
+                                Err(e) => {
+                                    env.pop_scope(); // Pop pattern scope
+                                    env.pop_scope(); // Pop oracle scope
+                                    return Err(e);
                                 }
                             }
+                        }
+
+                        if !matched {
+                            env.pop_scope(); // Pop pattern scope if not matched
                         }
                         matched
                     } else {
@@ -494,20 +553,38 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                     };
 
                     if matched {
+                        // If matched, we are already in the pattern scope (if is_match was true)
+                        // If is_match was false, we didn't push a scope.
+                        // Wait, if is_match is false, we don't have bindings?
+                        // The original code didn't push scope for !is_match either.
+                        // But if I want consistency...
+                        // If !is_match, it's just boolean guards. No bindings.
+
                         let result = match evaluate(body.as_ref(), env) {
                             Ok(result) => match result {
                                 EvalResult::Revealed(revealed) => *revealed,
                                 _ => result,
                             },
-                            Err(e) => return Err(e),
+                            Err(e) => {
+                                if *is_match {
+                                    env.pop_scope(); // Pop pattern scope
+                                }
+                                env.pop_scope(); // Pop oracle scope
+                                return Err(e);
+                            }
                         };
-                        env.pop_scope();
+
+                        if *is_match {
+                            env.pop_scope(); // Pop pattern scope
+                        }
+                        env.pop_scope(); // Pop oracle scope
                         return Ok(result);
                     }
                 }
             }
 
             env.pop_scope();
+
             Ok(EvalResult::abyss())
         }
         AST::Reveal(expr, _line_info) => {
@@ -694,6 +771,28 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
             );
             Ok(EvalResult::abyss())
         }
+        AST::SpectrumDef {
+            name,
+            variants,
+            line_info,
+        } => {
+            if env.get_spectrum(name).is_some() {
+                return Err(EvalError::InvalidOperation(
+                    format!("Spectrum {} is already defined", name),
+                    line_info.clone(),
+                ));
+            }
+            let schema = build_spectrum_schema(name, variants, env, line_info)?;
+            env.define_spectrum(schema)?;
+            env.set_var(
+                name.clone(),
+                Value::Glyph(Type::Spectrum(name.clone())),
+                Type::Glyph,
+                false,
+                line_info.clone(),
+            );
+            Ok(EvalResult::abyss())
+        }
         AST::Comment(_, _) => Ok(EvalResult::abyss()),
         _ => Err(EvalError::InvalidOperation(
             format!("Unsupported operation: {:?}", ast),
@@ -733,6 +832,48 @@ fn clone_indexed_child(
             line_info.clone(),
         )),
     }
+}
+
+fn check_exhaustiveness(
+    _env: &RuntimeEnv,
+    schema: &crate::env::SpectrumSchema,
+    branches: &[AST],
+    line_info: &Option<LineInfo>,
+) -> Result<(), EvalError> {
+    let mut covered_variants = std::collections::HashSet::new();
+    let mut has_wildcard = false;
+
+    for branch in branches {
+        if let AST::OracleBranch { pattern, .. } = branch {
+            for pat in pattern {
+                match pat {
+                    AST::OracleDontCareItem(_) | AST::PatternBinding { .. } => {
+                        has_wildcard = true;
+                    }
+                    AST::SpectrumPattern {
+                        spectrum, variant, ..
+                    } => {
+                        if spectrum == &schema.name {
+                            covered_variants.insert(variant.clone());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    if has_wildcard {
+        return Ok(());
+    }
+
+    for variant in schema.variants.keys() {
+        if !covered_variants.contains(variant) {
+            return Err(EvalError::NonExhaustiveMatch(line_info.clone()));
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

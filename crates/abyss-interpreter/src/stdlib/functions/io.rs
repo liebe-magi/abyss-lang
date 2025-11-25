@@ -144,6 +144,7 @@ fn glyph_label(var_type: &Type) -> String {
         Type::Materia => "materia".to_string(),
         Type::Glyph => "glyph".to_string(),
         Type::Artifact(name) => name.clone(),
+        Type::Spectrum(name) => name.clone(),
     }
 }
 
@@ -172,6 +173,19 @@ pub(crate) fn format_value(value: &Value, line: &Option<LineInfo>) -> Result<Str
         }
         Value::Glyph(var_type) => Ok(glyph_label(var_type)),
         Value::Artifact(handle) => format_artifact(handle, line),
+        Value::Spectrum {
+            name,
+            variant,
+            data,
+        } => {
+            if data.is_empty() {
+                Ok(format!("{}::{}", name, variant))
+            } else {
+                let parts: Result<Vec<String>, EvalError> =
+                    data.iter().map(|item| format_value(item, line)).collect();
+                Ok(format!("{}::{}({})", name, variant, parts?.join(", ")))
+            }
+        }
     }
 }
 

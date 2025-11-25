@@ -2,6 +2,7 @@ pub(crate) mod artifacts;
 mod collections;
 mod expressions;
 mod result;
+mod spectrum_tests;
 mod statements;
 pub(crate) mod values;
 

@@ -59,6 +59,12 @@ pub(crate) fn try_evaluate_expression(
             fields,
             line_info,
         } => instantiate_artifact_literal(env, type_name, fields, line_info)?,
+        AST::SpectrumInstantiation {
+            spectrum,
+            variant,
+            args,
+            line_info,
+        } => instantiate_spectrum(env, spectrum, variant, args, line_info)?,
         AST::FieldAccess {
             target,
             field,
@@ -332,6 +338,57 @@ fn instantiate_artifact_literal(
         field_order,
         values,
     )))
+}
+
+fn instantiate_spectrum(
+    env: &mut RuntimeEnv,
+    spectrum_name: &str,
+    variant_name: &str,
+    args: &[AST],
+    line_info: &Option<LineInfo>,
+) -> Result<EvalResult, EvalError> {
+    let schema = env
+        .get_spectrum(spectrum_name)
+        .ok_or_else(|| {
+            EvalError::InvalidOperation(
+                format!("Spectrum {} is not defined", spectrum_name),
+                line_info.clone(),
+            )
+        })?
+        .clone();
+
+    let variant_args_types = schema.variants.get(variant_name).ok_or_else(|| {
+        EvalError::InvalidOperation(
+            format!("Variant {}::{} is not defined", spectrum_name, variant_name),
+            line_info.clone(),
+        )
+    })?;
+
+    if args.len() != variant_args_types.len() {
+        return Err(EvalError::InvalidOperation(
+            format!(
+                "Variant {}::{} expects {} arguments, got {}",
+                spectrum_name,
+                variant_name,
+                variant_args_types.len(),
+                args.len()
+            ),
+            line_info.clone(),
+        ));
+    }
+
+    let mut evaluated_args = Vec::with_capacity(args.len());
+    for (arg_expr, expected_type) in args.iter().zip(variant_args_types) {
+        let evaluated = statements::evaluate(arg_expr, env)?;
+        let typed_value = convert_to_typed_value(evaluated, expected_type, line_info)?;
+        evaluated_args.push(typed_value);
+    }
+
+    Ok(EvalResult::data(Value::Spectrum {
+        name: spectrum_name.to_string(),
+        variant: variant_name.to_string(),
+        data: evaluated_args,
+    }))
 }
 
 fn compare_values(

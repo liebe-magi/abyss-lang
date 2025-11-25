@@ -1,0 +1,18 @@
+spectrum Shape {
+    Circle(aether),
+    Rectangle(aether, aether),
+    Ellipse(aether, aether)
+};
+
+engrave area(s: Shape) -> aether {
+    oracle (s) {
+        Shape::Circle(r) => 3.14159 * r * r;
+        Shape::Rectangle(w, h) => w * h;
+    };
+};
+
+forge c: Shape = Shape::Circle(2.0);
+unveil(area(c));
+
+forge r: Shape = Shape::Rectangle(3.0, 4.0);
+unveil(area(r));

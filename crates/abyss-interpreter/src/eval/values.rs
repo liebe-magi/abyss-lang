@@ -129,8 +129,40 @@ pub(crate) fn convert_to_typed_value(
                     ))
                 }
             }
+            Value::Spectrum { ref name, .. } => {
+                if name == expected {
+                    Ok(clone_value(&value))
+                } else {
+                    Err(EvalError::TypeError(
+                        format!(
+                            "Expected spectrum of type {} but received {}",
+                            expected, name
+                        ),
+                        line_info.clone(),
+                    ))
+                }
+            }
             _ => Err(EvalError::TypeError(
-                format!("Expected artifact of type {}", expected),
+                format!("Expected artifact or spectrum of type {}", expected),
+                line_info.clone(),
+            )),
+        },
+        Type::Spectrum(expected) => match value {
+            Value::Spectrum { ref name, .. } => {
+                if name == expected {
+                    Ok(clone_value(&value))
+                } else {
+                    Err(EvalError::TypeError(
+                        format!(
+                            "Expected spectrum of type {} but received {}",
+                            expected, name
+                        ),
+                        line_info.clone(),
+                    ))
+                }
+            }
+            _ => Err(EvalError::TypeError(
+                format!("Expected spectrum of type {}", expected),
                 line_info.clone(),
             )),
         },
@@ -200,6 +232,7 @@ pub(crate) fn describe_value(value: &Value) -> &'static str {
         Value::Lexicon(_) => "lexicon",
         Value::Glyph(_) => "glyph",
         Value::Artifact(_) => "artifact",
+        Value::Spectrum { .. } => "spectrum",
     }
 }
 
@@ -227,6 +260,15 @@ fn clone_value(value: &Value) -> Value {
         Value::Lexicon(entries) => Value::Lexicon(clone_lexicon(entries)),
         Value::Glyph(ty) => Value::Glyph(ty.clone()),
         Value::Artifact(handle) => Value::Artifact(clone_artifact_handle(handle)),
+        Value::Spectrum {
+            name,
+            variant,
+            data,
+        } => Value::Spectrum {
+            name: name.clone(),
+            variant: variant.clone(),
+            data: data.iter().map(clone_value).collect(),
+        },
     }
 }
 

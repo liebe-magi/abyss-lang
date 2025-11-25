@@ -10,7 +10,8 @@ use chumsky::{
 };
 
 use crate::ast::{
-    AST, ArtifactField, ArtifactMethodTarget, AssignmentOp, ConditionalAssignment, LineInfo, Type,
+    AST, ArtifactField, ArtifactMethodTarget, AssignmentOp, ConditionalAssignment, LineInfo,
+    SpectrumVariantDef, Type,
 };
 
 use super::SimpleSpan;
@@ -117,6 +118,7 @@ fn statement_body_parser<'src>(
 ) -> BoxedParser<'src, SpannedAst> {
     choice((
         artifact_def_parser(ctx.clone()),
+        spectrum_def_parser(ctx.clone()),
         forge_parser(ctx.clone(), expression.clone()),
         engrave_parser(ctx.clone(), block.clone()),
         reveal_parser(ctx.clone(), expression.clone()),
@@ -150,6 +152,74 @@ fn artifact_def_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedAst
                 },
                 span,
             )
+        })
+        .boxed()
+}
+
+fn spectrum_def_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedAst> {
+    let ctx_for_map = ctx.clone();
+    let ident =
+        select! { Token::Identifier(name) => name }.map_with(|name, extra| (name, extra.span()));
+
+    just(Token::Spectrum)
+        .map_with(|_, extra| extra.span())
+        .then(ident)
+        .then(spectrum_variants_parser(ctx.clone()))
+        .map(move |((spectrum_span, (name, _)), (variants, body_span))| {
+            let span = SimpleSpan::new(spectrum_span.start(), body_span.end());
+            let info = ctx_for_map.info(span);
+            (
+                AST::SpectrumDef {
+                    name,
+                    variants,
+                    line_info: info.clone(),
+                },
+                span,
+            )
+        })
+        .boxed()
+}
+
+fn spectrum_variants_parser<'src>(
+    ctx: ParserContext,
+) -> BoxedParser<'src, (Vec<SpectrumVariantDef>, SimpleSpan<usize>)> {
+    let ctx_for_map = ctx.clone();
+    let variant = select! { Token::Identifier(name) => name }
+        .map_with(|name, extra| (name, extra.span()))
+        .then(
+            just(Token::OpenParen)
+                .ignore_then(
+                    type_parser()
+                        .map(|(ty, _)| ty)
+                        .separated_by(just(Token::Comma))
+                        .collect::<Vec<_>>(),
+                )
+                .then_ignore(just(Token::CloseParen))
+                .or_not(),
+        )
+        .map(move |((name, name_span), args_opt)| {
+            let args = args_opt.unwrap_or_default();
+            let span = name_span;
+            let info = ctx_for_map.info(span);
+            SpectrumVariantDef {
+                name,
+                args,
+                line_info: info,
+            }
+        });
+
+    just(Token::OpenBrace)
+        .map_with(|_, extra| extra.span())
+        .then(
+            variant
+                .separated_by(just(Token::Comma))
+                .allow_trailing()
+                .collect::<Vec<_>>(),
+        )
+        .then(just(Token::CloseBrace).map_with(|_, extra| extra.span()))
+        .map(move |((open_span, variants), close_span)| {
+            let span = SimpleSpan::new(open_span.start(), close_span.end());
+            (variants, span)
         })
         .boxed()
 }
@@ -789,17 +859,66 @@ fn oracle_branch_parser<'src>(
         .boxed()
 }
 
+fn spectrum_pattern_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, AST> {
+    recursive(|pattern| {
+        let inner_element = choice((
+            pattern.clone(),
+            select! { Token::Identifier(name) if name == "_" => () }.map_with({
+                let ctx = ctx.clone();
+                move |_, extra| AST::OracleDontCareItem(ctx.info(extra.span()))
+            }),
+            identifier_string_parser().map_with({
+                let ctx = ctx.clone();
+                move |name, extra| AST::PatternBinding {
+                    name,
+                    line_info: ctx.info(extra.span()),
+                }
+            }),
+            literal_parser(ctx.clone()).map(|(ast, _)| ast),
+        ));
+
+        let variant_args = just(Token::OpenParen)
+            .ignore_then(
+                inner_element
+                    .separated_by(just(Token::Comma))
+                    .collect::<Vec<_>>(),
+            )
+            .then_ignore(just(Token::CloseParen))
+            .or_not()
+            .map(|args| args.unwrap_or_default());
+
+        let path = select! { Token::Identifier(name) => name }
+            .then_ignore(just(Token::DoubleColon))
+            .then(select! { Token::Identifier(variant) => variant });
+
+        path.then(variant_args).map_with({
+            let ctx = ctx.clone();
+            move |((spectrum, variant), args), extra| AST::SpectrumPattern {
+                spectrum,
+                variant,
+                args,
+                line_info: ctx.info(extra.span()),
+            }
+        })
+    })
+    .boxed()
+}
+
 fn pattern_parser<'src>(
     ctx: ParserContext,
     expression: BoxedParser<'src, SpannedAst>,
 ) -> BoxedParser<'src, (Vec<AST>, SimpleSpan<usize>)> {
-    let wildcard = select! { Token::Identifier(name) if name == "_" => () }
-        .map_with(|_, extra| (Vec::new(), extra.span()));
+    let ctx_for_wild = ctx.clone();
+    let wildcard =
+        select! { Token::Identifier(name) if name == "_" => () }.map_with(move |_, extra| {
+            let span = extra.span();
+            (vec![AST::OracleDontCareItem(ctx_for_wild.info(span))], span)
+        });
 
     let list = just(Token::OpenParen)
         .map_with(|_, extra| extra.span())
         .then(
-            pattern_element_parser(ctx.clone(), expression)
+            pattern_element_parser(ctx.clone(), expression.clone())
                 .separated_by(just(Token::Comma))
                 .at_least(1)
                 .collect::<Vec<_>>(),
@@ -810,7 +929,10 @@ fn pattern_parser<'src>(
             (elements, span)
         });
 
-    wildcard.or(list).boxed()
+    let single =
+        pattern_element_parser(ctx, expression).map_with(|ast, extra| (vec![ast], extra.span()));
+
+    wildcard.or(list).or(single).boxed()
 }
 
 fn pattern_element_parser<'src>(
@@ -825,8 +947,9 @@ fn pattern_element_parser<'src>(
         });
 
     let expr = expression.map(|(ast, _)| ast);
+    let spectrum_pattern = spectrum_pattern_parser(ctx.clone());
 
-    dont_care.or(expr).boxed()
+    choice((spectrum_pattern, dont_care, expr)).boxed()
 }
 
 fn orbit_param_parser<'src>(
@@ -1115,12 +1238,64 @@ fn primary_expr_parser<'src>(
         list_literal_parser(ctx.clone(), expression.clone()),
         map_literal_parser(ctx.clone(), expression.clone()),
         artifact_literal_parser(ctx.clone(), expression.clone()),
+        spectrum_instantiation_parser(ctx.clone(), expression.clone()),
         literal_parser(ctx.clone()),
         func_call_parser(ctx.clone(), expression.clone()),
         identifier_node(ctx.clone()),
         expression.delimited_by(just(Token::OpenParen), just(Token::CloseParen)),
     ))
     .boxed()
+}
+
+fn spectrum_instantiation_parser<'src>(
+    ctx: ParserContext,
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, SpannedAst> {
+    let ctx_for_map = ctx.clone();
+
+    let variant = select! { Token::Identifier(variant) => variant }
+        .map_with(|variant, extra| (variant, extra.span()));
+
+    select! { Token::Identifier(name) => name }
+        .map_with(|name, extra| (name, extra.span()))
+        .then_ignore(just(Token::DoubleColon))
+        .then(variant)
+        .then(
+            just(Token::OpenParen)
+                .map_with(|_, extra| extra.span())
+                .then(
+                    expression
+                        .separated_by(just(Token::Comma))
+                        .collect::<Vec<_>>(),
+                )
+                .then(just(Token::CloseParen).map_with(|_, extra| extra.span()))
+                .map(|((_, args), close_span)| (args, close_span))
+                .or_not(),
+        )
+        .map(
+            move |(((name, name_span), (variant, variant_span)), args_opt)| {
+                let (args, end_span) = match args_opt {
+                    Some((args, close_span)) => (args, close_span),
+                    None => (Vec::new(), variant_span),
+                };
+
+                let span = SimpleSpan::new(name_span.start(), end_span.end());
+                let info = ctx_for_map.info(span);
+
+                let args_ast: Vec<AST> = args.into_iter().map(|(ast, _)| ast).collect();
+
+                (
+                    AST::SpectrumInstantiation {
+                        spectrum: name,
+                        variant,
+                        args: args_ast,
+                        line_info: info,
+                    },
+                    span,
+                )
+            },
+        )
+        .boxed()
 }
 
 enum PostfixSuffix {
@@ -1463,6 +1638,10 @@ fn literal_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedAst> {
     choice((omen, arcana, aether, rune)).boxed()
 }
 
+fn identifier_string_parser<'src>() -> BoxedParser<'src, String> {
+    select! { Token::Identifier(name) => name }.boxed()
+}
+
 fn identifier_node<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedAst> {
     let ctx_for_map = ctx.clone();
     select! { Token::Identifier(name) => name, Token::Core => "core".to_string(), Token::Type(ty) => type_keyword_name(&ty) }
@@ -1514,6 +1693,7 @@ fn type_keyword_name(ty: &Type) -> String {
         Type::Materia => "materia",
         Type::Glyph => "glyph",
         Type::Artifact(name) => name,
+        Type::Spectrum(name) => name,
     }
     .to_string()
 }

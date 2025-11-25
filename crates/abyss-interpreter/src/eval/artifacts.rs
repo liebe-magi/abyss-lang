@@ -1,7 +1,8 @@
 use crate::env::{
-    ArtifactFieldSchema, ArtifactHandle, ArtifactSchema, ArtifactValue, RuntimeEnv, Value,
+    ArtifactFieldSchema, ArtifactHandle, ArtifactSchema, ArtifactValue, RuntimeEnv, SpectrumSchema,
+    Value,
 };
-use abyss_core::ast::{AST, ArtifactField, LineInfo, Type};
+use abyss_core::ast::{AST, ArtifactField, LineInfo, SpectrumVariantDef, Type};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -14,11 +15,23 @@ pub(crate) fn ensure_type_known(
     env: &RuntimeEnv,
     line_info: &Option<LineInfo>,
 ) -> Result<(), EvalError> {
-    if let Type::Artifact(name) = ty
-        && env.get_artifact(name).is_none()
-    {
+    if let Type::Artifact(name) = ty {
+        if env.get_artifact(name).is_some() {
+            return Ok(());
+        }
+        if env.get_spectrum(name).is_some() {
+            return Ok(());
+        }
         return Err(EvalError::TypeError(
             format!("Artifact type {} is not defined", name),
+            line_info.clone(),
+        ));
+    }
+    if let Type::Spectrum(name) = ty
+        && env.get_spectrum(name).is_none()
+    {
+        return Err(EvalError::TypeError(
+            format!("Spectrum type {} is not defined", name),
             line_info.clone(),
         ));
     }
@@ -76,6 +89,42 @@ pub(crate) fn build_artifact_schema(
         name: name.to_string(),
         fields: compiled_fields,
         methods: HashMap::new(),
+        line_info: line_info.clone(),
+    })
+}
+
+pub(crate) fn build_spectrum_schema(
+    name: &str,
+    variants: &[SpectrumVariantDef],
+    env: &RuntimeEnv,
+    line_info: &Option<LineInfo>,
+) -> Result<SpectrumSchema, EvalError> {
+    let mut seen = HashSet::new();
+    let mut compiled_variants = HashMap::with_capacity(variants.len());
+
+    for variant in variants {
+        if !seen.insert(variant.name.clone()) {
+            return Err(EvalError::InvalidOperation(
+                format!("Variant '{}' is defined multiple times", variant.name),
+                variant.line_info.clone().or_else(|| line_info.clone()),
+            ));
+        }
+        for arg_type in &variant.args {
+            // Allow recursive definition by checking if it's the current spectrum
+            // Allow recursive definition by checking if it's the current spectrum
+            if let Type::Spectrum(s_name) = arg_type
+                && s_name == name
+            {
+                continue;
+            }
+            ensure_type_known(arg_type, env, &variant.line_info)?;
+        }
+        compiled_variants.insert(variant.name.clone(), variant.args.clone());
+    }
+
+    Ok(SpectrumSchema {
+        name: name.to_string(),
+        variants: compiled_variants,
         line_info: line_info.clone(),
     })
 }
@@ -247,7 +296,7 @@ pub(crate) fn collect_field_chain(ast: &AST) -> Option<(String, Vec<String>)> {
     }
 }
 
-fn values_equal(
+pub(crate) fn values_equal(
     env: &RuntimeEnv,
     left: &Value,
     right: &Value,

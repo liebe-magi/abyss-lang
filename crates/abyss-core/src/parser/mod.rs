@@ -2,10 +2,10 @@ pub use helpers::{LineMap, abyss_whitespace, attach_line_info, scrub_comments_pr
 pub use span::SimpleSpan;
 pub use tokens::{SpannedToken, Token, lexer};
 mod diagnostics;
-mod grammar;
-mod helpers;
+pub mod grammar;
+pub mod helpers;
 mod span;
-mod tokens;
+pub mod tokens;
 
 pub use diagnostics::{ParserDiagnostic, emit_diagnostics};
 

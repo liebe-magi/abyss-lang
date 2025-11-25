@@ -67,6 +67,7 @@ pub struct RuntimeEnv {
     scopes: Vec<HashMap<String, VarInfo>>, // Variable scopes
     function_scopes: Vec<HashMap<String, Callable>>, // Function scopes
     artifact_scopes: Vec<HashMap<String, ArtifactSchema>>, // Artifact schemas per scope
+    spectrum_scopes: Vec<HashMap<String, SpectrumSchema>>, // Spectrum schemas per scope
     builtin_methods: BuiltinMethodRegistry,
 }
 
@@ -77,6 +78,7 @@ impl RuntimeEnv {
             scopes: vec![HashMap::new()],
             function_scopes: vec![HashMap::new()],
             artifact_scopes: vec![HashMap::new()],
+            spectrum_scopes: vec![HashMap::new()],
             builtin_methods: HashMap::new(),
         }
     }
@@ -86,6 +88,7 @@ impl RuntimeEnv {
         self.scopes.push(HashMap::new());
         self.function_scopes.push(HashMap::new());
         self.artifact_scopes.push(HashMap::new());
+        self.spectrum_scopes.push(HashMap::new());
     }
 
     /// Pops the most recent scope off the stack, discarding the current local environment.
@@ -93,6 +96,7 @@ impl RuntimeEnv {
         self.scopes.pop();
         self.function_scopes.pop();
         self.artifact_scopes.pop();
+        self.spectrum_scopes.pop();
     }
 
     /// Sets a variable in the current scope, specifying its name, value, type, and whether it's mutable.
@@ -244,6 +248,28 @@ impl RuntimeEnv {
             .unwrap_or(false)
     }
 
+    pub fn define_spectrum(&mut self, schema: SpectrumSchema) -> Result<(), EvalError> {
+        if let Some(scope) = self.spectrum_scopes.last_mut() {
+            if scope.contains_key(&schema.name) {
+                return Err(EvalError::InvalidOperation(
+                    format!("Spectrum {} is already defined in this scope", schema.name),
+                    schema.line_info.clone(),
+                ));
+            }
+            scope.insert(schema.name.clone(), schema);
+        }
+        Ok(())
+    }
+
+    pub fn get_spectrum(&self, name: &str) -> Option<&SpectrumSchema> {
+        for scope in self.spectrum_scopes.iter().rev() {
+            if let Some(schema) = scope.get(name) {
+                return Some(schema);
+            }
+        }
+        None
+    }
+
     pub fn add_artifact_method(
         &mut self,
         artifact: &str,
@@ -302,6 +328,35 @@ pub enum Value {
     Lexicon(Rc<RefCell<HashMap<String, Value>>>),
     Glyph(Type),
     Artifact(ArtifactHandle),
+    Spectrum {
+        name: String,
+        variant: String,
+        data: Vec<Value>,
+    },
+}
+
+impl Value {
+    pub fn get_type(&self) -> Type {
+        match self {
+            Value::Omen(_) => Type::Omen,
+            Value::Arcana(_) => Type::Arcana,
+            Value::Aether(_) => Type::Aether,
+            Value::Rune(_) => Type::Rune,
+            Value::Abyss => Type::Abyss,
+            Value::Scroll(_) => Type::Scroll,
+            Value::Lexicon(_) => Type::Lexicon,
+            Value::Glyph(_) => Type::Glyph,
+            Value::Artifact(handle) => Type::Artifact(handle.borrow().type_name.clone()),
+            Value::Spectrum { name, .. } => Type::Spectrum(name.clone()),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SpectrumSchema {
+    pub name: String,
+    pub variants: HashMap<String, Vec<Type>>,
+    pub line_info: Option<LineInfo>,
 }
 
 #[derive(Debug, Clone)]

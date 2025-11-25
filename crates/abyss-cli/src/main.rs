@@ -100,7 +100,8 @@ fn execute_script(script: &str) {
                 EvalError::UndefinedVariable(_, line_info)
                 | EvalError::InvalidOperation(_, line_info)
                 | EvalError::NegativeExponent(line_info)
-                | EvalError::TypeError(_, line_info) => {
+                | EvalError::TypeError(_, line_info)
+                | EvalError::NonExhaustiveMatch(line_info) => {
                     display_error_with_source(script, line_info, &message);
                     return;
                 }

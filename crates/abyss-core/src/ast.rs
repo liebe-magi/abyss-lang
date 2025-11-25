@@ -145,6 +145,27 @@ pub enum AST {
         args: Vec<AST>,
         line_info: Option<LineInfo>,
     },
+    SpectrumDef {
+        name: String,
+        variants: Vec<SpectrumVariantDef>,
+        line_info: Option<LineInfo>,
+    },
+    SpectrumInstantiation {
+        spectrum: String,
+        variant: String,
+        args: Vec<AST>,
+        line_info: Option<LineInfo>,
+    },
+    SpectrumPattern {
+        spectrum: String,
+        variant: String,
+        args: Vec<AST>,
+        line_info: Option<LineInfo>,
+    },
+    PatternBinding {
+        name: String,
+        line_info: Option<LineInfo>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -158,6 +179,13 @@ pub struct ArtifactField {
 pub struct ArtifactMethodTarget {
     pub artifact: String,
     pub requires_morph: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct SpectrumVariantDef {
+    pub name: String,
+    pub args: Vec<Type>,
+    pub line_info: Option<LineInfo>,
 }
 
 /// Represents a conditional assignment within an oracle statement.
@@ -181,6 +209,7 @@ pub enum Type {
     Materia,
     Glyph,
     Artifact(String),
+    Spectrum(String),
 }
 
 /// Represents an assignment operation.

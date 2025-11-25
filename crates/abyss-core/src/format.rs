@@ -12,6 +12,7 @@ fn type_keyword(var_type: &Type) -> String {
         Type::Materia => "materia".to_string(),
         Type::Glyph => "glyph".to_string(),
         Type::Artifact(name) => name.clone(),
+        Type::Spectrum(name) => name.clone(),
     }
 }
 

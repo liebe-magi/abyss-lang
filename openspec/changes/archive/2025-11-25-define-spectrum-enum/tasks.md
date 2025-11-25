@@ -8,8 +8,8 @@
 - [x] Implement runtime representation (`Value::Spectrum`) <!-- id: 4 -->
 - [x] Implement evaluation of spectrum instantiation <!-- id: 5 -->
 - [x] Update `oracle` parser to support spectrum patterns <!-- id: 6 -->
-- [ ] Implement pattern matching logic in evaluator <!-- id: 7 -->
-- [ ] Implement exhaustiveness checking logic for spectrum matching <!-- id: 12 -->
-- [ ] Add tests for unit variants <!-- id: 8 -->
-- [ ] Add tests for tuple variants <!-- id: 9 -->
-- [ ] Add tests for pattern matching <!-- id: 10 -->
+- [x] Implement pattern matching logic in evaluator <!-- id: 7 -->
+- [x] Implement exhaustiveness checking logic for spectrum matching <!-- id: 12 -->
+- [x] Add tests for unit variants <!-- id: 8 -->
+- [x] Add tests for tuple variants <!-- id: 9 -->
+- [x] Add tests for pattern matching <!-- id: 10 -->

@@ -462,17 +462,6 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                 scrutinee_values.push(stored);
             }
 
-            // Exhaustiveness check
-            if *is_match {
-                for value in &scrutinee_values {
-                    if let Value::Spectrum { name, .. } = value
-                        && let Some(schema) = env.get_spectrum(name)
-                    {
-                        check_exhaustiveness(env, schema, branches, line_info)?;
-                    }
-                }
-            }
-
             for branch in branches {
                 if let AST::Comment(_, _) = branch {
                     continue;
@@ -832,48 +821,6 @@ fn clone_indexed_child(
             line_info.clone(),
         )),
     }
-}
-
-fn check_exhaustiveness(
-    _env: &RuntimeEnv,
-    schema: &crate::env::SpectrumSchema,
-    branches: &[AST],
-    line_info: &Option<LineInfo>,
-) -> Result<(), EvalError> {
-    let mut covered_variants = std::collections::HashSet::new();
-    let mut has_wildcard = false;
-
-    for branch in branches {
-        if let AST::OracleBranch { pattern, .. } = branch {
-            for pat in pattern {
-                match pat {
-                    AST::OracleDontCareItem(_) | AST::PatternBinding { .. } => {
-                        has_wildcard = true;
-                    }
-                    AST::SpectrumPattern {
-                        spectrum, variant, ..
-                    } => {
-                        if spectrum == &schema.name {
-                            covered_variants.insert(variant.clone());
-                        }
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-
-    if has_wildcard {
-        return Ok(());
-    }
-
-    for variant in schema.variants.keys() {
-        if !covered_variants.contains(variant) {
-            return Err(EvalError::NonExhaustiveMatch(line_info.clone()));
-        }
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]

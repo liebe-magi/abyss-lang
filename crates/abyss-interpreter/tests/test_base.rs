@@ -27,8 +27,7 @@ pub fn test_base(input: &str) -> Result<Vec<EvalResult>, Box<dyn std::error::Err
                     EvalError::UndefinedVariable(_, line_info)
                     | EvalError::InvalidOperation(_, line_info)
                     | EvalError::NegativeExponent(line_info)
-                    | EvalError::TypeError(_, line_info)
-                    | EvalError::NonExhaustiveMatch(line_info) => {
+                    | EvalError::TypeError(_, line_info) => {
                         display_error_with_source(input, line_info.clone(), &error_message);
                     }
                 }

@@ -128,25 +128,6 @@ mod tests {
     }
 
     #[test]
-    fn test_exhaustiveness_check() {
-        let src = "
-            spectrum Color { Red, Green, Blue };
-            forge c: Color = Color::Blue;
-            oracle (c) {
-                Color::Red => 1;
-                Color::Green => 2;
-            };
-        ";
-        let mut env = RuntimeEnv::new();
-        let result = run_code(src, &mut env);
-
-        match result {
-            Err(EvalError::NonExhaustiveMatch(_)) => {}
-            _ => panic!("Expected NonExhaustiveMatch error, got {:?}", result),
-        }
-    }
-
-    #[test]
     fn test_exhaustiveness_with_wildcard() {
         let src = "
             spectrum Color { Red, Green, Blue };

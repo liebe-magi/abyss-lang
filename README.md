@@ -53,7 +53,7 @@ bun install
 bun run dev
 ```
 
-Every ` ```abyss` sample on the site uses the same grammar as the VS Code extension, so highlighting stays in sync with the repo.
+Every fenced code block tagged `abyss` on the site uses the same grammar as the VS Code extension, so highlighting stays in sync with the repo.
 
 ## Tooling
 

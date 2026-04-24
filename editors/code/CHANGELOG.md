@@ -6,6 +6,18 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+## [v0.4.0] - 2025-11-23
+
+### Changed
+
+- Bumped the extension version to 0.4.0 to stay in lockstep with the `abyss-lang` crate release (the Rust side split into the `abyss-core` / `abyss-interpreter` / `abyss-cli` workspace and shipped the automated release workflow). The language grammar surface is unchanged since 0.3.0.
+- Cleaned up redundant `name` fields from TextMate grammar captures.
+- Migrated the extension logo from JPG to PNG and updated asset references.
+
+### Updated
+
+- TypeScript devDependency bumped to v6.
+
 ## [v0.3.0] - 2025-11-18
 
 ### Changed

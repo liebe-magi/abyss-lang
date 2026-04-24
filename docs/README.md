@@ -19,7 +19,7 @@ docs/
 └── tsconfig.json
 ```
 
-Every ` ```abyss ` fenced block on the site uses the same TextMate grammar as the VS Code extension in `editors/code/`, so highlighting stays in sync with the language release.
+Every fenced code block tagged `abyss` on the site uses the same TextMate grammar as the VS Code extension in `editors/code/`, so highlighting stays in sync with the language release.
 
 ## Commands
 

@@ -4,7 +4,7 @@
 
 AbySS Codex Familiar is a Visual Studio Code extension that provides custom support for the programming language [AbySS](https://github.com/liebe-magi/abyss-lang), including syntax highlighting, code snippets, and basic code completion.
 
-> **Versioning policy:** Starting with release `0.3.0`, this extension's version number always matches the `abyss-lang` crate version so you immediately know which language grammar is covered. The current release is `0.4.0`.
+> **Versioning policy:** Starting with release `0.3.0`, this extension's version number always matches the `abyss-lang` crate version so you immediately know which language grammar is covered.
 
 ## Features
 

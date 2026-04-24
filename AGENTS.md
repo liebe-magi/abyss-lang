@@ -35,6 +35,7 @@ AbySS is a magic-themed scripting language with its own interpreter, formatter, 
 
 ### Git workflow
 - Default branch is `develop`; `main` is release-only. Direct pushes to `develop` are blocked by branch protection — always branch off with a verb-led kebab-case topic branch (`add-…`, `fix-…`, `refactor-…`) and open a PR.
+- PR titles and bodies are written in English, matching the established practice on the repository, even when the originating conversation is in another language.
 - CI (`build.yml`) runs `cargo check`, `cargo test` with coverage, `cargo fmt --check`, `cargo clippy -D warnings`, version-sync validation, and the VS Code extension type-check + package step. All must pass before merge.
 - Releases are driven by `release.yml` on push to `main`: if `crates/abyss-cli/Cargo.toml` has a new version, the workflow tags, creates a draft release, and publishes `abyss-core` → `abyss-interpreter` → `abyss-lang` to crates.io in that order.
 

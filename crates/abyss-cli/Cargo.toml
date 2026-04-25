@@ -1,18 +1,19 @@
 [package]
 name = "abyss-lang"
-version = "0.4.0"
-edition = "2024"
-authors = ["liebe-magi <ripe.gold1058@fastmail.com>"]
-description = "AbySS: Advanced-scripting by Symbolic Syntax"
+description = "AbySS: Advanced-scripting by Symbolic Syntax — a magic-themed scripting language. Installs the `abyss` binary with `cast` (REPL), `invoke` (script runner), and `align` (formatter) subcommands."
 readme = "README.md"
-repository = "https://github.com/liebe-magi/abyss-lang"
-license = "MIT"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+keywords = ["abyss", "interpreter", "scripting", "cli", "repl"]
+categories = ["command-line-utilities", "development-tools"]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
 
 [dependencies]
-abyss-core = { path = "../abyss-core" }
-abyss-interpreter = { path = "../abyss-interpreter" }
+abyss-core.workspace = true
+abyss-interpreter.workspace = true
 clap = { version = "4.0", features = ["derive"] }
 colored = "3.0.0"
 dirs = "6.0.0"

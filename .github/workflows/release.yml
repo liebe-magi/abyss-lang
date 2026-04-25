@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       force:
-        description: "Skip the version-bump check and re-run the release steps. Must be triggered from the `main` branch (other refs are ignored). Use after a partial failure — each step is idempotent: tag creation, draft release, and crates.io publishes skip when already done."
+        description: "Skip the version-bump check and re-run the release steps. Must be triggered from the `main` branch (other refs are ignored). Use after a partial failure — the workflow is safe to re-run: tag creation, draft release, and crates.io publishes skip work already done, while binary archives are rebuilt and re-uploaded deterministically (same names, `--clobber` overwrites)."
         type: boolean
         default: false
 
@@ -23,6 +23,9 @@ jobs:
     # ref from the UI, so without this check a manual retry from `develop`
     # could publish prerelease content to crates.io.
     if: github.ref == 'refs/heads/main'
+    outputs:
+      proceed: ${{ steps.check_version.outputs.proceed }}
+      version: ${{ steps.check_version.outputs.version }}
     steps:
       - name: Checkout sources
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -84,8 +87,28 @@ jobs:
             git push origin "v$VERSION"
           fi
 
-      - name: Create or update draft release
+      - name: Probe release state
+        id: release_state
         if: steps.check_version.outputs.proceed == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          VERSION=${{ steps.check_version.outputs.version }}
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json id >/dev/null 2>&1; then
+            echo "Release v$VERSION already exists — leaving its name, body, and draft state as-is."
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Release v$VERSION does not exist yet."
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create draft release
+        # Only create when the release doesn't exist yet. On retries the
+        # existing release (potentially already published) keeps its
+        # draft / non-draft state instead of being silently downgraded
+        # back to a draft by another invocation of the action.
+        if: steps.check_version.outputs.proceed == 'true' && steps.release_state.outputs.exists == 'false'
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           tag_name: v${{ steps.check_version.outputs.version }}
@@ -131,3 +154,157 @@ jobs:
           publish_if_missing abyss-core
           publish_if_missing abyss-interpreter
           publish_if_missing abyss-lang
+
+  build-binaries:
+    name: Build binary (${{ matrix.target }})
+    needs: release
+    if: needs.release.outputs.proceed == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive_format: tar.gz
+            binary: abyss
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive_format: tar.gz
+            binary: abyss
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            archive_format: tar.gz
+            binary: abyss
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive_format: tar.gz
+            binary: abyss
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive_format: zip
+            binary: abyss.exe
+          - target: aarch64-pc-windows-msvc
+            os: windows-latest
+            archive_format: zip
+            binary: abyss.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout the release tag
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: v${{ needs.release.outputs.version }}
+
+      - name: Install stable toolchain
+        uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1
+        with:
+          toolchain: stable
+          profile: minimal
+          target: ${{ matrix.target }}
+          override: true
+
+      - name: Install cross-compilation tools (Linux ARM64)
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Set linker for Linux ARM64
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
+      - name: Install cross-compilation tools (Windows ARM64)
+        if: matrix.target == 'aarch64-pc-windows-msvc'
+        run: rustup target add aarch64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+
+      - name: Build release binary
+        run: cargo build --verbose --release --target=${{ matrix.target }}
+
+      - name: Package archive (Unix)
+        if: matrix.archive_format == 'tar.gz'
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=${{ needs.release.outputs.version }}
+          STAGE="abyss-v${VERSION}-${{ matrix.target }}"
+          mkdir "$STAGE"
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "$STAGE/"
+          cp LICENSE "$STAGE/"
+          cp README.md "$STAGE/"
+          tar czf "${STAGE}.tar.gz" "$STAGE"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${STAGE}.tar.gz" > "${STAGE}.tar.gz.sha256"
+          else
+            shasum -a 256 "${STAGE}.tar.gz" > "${STAGE}.tar.gz.sha256"
+          fi
+          ls -la "${STAGE}.tar.gz" "${STAGE}.tar.gz.sha256"
+          echo "ASSET=${STAGE}.tar.gz" >> $GITHUB_ENV
+          echo "ASSET_SHA=${STAGE}.tar.gz.sha256" >> $GITHUB_ENV
+
+      - name: Package archive (Windows)
+        if: matrix.archive_format == 'zip'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '${{ needs.release.outputs.version }}'
+          $stage = "abyss-v$version-${{ matrix.target }}"
+          New-Item -ItemType Directory -Path $stage | Out-Null
+          Copy-Item "target\${{ matrix.target }}\release\${{ matrix.binary }}" "$stage\"
+          Copy-Item "LICENSE" "$stage\"
+          Copy-Item "README.md" "$stage\"
+          Compress-Archive -Path $stage -DestinationPath "$stage.zip"
+          $hash = Get-FileHash "$stage.zip" -Algorithm SHA256
+          # Match `sha256sum` output format: "<hex>  <filename>"
+          "$($hash.Hash.ToLower())  $stage.zip" | Out-File -Encoding ASCII -NoNewline "$stage.zip.sha256"
+          Get-ChildItem "$stage.zip", "$stage.zip.sha256"
+          Add-Content -Path $env:GITHUB_ENV -Value "ASSET=$stage.zip"
+          Add-Content -Path $env:GITHUB_ENV -Value "ASSET_SHA=$stage.zip.sha256"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: bin-${{ matrix.target }}
+          path: |
+            ${{ env.ASSET }}
+            ${{ env.ASSET_SHA }}
+          retention-days: 7
+          if-no-files-found: error
+
+  attach-binaries:
+    name: Attach binaries to release
+    needs: [release, build-binaries]
+    if: needs.release.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          path: artifacts
+          pattern: bin-*
+          merge-multiple: true
+
+      - name: List downloaded assets
+        run: ls -la artifacts/
+
+      - name: Attach assets to existing release
+        # `gh release upload` strictly only adds files — it cannot touch the
+        # release name, body, draft, or prerelease state. That guarantees
+        # the metadata set by the `release` job (notes, draft, etc.) is
+        # preserved when this step runs. `--clobber` makes the upload
+        # idempotent on retry.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(artifacts/*.tar.gz artifacts/*.zip artifacts/*.sha256)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No release assets found under artifacts/" >&2
+            exit 1
+          fi
+          gh release upload "v${{ needs.release.outputs.version }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber \
+            "${files[@]}"

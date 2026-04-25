@@ -1,7 +1,7 @@
 # parser-infrastructure Specification
 
 ## Purpose
-TBD - created by archiving change migrate-parser-to-chumsky. Update Purpose after archive.
+Define the source-to-AST pipeline of the AbySS interpreter: a `chumsky`-based parser with `ariadne` themed diagnostics, span-preserving AST nodes, and the surface syntax of every language construct (collections, artifact definitions and methods, glyph types, oracle if-else / match modes, dot-call conversions). This capability replaces the legacy `pest` grammar and is the single source of truth for what `.aby` syntax the interpreter accepts.
 ## Requirements
 ### Requirement: Parser uses chumsky combinators
 The system SHALL construct the AbySS AST by applying `chumsky` parser combinators defined in Rust code, compiled against the latest supported `chumsky 0.11` API and its lifetime-aware parser traits, replacing the legacy `pest` grammar and `build_ast` transformer.

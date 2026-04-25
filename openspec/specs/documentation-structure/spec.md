@@ -1,7 +1,7 @@
 # documentation-structure Specification
 
 ## Purpose
-TBD - created by archiving change migrate-docs-to-starlight. Update Purpose after archive.
+Describe how the AbySS documentation site under `docs/` is organised — onboarding and structured reference sections built on Starlight — and how its code highlighting stays in lockstep with the VS Code extension by treating `editors/code/syntaxes/abyss.tmLanguage.json` as the single source of truth that the docs build pipeline consumes directly.
 ## Requirements
 ### Requirement: Documentation Site Structure
 The project SHALL provide a documentation site under `docs/` powered by a static site generator that organizes content into clear onboarding and reference sections.

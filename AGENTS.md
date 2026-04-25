@@ -37,7 +37,7 @@ AbySS is a magic-themed scripting language with its own interpreter, formatter, 
 - Default branch is `develop`; `main` is release-only. Direct pushes to either branch are blocked by branch protection — always branch off with a verb-led kebab-case topic branch (`add-…`, `fix-…`, `refactor-…`) and open a PR. `develop` → `main` promotion also goes through a PR.
 - PR titles and bodies are written in English, matching the established practice on the repository, even when the originating conversation is in another language.
 - CI (`build.yml`) runs `cargo check`, `cargo test` with coverage, `cargo fmt --check`, `cargo clippy -D warnings`, version-sync validation, and the VS Code extension type-check + package step. All must pass before merge.
-- Releases are driven by `release.yml` on push to `main`: when the root `Cargo.toml` `[workspace.package].version` differs from the latest tag, the workflow tags, drafts a GitHub release, and publishes `abyss-core` → `abyss-interpreter` → `abyss-lang` to crates.io in that order.
+- Releases are driven by `release.yml` on push to `main`: when the root `Cargo.toml` `[workspace.package].version` differs from the latest tag, the workflow tags, drafts a GitHub release, and publishes `abyss-core` → `abyss-interpreter` → `abyss-lang` to crates.io in that order. Each step is idempotent (tag creation, draft release, and per-crate publishes skip work already done), and the workflow can be re-run manually via `workflow_dispatch` with the `force` input to recover from a partial failure.
 
 ### Pre-commit hooks (`.pre-commit-config.yaml`)
 - `cargo fmt`, `cargo clippy -D warnings`, `cargo check`, `cargo test` on any `.rs` change.

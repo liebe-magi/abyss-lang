@@ -1,0 +1,17 @@
+[package]
+name = "abyss-interpreter"
+description = "Runtime engine for the AbySS scripting language: evaluator, runtime environment, value representation, and the built-in standard library."
+readme = "README.md"
+keywords = ["abyss", "interpreter", "runtime", "language", "stdlib"]
+categories = ["development-tools"]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+abyss-core.workspace = true
+colored = "3.0.0"
+ordered-float = "5"

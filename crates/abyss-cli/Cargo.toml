@@ -1,0 +1,24 @@
+[package]
+name = "abyss-lang"
+description = "AbySS: Advanced-scripting by Symbolic Syntax — a magic-themed scripting language. Installs the `abyss` binary with `cast` (REPL), `invoke` (script runner), and `align` (formatter) subcommands."
+readme = "README.md"
+keywords = ["abyss", "interpreter", "scripting", "cli", "repl"]
+categories = ["command-line-utilities", "development-tools"]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+abyss-core.workspace = true
+abyss-interpreter.workspace = true
+clap = { version = "4.0", features = ["derive"] }
+colored = "3.0.0"
+dirs = "6.0.0"
+rustyline = "18.0.0"
+
+[[bin]]
+name = "abyss"
+path = "src/main.rs"

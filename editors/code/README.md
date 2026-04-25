@@ -1,6 +1,6 @@
 # AbySS Codex Familiar
 
-![logo](img/logo_512.png)
+![logo](https://raw.githubusercontent.com/liebe-magi/abyss-lang/main/editors/code/assets/logo_512.png)
 
 AbySS Codex Familiar is a Visual Studio Code extension that provides custom support for the programming language [AbySS](https://github.com/liebe-magi/abyss-lang), including syntax highlighting, code snippets, and basic code completion.
 
@@ -8,7 +8,7 @@ AbySS Codex Familiar is a Visual Studio Code extension that provides custom supp
 
 ## Features
 
-- **Syntax Highlighting**: Full support for AbySS v0.3.0 keywords, types (including `scroll`, `lexicon`, `materia`, `glyph`), artifact declarations/methods, boolean literals, match/range operators, and more.
+- **Syntax Highlighting**: Full support for the AbySS language surface — keywords, types (including `scroll`, `lexicon`, `materia`, `glyph`), artifact declarations/methods, boolean literals, match/range operators, and more.
 - **Code Snippets**: Handy snippets for common constructs like `forge`, `unveil`, `oracle`, `orbit`, and more.
 - **Code Completion**: Auto-complete support for AbySS keywords to streamline coding.
 - **Version-aligned Releases**: Each extension release is tagged with the same version as the root `abyss-lang` crate, signaling grammar parity out of the box.
@@ -29,6 +29,13 @@ AbySS Codex Familiar is a Visual Studio Code extension that provides custom supp
 None at the moment. Please report any issues via GitHub.
 
 ## Release Notes
+
+### 0.4.0
+
+- Version bumped to track `abyss-lang` 0.4.0 (multi-crate workspace split and release-automation milestone on the Rust side). No grammar changes since 0.3.0 — existing snippets and completions continue to cover the current language surface.
+- Tidied the TextMate grammar by removing redundant `name` fields from captures.
+- Migrated the extension logo from JPG to PNG and refreshed asset paths.
+- Updated the TypeScript devDependency to v6.
 
 ### 0.3.0
 

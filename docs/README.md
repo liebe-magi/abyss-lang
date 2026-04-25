@@ -1,49 +1,38 @@
-# Starlight Starter Kit: Basics
+# AbySS Documentation Site
 
-[![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
+The Starlight-powered source for <https://abyss-lang.dev>, the official reference and tutorial site for the [AbySS](https://github.com/liebe-magi/abyss-lang) language.
 
-```
-bun create astro@latest -- --template starlight
-```
+The site is built with [Astro](https://docs.astro.build) + [Starlight](https://starlight.astro.build) and uses [Bun](https://bun.com) as the package manager and script runner. Deployment is handled via Vercel.
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
-
-## 🚀 Project Structure
-
-Inside of your Astro + Starlight project, you'll see the following folders and files:
+## Project Layout
 
 ```
-.
-├── public/
+docs/
+├── public/              # Static assets (favicons etc.)
 ├── src/
-│   ├── assets/
+│   ├── assets/          # Images embedded in docs pages
 │   ├── content/
-│   │   └── docs/
+│   │   └── docs/        # .md / .mdx pages — each file is a route
 │   └── content.config.ts
 ├── astro.config.mjs
 ├── package.json
 └── tsconfig.json
 ```
 
-Starlight looks for `.md` or `.mdx` files in the `src/content/docs/` directory. Each file is exposed as a route based on its file name.
+Every fenced code block tagged `abyss` on the site uses the same TextMate grammar as the VS Code extension in `editors/code/`, so highlighting stays in sync with the language release.
 
-Images can be added to `src/assets/` and embedded in Markdown with a relative link.
+## Commands
 
-Static assets, like favicons, can be placed in the `public/` directory.
+All commands are run from `docs/` in a terminal.
 
-## 🧞 Commands
+| Command         | Action                                       |
+| :-------------- | :------------------------------------------- |
+| `bun install`   | Install dependencies                         |
+| `bun dev`       | Start the local dev server at `localhost:4321` |
+| `bun build`     | Build the production site to `./dist/`      |
+| `bun preview`   | Preview the production build locally         |
+| `bun astro ...` | Run Astro CLI commands (e.g. `astro check`)  |
 
-All commands are run from the root of the project, from a terminal:
+## Contributing
 
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `bun install`             | Installs dependencies                            |
-| `bun dev`             | Starts local dev server at `localhost:4321`      |
-| `bun build`           | Build your production site to `./dist/`          |
-| `bun preview`         | Preview your build locally, before deploying     |
-| `bun astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `bun astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Check out [Starlight’s docs](https://starlight.astro.build/), read [the Astro documentation](https://docs.astro.build), or jump into the [Astro Discord server](https://astro.build/chat).
+Content pages live under `src/content/docs/`. When you add or rename a page, verify the sidebar configuration in `astro.config.mjs`. For language-wide changes (new keywords, type semantics), coordinate with the corresponding updates in `crates/` and `editors/code/` so docs, grammar, and runtime stay aligned.

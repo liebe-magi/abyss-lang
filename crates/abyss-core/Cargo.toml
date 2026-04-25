@@ -1,0 +1,17 @@
+[package]
+name = "abyss-core"
+description = "Core language primitives for the AbySS scripting language: AST, chumsky-based parser, static analysis, and formatter. Shared between the CLI interpreter and editor tooling."
+readme = "README.md"
+keywords = ["abyss", "parser", "ast", "language", "interpreter"]
+categories = ["parsing", "development-tools"]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+ariadne = "0.6"
+chumsky = "0.12"
+ordered-float = "5"

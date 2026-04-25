@@ -177,7 +177,7 @@ jobs:
         id: properties
         shell: bash
         run: |
-          VERSION=$(grep '^version = ' crates/abyss-cli/Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+          VERSION=$(grep '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Upload artifact

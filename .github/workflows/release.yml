@@ -29,8 +29,8 @@ jobs:
         id: check_version
         shell: bash
         run: |
-          # Get version from Cargo.toml
-          VERSION=$(grep '^version = ' crates/abyss-cli/Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+          # Get version from the root workspace Cargo.toml
+          VERSION=$(grep '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
           echo "Current version: $VERSION"
           
           # Get latest tag

@@ -8,14 +8,28 @@ def get_cargo_version(cargo_path):
     try:
         with open(cargo_path, 'r') as f:
             content = f.read()
-            # Look for version = "x.y.z" in the [package] section
-            # This is a simple regex and might need adjustment if Cargo.toml is complex
-            # but usually version is at the top under [package]
-            match = re.search(r'^version\s*=\s*"(\d+\.\d+\.\d+(?:-[\w.]+)?)"', content, re.MULTILINE)
+            # The canonical version lives under [workspace.package] in the root
+            # Cargo.toml; individual crates inherit it via `version.workspace = true`.
+            # Scope the search to the [workspace.package] section so unrelated
+            # version specifiers (e.g. entries in [workspace.dependencies]) do not
+            # shadow it.
+            section_match = re.search(
+                r'^\[workspace\.package\]\s*\n(.*?)(?=^\[|\Z)',
+                content,
+                re.MULTILINE | re.DOTALL,
+            )
+            if not section_match:
+                print("Could not find [workspace.package] section in Cargo.toml")
+                sys.exit(1)
+            match = re.search(
+                r'^version\s*=\s*"(\d+\.\d+\.\d+(?:-[\w.]+)?)"',
+                section_match.group(1),
+                re.MULTILINE,
+            )
             if match:
                 return match.group(1)
             else:
-                print("Could not find version in Cargo.toml")
+                print("Could not find version in [workspace.package]")
                 sys.exit(1)
     except Exception as e:
         print(f"Error reading Cargo.toml: {e}")
@@ -35,7 +49,7 @@ def get_package_json_version(package_path):
 
 def main():
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-    cargo_path = os.path.join(root_dir, 'crates/abyss-cli/Cargo.toml')
+    cargo_path = os.path.join(root_dir, 'Cargo.toml')
     package_path = os.path.join(root_dir, 'editors/code/package.json')
 
     if not os.path.exists(cargo_path):

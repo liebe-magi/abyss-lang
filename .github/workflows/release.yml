@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       force:
-        description: "Skip the version-bump check and re-run the release steps. Use after a partial failure (each step is idempotent: tag creation, draft release, and crates.io publishes skip when already done)."
+        description: "Skip the version-bump check and re-run the release steps. Must be triggered from the `main` branch (other refs are ignored). Use after a partial failure — each step is idempotent: tag creation, draft release, and crates.io publishes skip when already done."
         type: boolean
         default: false
 
@@ -18,6 +18,11 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
+    # Defensive guard: this workflow must only ever produce a release from
+    # the `main` branch. `workflow_dispatch` lets the operator pick any
+    # ref from the UI, so without this check a manual retry from `develop`
+    # could publish prerelease content to crates.io.
+    if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout sources
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
@@ -43,7 +48,7 @@ jobs:
           echo "Workspace version: $VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-          if [ "${{ inputs.force }}" = "true" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force }}" = "true" ]; then
             echo "Force mode (workflow_dispatch input): proceeding regardless of tag state."
             echo "proceed=true" >> $GITHUB_OUTPUT
           else
@@ -95,15 +100,22 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         shell: bash
         run: |
-          set -eu
+          # `pipefail` is essential here: the version probe is `curl | python3`,
+          # and we must not let curl's failure be hidden by python3 emitting an
+          # empty string — that would make us assume the crate is unpublished
+          # and re-attempt `cargo publish`, which fails with `already uploaded`
+          # and reintroduces the very mid-flight failure this workflow guards
+          # against. With pipefail, a transient API failure stops the step.
+          set -euo pipefail
           VERSION=${{ steps.check_version.outputs.version }}
 
           publish_if_missing() {
             local crate=$1
             local current
-            current=$(curl -fsS "https://crates.io/api/v1/crates/$crate" \
-              | python3 -c "import json,sys; d=json.load(sys.stdin); print('' if 'errors' in d else d['crate']['max_version'])" \
-              || echo "")
+            # `--retry 3 --retry-delay 5` rides out brief crates.io API hiccups
+            # before we let the step fail.
+            current=$(curl -fsS --retry 3 --retry-delay 5 "https://crates.io/api/v1/crates/$crate" \
+              | python3 -c "import json,sys; d=json.load(sys.stdin); print('' if 'errors' in d else d['crate']['max_version'])")
             if [ "$current" = "$VERSION" ]; then
               echo "$crate v$VERSION already on crates.io, skipping."
               return

@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       force:
-        description: "Skip the version-bump check and re-run the release steps. Must be triggered from the `main` branch (other refs are ignored). Use after a partial failure — each step is idempotent: tag creation, draft release, crates.io publishes, and binary attachments all skip when already done."
+        description: "Skip the version-bump check and re-run the release steps. Must be triggered from the `main` branch (other refs are ignored). Use after a partial failure — the workflow is safe to re-run: tag creation, draft release, and crates.io publishes skip work already done, while binary archives are rebuilt and re-uploaded deterministically (same names, `--clobber` overwrites)."
         type: boolean
         default: false
 
@@ -288,14 +288,23 @@ jobs:
         run: ls -la artifacts/
 
       - name: Attach assets to existing release
-        # Intentionally omit `body`, `name`, `draft`, and `prerelease` so the
-        # action only adds files and leaves the release metadata set by the
-        # `release` job (notes, draft state) untouched.
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
-        with:
-          tag_name: v${{ needs.release.outputs.version }}
-          files: |
-            artifacts/*.tar.gz
-            artifacts/*.zip
-            artifacts/*.sha256
-          fail_on_unmatched_files: true
+        # `gh release upload` strictly only adds files — it cannot touch the
+        # release name, body, draft, or prerelease state. That guarantees
+        # the metadata set by the `release` job (notes, draft, etc.) is
+        # preserved when this step runs. `--clobber` makes the upload
+        # idempotent on retry.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(artifacts/*.tar.gz artifacts/*.zip artifacts/*.sha256)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No release assets found under artifacts/" >&2
+            exit 1
+          fi
+          gh release upload "v${{ needs.release.outputs.version }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber \
+            "${files[@]}"

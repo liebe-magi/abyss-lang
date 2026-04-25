@@ -1,7 +1,7 @@
 # coverage Specification
 
 ## Purpose
-TBD - created by archiving change expand-test-coverage. Update Purpose after archive.
+Pin the minimum regression coverage required around foundational interpreter components — `SymbolTable` scope and lookup operations, evaluator error reporting, and stdlib argument and receiver validation — so silent breakage of these primitives surfaces as a failing test rather than a downstream language bug.
 ## Requirements
 ### Requirement: SymbolTable Functionality
 The `SymbolTable` MUST support all defined operations including scope management and symbol definition/lookup.

@@ -34,15 +34,15 @@ AbySS is a magic-themed scripting language with its own interpreter, formatter, 
 - Coverage is uploaded to Codecov by `.github/workflows/build.yml`.
 
 ### Git workflow
-- Default branch is `develop`; `main` is release-only. Direct pushes to `develop` are blocked by branch protection — always branch off with a verb-led kebab-case topic branch (`add-…`, `fix-…`, `refactor-…`) and open a PR.
+- Default branch is `develop`; `main` is release-only. Direct pushes to either branch are blocked by branch protection — always branch off with a verb-led kebab-case topic branch (`add-…`, `fix-…`, `refactor-…`) and open a PR. `develop` → `main` promotion also goes through a PR.
 - PR titles and bodies are written in English, matching the established practice on the repository, even when the originating conversation is in another language.
 - CI (`build.yml`) runs `cargo check`, `cargo test` with coverage, `cargo fmt --check`, `cargo clippy -D warnings`, version-sync validation, and the VS Code extension type-check + package step. All must pass before merge.
-- Releases are driven by `release.yml` on push to `main`: if `crates/abyss-cli/Cargo.toml` has a new version, the workflow tags, creates a draft release, and publishes `abyss-core` → `abyss-interpreter` → `abyss-lang` to crates.io in that order.
+- Releases are driven by `release.yml` on push to `main`: when the root `Cargo.toml` `[workspace.package].version` differs from the latest tag, the workflow tags, drafts a GitHub release, and publishes `abyss-core` → `abyss-interpreter` → `abyss-lang` to crates.io in that order.
 
 ### Pre-commit hooks (`.pre-commit-config.yaml`)
 - `cargo fmt`, `cargo clippy -D warnings`, `cargo check`, `cargo test` on any `.rs` change.
 - `bun run compile` on any `editors/code/` change (requires `bun install --frozen-lockfile` to succeed).
-- `python3 scripts/check_version_sync.py` enforces that `crates/abyss-cli/Cargo.toml` and `editors/code/package.json` stay at the same version.
+- `python3 scripts/check_version_sync.py` enforces that the root `Cargo.toml` workspace version (`[workspace.package].version` plus intra-workspace dep versions in `[workspace.dependencies]`) stays aligned with `editors/code/package.json`.
 
 ## Domain Vocabulary
 

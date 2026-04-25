@@ -1,7 +1,7 @@
 # editor-syntax Specification
 
 ## Purpose
-TBD - created by archiving change update-vscode-syntax-v030. Update Purpose after archive.
+Specify how the AbySS Codex Familiar VS Code extension's TextMate grammar (`editors/code/syntaxes/abyss.tmLanguage.json`) scopes every reserved keyword, primitive and collection type, boolean constant, builtin function, artifact construct, and structural operator emitted by the v0.3+ lexer, so editor highlighting stays aligned with the parser tokens defined in the interpreter.
 ## Requirements
 ### Requirement: Reserved keywords match the lexer
 The AbySS Codex Familiar TextMate grammar (`editors/code/syntaxes/abyss.tmLanguage.json`) SHALL tag every reserved keyword emitted by the v0.3.0 lexer (`forge`, `morph`, `core`, `oracle`, `orbit`, `resume`, `eject`, `engrave`, `reveal`, `artifact`) with the `keyword.control.abyss` scope, and SHALL keep builtin helpers such as `unveil`, `summon`, and the `.trans(...)` method inside the `support.function.abyss` scope so users can distinguish actual keywords from callable symbols.

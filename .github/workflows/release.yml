@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Skip the version-bump check and re-run the release steps. Use after a partial failure (each step is idempotent: tag creation, draft release, and crates.io publishes skip when already done)."
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -25,44 +31,56 @@ jobs:
           toolchain: stable
           override: true
 
-      - name: Check for version bump
+      - name: Resolve target version
         id: check_version
         shell: bash
         run: |
-          # Get version from the root workspace Cargo.toml
+          # Always work from a complete tag view so re-runs see tags pushed
+          # by an earlier (possibly failed) attempt.
+          git fetch --tags --force
+
           VERSION=$(grep '^version = ' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
-          echo "Current version: $VERSION"
-          
-          # Get latest tag
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
-          echo "Latest tag: $LATEST_TAG"
-          
-          if [ "v$VERSION" != "$LATEST_TAG" ]; then
-            echo "Version bump detected!"
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
-            echo "bump=true" >> $GITHUB_OUTPUT
+          echo "Workspace version: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          if [ "${{ inputs.force }}" = "true" ]; then
+            echo "Force mode (workflow_dispatch input): proceeding regardless of tag state."
+            echo "proceed=true" >> $GITHUB_OUTPUT
           else
-            echo "No version bump detected."
-            echo "bump=false" >> $GITHUB_OUTPUT
+            LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+            echo "Latest tag: $LATEST_TAG"
+            if [ "v$VERSION" != "$LATEST_TAG" ]; then
+              echo "Version bump detected ($LATEST_TAG -> v$VERSION)."
+              echo "proceed=true" >> $GITHUB_OUTPUT
+            else
+              echo "No version bump (latest tag matches workspace version)."
+              echo "proceed=false" >> $GITHUB_OUTPUT
+            fi
           fi
 
       - name: Run tests
-        if: steps.check_version.outputs.bump == 'true'
+        if: steps.check_version.outputs.proceed == 'true'
         run: cargo test --all-features
 
-      - name: Create Git Tag
-        if: steps.check_version.outputs.bump == 'true'
+      - name: Create or confirm git tag
+        if: steps.check_version.outputs.proceed == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -eu
           VERSION=${{ steps.check_version.outputs.version }}
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "v$VERSION" -m "Release v$VERSION"
-          git push origin "v$VERSION"
+          git fetch --tags --force
+          if git rev-parse "refs/tags/v$VERSION" >/dev/null 2>&1; then
+            echo "Tag v$VERSION already exists locally or on origin — leaving it as-is."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "v$VERSION" -m "Release v$VERSION"
+            git push origin "v$VERSION"
+          fi
 
-      - name: Create Release
-        if: steps.check_version.outputs.bump == 'true'
+      - name: Create or update draft release
+        if: steps.check_version.outputs.proceed == 'true'
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
         with:
           tag_name: v${{ steps.check_version.outputs.version }}
@@ -71,15 +89,33 @@ jobs:
           prerelease: false
           generate_release_notes: true
 
-      - name: Publish to crates.io
-        if: steps.check_version.outputs.bump == 'true'
+      - name: Publish to crates.io (idempotent per crate)
+        if: steps.check_version.outputs.proceed == 'true'
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        shell: bash
         run: |
-          # Publish in order of dependency
-          cargo publish -p abyss-core
-          # Wait a bit for crates.io to propagate
-          sleep 30
-          cargo publish -p abyss-interpreter
-          sleep 30
-          cargo publish -p abyss-lang
+          set -eu
+          VERSION=${{ steps.check_version.outputs.version }}
+
+          publish_if_missing() {
+            local crate=$1
+            local current
+            current=$(curl -fsS "https://crates.io/api/v1/crates/$crate" \
+              | python3 -c "import json,sys; d=json.load(sys.stdin); print('' if 'errors' in d else d['crate']['max_version'])" \
+              || echo "")
+            if [ "$current" = "$VERSION" ]; then
+              echo "$crate v$VERSION already on crates.io, skipping."
+              return
+            fi
+            echo "Publishing $crate v$VERSION (crates.io currently at: ${current:-<unpublished>})."
+            cargo publish -p "$crate"
+            # Let the crates.io index propagate before the next dependent crate.
+            sleep 30
+          }
+
+          # Publish in dependency order. abyss-interpreter depends on abyss-core;
+          # abyss-lang depends on both.
+          publish_if_missing abyss-core
+          publish_if_missing abyss-interpreter
+          publish_if_missing abyss-lang

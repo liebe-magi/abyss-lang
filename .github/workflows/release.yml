@@ -308,3 +308,61 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --clobber \
             "${files[@]}"
+
+  publish-extension:
+    name: Publish VS Code extension
+    needs: release
+    if: needs.release.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/code
+    steps:
+      - name: Checkout the release tag
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          ref: v${{ needs.release.outputs.version }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Probe Marketplace state
+        id: marketplace_state
+        shell: bash
+        run: |
+          # Mirrors the crates.io probe: pipefail so a transient API failure
+          # cannot be silently rewritten as "unpublished" and trick us into
+          # invoking `vsce publish` for a version that's already on the
+          # Marketplace (which would fail with a less-clear error).
+          set -euo pipefail
+          VERSION=${{ needs.release.outputs.version }}
+          current=$(curl -fsS --retry 3 --retry-delay 5 \
+            -X POST "https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery" \
+            -H "Accept: application/json;api-version=3.0-preview.1" \
+            -H "Content-Type: application/json" \
+            -d '{"filters":[{"criteria":[{"filterType":7,"value":"liebe-magi.abyss-codex-familiar"}]}],"flags":914}' \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); exts=d.get('results',[{}])[0].get('extensions',[]); print(exts[0]['versions'][0]['version'] if exts else '')")
+          if [ "$current" = "$VERSION" ]; then
+            echo "Marketplace already has abyss-codex-familiar v$VERSION, skipping publish."
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+          else
+            echo "Marketplace at: ${current:-<unpublished>}, target: v$VERSION — will publish."
+            echo "should_publish=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Publish to VS Code Marketplace
+        if: steps.marketplace_state.outputs.should_publish == 'true'
+        env:
+          # PAT scoped to "Marketplace > Manage" on the publisher's
+          # Azure DevOps account. Set as a repository Secret.
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        # `bunx vsce` resolves the local `@vscode/vsce` from the extension's
+        # devDependencies; vsce reads `VSCE_PAT` from the environment and
+        # invokes the `vscode:prepublish` script (`bun run compile`)
+        # automatically before uploading.
+        run: bunx vsce publish

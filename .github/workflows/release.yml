@@ -134,11 +134,29 @@ jobs:
 
           publish_if_missing() {
             local crate=$1
-            local current
-            # `--retry 3 --retry-delay 5` rides out brief crates.io API hiccups
-            # before we let the step fail.
-            current=$(curl -fsS --retry 3 --retry-delay 5 "https://crates.io/api/v1/crates/$crate" \
-              | python3 -c "import json,sys; d=json.load(sys.stdin); print('' if 'errors' in d else d['crate']['max_version'])")
+            local current http_code resp
+            resp=$(mktemp)
+            # crates.io returns HTTP 404 + `{"errors": [...]}` for an
+            # unpublished crate, which is a legitimate "publish me" signal —
+            # not an error. Capture the status code separately so we can
+            # distinguish it from real failures (5xx, network), and avoid
+            # `curl -f` (which would exit 22 on the 404 and break first-time
+            # publishes of any new crate added to the workspace).
+            # `--retry 3 --retry-delay 5` still rides out transient hiccups.
+            http_code=$(curl -sS --retry 3 --retry-delay 5 \
+              -w "%{http_code}" -o "$resp" \
+              "https://crates.io/api/v1/crates/$crate")
+            case "$http_code" in
+              200) current=$(python3 -c "import json,sys; print(json.load(sys.stdin)['crate']['max_version'])" < "$resp") ;;
+              404) current="" ;;
+              *)
+                echo "Unexpected HTTP $http_code probing crates.io for $crate; aborting." >&2
+                cat "$resp" >&2
+                rm -f "$resp"
+                return 1
+                ;;
+            esac
+            rm -f "$resp"
             if [ "$current" = "$VERSION" ]; then
               echo "$crate v$VERSION already on crates.io, skipping."
               return
@@ -255,8 +273,10 @@ jobs:
           Copy-Item "README.md" "$stage\"
           Compress-Archive -Path $stage -DestinationPath "$stage.zip"
           $hash = Get-FileHash "$stage.zip" -Algorithm SHA256
-          # Match `sha256sum` output format: "<hex>  <filename>"
-          "$($hash.Hash.ToLower())  $stage.zip" | Out-File -Encoding ASCII -NoNewline "$stage.zip.sha256"
+          # Match GNU `sha256sum` output format: "<hex>  <filename>\n".
+          # Use WriteAllText so we get an LF-terminated record on Windows
+          # (Out-File would emit CRLF, which strict checksum tooling rejects).
+          [System.IO.File]::WriteAllText("$stage.zip.sha256", "$($hash.Hash.ToLower())  $stage.zip`n")
           Get-ChildItem "$stage.zip", "$stage.zip.sha256"
           Add-Content -Path $env:GITHUB_ENV -Value "ASSET=$stage.zip"
           Add-Content -Path $env:GITHUB_ENV -Value "ASSET_SHA=$stage.zip.sha256"

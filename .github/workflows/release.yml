@@ -150,7 +150,16 @@ jobs:
             # `curl -f` (which would exit 22 on the 404 and break first-time
             # publishes of any new crate added to the workspace).
             # `--retry 3 --retry-delay 5` still rides out transient hiccups.
+            #
+            # `--user-agent` is required: crates.io's data-access policy
+            # rejects requests without an identifying User-Agent (the
+            # default `curl/x.y.z` UA is treated as anonymous bot traffic
+            # and refused with 403, which is what knocked over a previous
+            # backfill run from this very workflow). Identify the workflow
+            # plus a contact URL so crates.io can reach the maintainer if
+            # this workflow ever misbehaves.
             http_code=$(curl -sS --retry 3 --retry-delay 5 \
+              --user-agent "abyss-lang-release-workflow (+https://github.com/$GITHUB_REPOSITORY)" \
               -w "%{http_code}" -o "$resp" \
               "https://crates.io/api/v1/crates/$crate")
             case "$http_code" in

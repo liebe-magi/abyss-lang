@@ -123,19 +123,26 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         shell: bash
         run: |
-          # `pipefail` is essential here: the version probe is `curl | python3`,
-          # and we must not let curl's failure be hidden by python3 emitting an
-          # empty string — that would make us assume the crate is unpublished
-          # and re-attempt `cargo publish`, which fails with `already uploaded`
-          # and reintroduces the very mid-flight failure this workflow guards
-          # against. With pipefail, a transient API failure stops the step.
+          # `pipefail` is essential here: the version probe pipes curl into
+          # python3, and we must not let curl's failure be hidden by python3
+          # emitting an empty string — that would make us assume the crate is
+          # unpublished and re-attempt `cargo publish`, which fails with
+          # `already uploaded` and reintroduces the very mid-flight failure
+          # this workflow guards against. With pipefail, a transient API
+          # failure stops the step.
           set -euo pipefail
           VERSION=${{ steps.check_version.outputs.version }}
+
+          # Single tempdir for every per-crate response, cleaned up on any
+          # exit path (success, set -e abort, signal). Avoids leaking files
+          # if a probe fails between mktemp and the explicit cleanup.
+          TMP=$(mktemp -d)
+          trap 'rm -rf "$TMP"' EXIT
 
           publish_if_missing() {
             local crate=$1
             local current http_code resp
-            resp=$(mktemp)
+            resp="$TMP/$crate.json"
             # crates.io returns HTTP 404 + `{"errors": [...]}` for an
             # unpublished crate, which is a legitimate "publish me" signal —
             # not an error. Capture the status code separately so we can
@@ -152,11 +159,9 @@ jobs:
               *)
                 echo "Unexpected HTTP $http_code probing crates.io for $crate; aborting." >&2
                 cat "$resp" >&2
-                rm -f "$resp"
                 return 1
                 ;;
             esac
-            rm -f "$resp"
             if [ "$current" = "$VERSION" ]; then
               echo "$crate v$VERSION already on crates.io, skipping."
               return
@@ -273,9 +278,11 @@ jobs:
           Copy-Item "README.md" "$stage\"
           Compress-Archive -Path $stage -DestinationPath "$stage.zip"
           $hash = Get-FileHash "$stage.zip" -Algorithm SHA256
-          # Match GNU `sha256sum` output format: "<hex>  <filename>\n".
-          # Use WriteAllText so we get an LF-terminated record on Windows
-          # (Out-File would emit CRLF, which strict checksum tooling rejects).
+          # Match GNU `sha256sum` output format exactly: "<hex>  <filename>\n".
+          # Use WriteAllText to force a single LF terminator on Windows;
+          # earlier approaches could either omit the final newline entirely
+          # (`Out-File -NoNewline`) or emit CRLF (`Out-File` defaults), and
+          # strict checksum tooling expects exactly one LF-terminated record.
           [System.IO.File]::WriteAllText("$stage.zip.sha256", "$($hash.Hash.ToLower())  $stage.zip`n")
           Get-ChildItem "$stage.zip", "$stage.zip.sha256"
           Add-Content -Path $env:GITHUB_ENV -Value "ASSET=$stage.zip"

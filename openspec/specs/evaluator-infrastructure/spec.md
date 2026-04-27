@@ -1,7 +1,7 @@
 # evaluator-infrastructure Specification
 
 ## Purpose
-TBD - created by archiving change refactor-evaluator-architecture. Update Purpose after archive.
+Define the runtime evaluator's module organisation and core semantics: concern-separated modules under `abyss-interpreter/src/eval/` (results, values, collections, expressions, statements), type names exposed as first-class glyph globals, the dot-call `trans` conversion entry point, the dual `oracle` evaluation modes (if-else vs. match), and the mutability rules that gate `morph core` artifact method invocations.
 ## Requirements
 ### Requirement: Evaluator modules enforce concern boundaries
 The interpreter SHALL organise the evaluator under `src/eval/` with separate Rust modules for result/diagnostic types, shared value helpers, collection indexing utilities, expression evaluation, and statement/control-flow execution, ensuring each file exposes a focused API and the public `eval` module simply re-exports the entry points (`evaluate`, `display_error_with_source`, `EvalResult`, `EvalError`).

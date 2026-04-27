@@ -1,7 +1,7 @@
 # release-automation Specification
 
 ## Purpose
-TBD - created by archiving change implement-release-workflow. Update Purpose after archive.
+Specify how the project ships new versions: `cargo release` for local version bumps that touch `Cargo.toml` without producing tags, pushes, or publishes; CI detecting a workspace version bump on `main` and triggering the release job; and automated tagging, GitHub draft-release creation, and crates.io publishing in correct dependency order from a single workflow run.
 ## Requirements
 ### Requirement: Local Version Management
 The developer MUST be able to bump versions locally using `cargo release` without triggering git tags or publishing to crates.io immediately.

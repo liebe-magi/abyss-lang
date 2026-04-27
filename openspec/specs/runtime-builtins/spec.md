@@ -1,7 +1,7 @@
 # runtime-builtins Specification
 
 ## Purpose
-TBD - created by archiving change refactor-unveil-summon-builtins. Update Purpose after archive.
+Define the runtime data model and the stdlib surface that scripts can call: a unified `Callable` abstraction for engraved and builtin functions, the I/O builtins (`unveil`, `summon`) treated as ordinary function calls, shared heap-backed values (collections `scroll` and `lexicon` via `Rc<RefCell<_>>`, and `rune` via `Rc<String>`), artifact storage and validation (instantiation, field access, assignment, equality, type checking), the centralised builtin method dispatch table keyed by runtime type, and the `materia.trans` method as the canonical conversion entry point.
 ## Requirements
 ### Requirement: Runtime exposes callable abstraction
 The interpreter SHALL register both engraved functions and built-in functions as `Callable` entries so that the environment can resolve any symbol through a single lookup path.

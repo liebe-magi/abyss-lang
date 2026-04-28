@@ -98,7 +98,7 @@ For the full diff see [GitHub compare v0.2.0...v0.3.0](https://github.com/liebe-
 - **`unveil` and `summon` refactored** — both now flow through the unified `Callable` abstraction in the runtime; the parser lexes them as ordinary identifiers and emits `AST::FuncCall`, dropping the bespoke AST variants.
 - Materia conversion error handling improved.
 
-For the full diff see [GitHub compare v0.1.0...v0.2.0](https://github.com/liebe-magi/abyss-lang/compare/v0.1.0...v0.2.0).
+For the full diff see [GitHub compare 0.1.0...v0.2.0](https://github.com/liebe-magi/abyss-lang/compare/0.1.0...v0.2.0). (The `0.1.0` tag was pushed without a `v` prefix; the convention switches to `vX.Y.Z` from `v0.2.0` onward.)
 
 ## [0.1.0] - 2025-11-08
 

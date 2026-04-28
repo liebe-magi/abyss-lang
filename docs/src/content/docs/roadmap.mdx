@@ -3,20 +3,25 @@ title: Roadmap
 description: Upcoming rituals and long-term compiler plans.
 ---
 
-The AbySS interpreter already ships collections, structs, and VS Code tooling. The following initiatives outline what is launching next.
+The AbySS interpreter already ships collections, artifact structs and methods, themed pattern matching, and VS Code tooling. The sections below outline what is delivered today and what is being prepared next.
 
 ## Delivered
 
 - **Collection Types** – `scroll`, `lexicon`, and `materia` literals plus standard rituals.
 - **Artifact Structs** – Typed schemas, literals, formatter integration, and field mutation rules.
+- **Artifact Methods** – `TypeName::method` syntax with `core` / `morph core` receivers, dispatched through a unified stdlib method registry.
+- **Themed Pattern Matching** – `oracle` runs in either if-else mode (top-down guard expressions) or match mode (scrutinee-based pattern arms with `=>`).
+- **Multi-crate Workspace** – `abyss-core` (AST / parser / semantics) and `abyss-interpreter` (runtime / stdlib) are published independently from the `abyss-lang` CLI so editor tooling and future Wasm playgrounds can depend on a lean core.
+- **Automated Release Pipeline** – Pushing a workspace version bump to `main` runs the test suite, tags the release, drafts notes from PRs since the previous tag, publishes the three crates to crates.io, attaches per-target binary archives (`tar.gz` / `zip` plus `.sha256` sidecars), and publishes the VS Code extension at the matching version.
 
 ## In Flight
 
-- **Generics Introduction** – Parameterize functions and data structures with type glyphs.
-- **Module System** – Import/export spells across files for large projects.
-- **Error Handling** – Provide first-class diagnostics and recovery primitives.
+- **Pattern Matching Enhancements** – Destructuring patterns (artifact field bindings, scroll `[head, ..rest]`, lexicon key extraction) and guard clauses on match arms.
 - **File I/O** – Extend beyond console I/O with filesystem rituals.
-- **Standard Library** – Grow reusable helpers for day-to-day scripting.
-- **Interpreter Enhancements** – Faster REPL feedback, better debugging hooks, and performance tuning.
+- **Error Handling** – Provide first-class diagnostics and recovery primitives.
+- **Standard Library** – Grow reusable helpers for day-to-day scripting (string, math, time).
+- **Module System** – Import/export spells across files for large projects.
+- **Generics Introduction** – Parameterize functions and data structures with type glyphs.
+- **Interpreter Enhancements** – Faster REPL feedback, better debugging hooks, and performance tuning (potentially a bytecode VM further out).
 
-Track progress via the GitHub issue tracker or discussions; proposals that modify language semantics will surface in OpenSpec first.
+Track progress via the GitHub issue tracker or discussions.

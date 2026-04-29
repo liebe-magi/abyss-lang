@@ -256,11 +256,12 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
             let final_index_value = evaluate(index, env)?;
             let new_value = eval_result_to_value_checked(evaluate(value, env)?, line_info.clone())?;
 
-            // Look up before borrowing mutably so the error builder can read scope.
-            if env.get_var(&base_name).is_none() {
-                return Err(env.undefined_variable_error(&base_name, line_info.clone()));
-            }
-            let var_info = env.get_var_mut(&base_name).expect("just confirmed present");
+            let var_info = match env.get_var_mut(&base_name) {
+                Some(var_info) => var_info,
+                None => {
+                    return Err(env.undefined_variable_error(&base_name, line_info.clone()));
+                }
+            };
 
             if !var_info.is_morph {
                 return Err(EvalError::InvalidOperation(
@@ -316,11 +317,12 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
 
             let evaluated_value = evaluate(value, env)?;
 
-            // Look up before borrowing mutably so the error builder can read scope.
-            if env.get_var(&base_name).is_none() {
-                return Err(env.undefined_variable_error(&base_name, line_info.clone()));
-            }
-            let var_info = env.get_var_mut(&base_name).expect("just confirmed present");
+            let var_info = match env.get_var_mut(&base_name) {
+                Some(var_info) => var_info,
+                None => {
+                    return Err(env.undefined_variable_error(&base_name, line_info.clone()));
+                }
+            };
 
             if !var_info.is_morph {
                 return Err(EvalError::InvalidOperation(

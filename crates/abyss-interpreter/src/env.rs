@@ -568,4 +568,90 @@ mod tests {
             Err(EvalError::InvalidOperation(msg, _)) if msg.contains("Artifact Player is already defined")
         ));
     }
+
+    #[test]
+    fn undefined_variable_error_includes_close_match_suggestion() {
+        let mut env = RuntimeEnv::new();
+        env.set_var(
+            "counter".into(),
+            Value::Arcana(0),
+            Type::Arcana,
+            false,
+            None,
+        );
+
+        let err = env.undefined_variable_error("countar", None);
+        match err {
+            EvalError::UndefinedVariable(label, _) => {
+                assert_eq!(label, "countar (did you mean: counter?)");
+            }
+            other => panic!("expected UndefinedVariable, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn undefined_variable_error_searches_outer_scopes_for_suggestions() {
+        let mut env = RuntimeEnv::new();
+        env.set_var(
+            "outer_var".into(),
+            Value::Arcana(0),
+            Type::Arcana,
+            false,
+            None,
+        );
+        env.push_scope();
+        env.set_var(
+            "inner_var".into(),
+            Value::Arcana(1),
+            Type::Arcana,
+            false,
+            None,
+        );
+
+        // Typo close to outer_var; suggestion should still surface even
+        // though the variable lives in a parent scope.
+        let err = env.undefined_variable_error("outer_vra", None);
+        match err {
+            EvalError::UndefinedVariable(label, _) => {
+                assert!(
+                    label.contains("did you mean: outer_var"),
+                    "expected outer_var suggestion, got {label:?}"
+                );
+            }
+            other => panic!("expected UndefinedVariable, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn undefined_variable_error_falls_back_when_no_close_match() {
+        let env = RuntimeEnv::new();
+        // No variables at all — bare error message, no parenthesised hint.
+        let err = env.undefined_variable_error("nothing_close", None);
+        match err {
+            EvalError::UndefinedVariable(label, _) => {
+                assert_eq!(label, "nothing_close");
+            }
+            other => panic!("expected UndefinedVariable, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn undefined_function_error_searches_function_scopes() {
+        let mut env = RuntimeEnv::new();
+        env.extend_functions(vec![(
+            "unveil".into(),
+            Callable::Builtin(BuiltinFunction {
+                name: "unveil".into(),
+                func: builtin,
+            }),
+        )]);
+
+        let err = env.undefined_function_error("unveels", None);
+        match err {
+            EvalError::UndefinedVariable(label, _) => {
+                assert_eq!(label, "unveels (did you mean: unveil?)");
+            }
+            other => panic!("expected UndefinedVariable, got {:?}", other),
+        }
+    }
 }

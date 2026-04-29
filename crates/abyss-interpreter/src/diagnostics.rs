@@ -3,7 +3,9 @@
 //! The interpreter raises errors as `EvalError` strings; this module supplies
 //! the bits of formatting reused across several call sites — currently the
 //! Levenshtein-based "did you mean?" suggestion logic that enriches messages
-//! about undefined variables, functions, methods, and artifact fields.
+//! about undefined identifiers (variables and functions). The same primitives
+//! are intended to be reused as more diagnostic flavours land (methods,
+//! artifact fields).
 
 /// Compute the Levenshtein edit distance between two strings.
 ///
@@ -38,9 +40,11 @@ pub(crate) fn levenshtein(a: &str, b: &str) -> usize {
 /// `target` length (longer names tolerate slightly more edits) but is at most
 /// half the length so vastly different names never surface as suggestions.
 ///
-/// Returns names in ascending distance order; ties broken by the candidate
-/// order they were yielded in. The exact `target` is filtered out (no point
-/// suggesting "did you mean: X?" when the user already typed X).
+/// Returns names in ascending distance order; ties are broken alphabetically
+/// so the result is deterministic even when the candidate iterator (often a
+/// `HashMap::keys()`) yields entries in random order. The exact `target` is
+/// filtered out — no point suggesting "did you mean: X?" when the user
+/// already typed X.
 pub(crate) fn did_you_mean<'a, I>(target: &str, candidates: I, max_count: usize) -> Vec<String>
 where
     I: IntoIterator<Item = &'a str>,
@@ -59,15 +63,21 @@ where
         .map(|name| (levenshtein(target, name), name.to_string()))
         .filter(|(dist, _)| *dist <= max_distance)
         .collect();
-    scored.sort_by_key(|(dist, _)| *dist);
+    // Tie-break alphabetically on the name so the final ordering is
+    // deterministic regardless of the candidate-iterator order. Avoids flaky
+    // output when candidates come from a `HashMap`.
+    scored.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
     scored.dedup_by(|a, b| a.1 == b.1);
     scored.truncate(max_count);
     scored.into_iter().map(|(_, name)| name).collect()
 }
 
 /// Append a parenthesised "did you mean: …" hint to `name` when at least one
-/// suggestion is available. The hint formats one suggestion as
-/// `"(did you mean: X?)"` and multiple as `"(did you mean: X, or Y?)"`.
+/// suggestion is available. Renders as:
+///
+/// - one suggestion: `"X"`
+/// - two suggestions: `"X or Y"`
+/// - three or more: `"X, Y, or Z"` (Oxford comma followed by `"or"`)
 ///
 /// When the suggestion list is empty the original `name` is returned
 /// unchanged, so call sites can hand the result straight to
@@ -76,7 +86,13 @@ pub(crate) fn label_with_suggestions(name: &str, suggestions: &[String]) -> Stri
     match suggestions {
         [] => name.to_string(),
         [only] => format!("{} (did you mean: {}?)", name, only),
-        many => format!("{} (did you mean: {}?)", name, many.join(", or ")),
+        [first, second] => format!("{} (did you mean: {} or {}?)", name, first, second),
+        many => {
+            // Three or more — comma-separated with an Oxford comma before
+            // the final `"or"`, e.g. "a, b, or c".
+            let (last, rest) = many.split_last().expect("non-empty in this arm");
+            format!("{} (did you mean: {}, or {}?)", name, rest.join(", "), last)
+        }
     }
 }
 
@@ -132,15 +148,38 @@ mod tests {
     }
 
     #[test]
-    fn label_with_suggestions_formats_multiple_matches() {
+    fn label_with_suggestions_formats_two_matches() {
         assert_eq!(
             label_with_suggestions("healht", &["health".to_string(), "heat".to_string()]),
-            "healht (did you mean: health, or heat?)"
+            "healht (did you mean: health or heat?)"
+        );
+    }
+
+    #[test]
+    fn label_with_suggestions_formats_three_or_more_matches_with_oxford_comma() {
+        assert_eq!(
+            label_with_suggestions(
+                "countet",
+                &[
+                    "counter".to_string(),
+                    "counted".to_string(),
+                    "counters".to_string(),
+                ]
+            ),
+            "countet (did you mean: counter, counted, or counters?)"
         );
     }
 
     #[test]
     fn label_with_suggestions_passes_through_when_empty() {
         assert_eq!(label_with_suggestions("countar", &[]), "countar");
+    }
+
+    #[test]
+    fn did_you_mean_breaks_ties_alphabetically_for_determinism() {
+        // Two candidates at distance 1 from "abz": "abx" and "abc".
+        // Regardless of input order, alphabetical tie-break gives "abc" first.
+        assert_eq!(did_you_mean("abz", ["abx", "abc"], 2), vec!["abc", "abx"]);
+        assert_eq!(did_you_mean("abz", ["abc", "abx"], 2), vec!["abc", "abx"]);
     }
 }

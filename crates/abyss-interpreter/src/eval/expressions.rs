@@ -185,10 +185,7 @@ pub(crate) fn try_evaluate_expression(
         AST::Var(name, line_info) => match env.get_var(name) {
             Some(var_info) => value_to_eval_result(&var_info.value),
             None => {
-                return Err(EvalError::UndefinedVariable(
-                    name.clone(),
-                    line_info.clone(),
-                ));
+                return Err(env.undefined_variable_error(name, line_info.clone()));
             }
         },
         AST::IndexAccess {
@@ -505,7 +502,7 @@ fn ensure_method_receiver_mutability(
                 line_info.clone(),
             ));
         } else {
-            return Err(EvalError::UndefinedVariable(base_name, line_info.clone()));
+            return Err(env.undefined_variable_error(&base_name, line_info.clone()));
         }
     }
 
@@ -572,10 +569,7 @@ fn evaluate_function_call(
     let callable = match env.get_function(name) {
         Some(func) => func.clone(),
         None => {
-            return Err(EvalError::UndefinedVariable(
-                name.to_string(),
-                line_info.clone(),
-            ));
+            return Err(env.undefined_function_error(name, line_info.clone()));
         }
     };
 

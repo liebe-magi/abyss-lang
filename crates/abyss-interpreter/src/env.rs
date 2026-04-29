@@ -1,3 +1,4 @@
+use crate::diagnostics::{did_you_mean, label_with_suggestions};
 use crate::eval::{EvalError, EvalResult};
 use abyss_core::ast::{AST, LineInfo, Type};
 use std::cell::RefCell;
@@ -136,6 +137,36 @@ impl RuntimeEnv {
         None
     }
 
+    /// Build an `EvalError::UndefinedVariable` enriched with a "did you mean?"
+    /// hint drawn from the variable scopes when a close lexical match exists.
+    /// Falls back to the bare name when no plausible suggestion is available,
+    /// so the message shape remains identical to the pre-suggestion era for
+    /// truly unknown identifiers.
+    pub fn undefined_variable_error(&self, name: &str, line_info: Option<LineInfo>) -> EvalError {
+        let candidates: Vec<&str> = self
+            .scopes
+            .iter()
+            .flat_map(|scope| scope.keys())
+            .map(String::as_str)
+            .collect();
+        let suggestions = did_you_mean(name, candidates, 3);
+        EvalError::UndefinedVariable(label_with_suggestions(name, &suggestions), line_info)
+    }
+
+    /// Same shape as [`undefined_variable_error`] but suggestions are drawn
+    /// from the function scopes — used when an identifier appearing in a call
+    /// position cannot be resolved to a `Callable`.
+    pub fn undefined_function_error(&self, name: &str, line_info: Option<LineInfo>) -> EvalError {
+        let candidates: Vec<&str> = self
+            .function_scopes
+            .iter()
+            .flat_map(|scope| scope.keys())
+            .map(String::as_str)
+            .collect();
+        let suggestions = did_you_mean(name, candidates, 3);
+        EvalError::UndefinedVariable(label_with_suggestions(name, &suggestions), line_info)
+    }
+
     /// Updates an existing variable's value in the environment if it is mutable and the types match.
     /// Returns an error if the variable is immutable, the types do not match, or the variable is not found.
     pub fn update_var(
@@ -171,7 +202,7 @@ impl RuntimeEnv {
                 return Ok(());
             }
         }
-        Err(EvalError::UndefinedVariable(name.to_string(), line_info))
+        Err(self.undefined_variable_error(name, line_info))
     }
 
     /// Registers a function in the current scope, associating it with its name.

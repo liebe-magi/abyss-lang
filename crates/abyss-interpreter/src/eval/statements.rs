@@ -232,10 +232,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
 
                 Ok(EvalResult::abyss())
             } else {
-                Err(EvalError::UndefinedVariable(
-                    name.clone(),
-                    line_info.clone(),
-                ))
+                Err(env.undefined_variable_error(name, line_info.clone()))
             }
         }
         AST::IndexAssignment {
@@ -259,9 +256,11 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
             let final_index_value = evaluate(index, env)?;
             let new_value = eval_result_to_value_checked(evaluate(value, env)?, line_info.clone())?;
 
-            let var_info = env.get_var_mut(&base_name).ok_or_else(|| {
-                EvalError::UndefinedVariable(base_name.clone(), line_info.clone())
-            })?;
+            // Look up before borrowing mutably so the error builder can read scope.
+            if env.get_var(&base_name).is_none() {
+                return Err(env.undefined_variable_error(&base_name, line_info.clone()));
+            }
+            let var_info = env.get_var_mut(&base_name).expect("just confirmed present");
 
             if !var_info.is_morph {
                 return Err(EvalError::InvalidOperation(
@@ -317,9 +316,11 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
 
             let evaluated_value = evaluate(value, env)?;
 
-            let var_info = env.get_var_mut(&base_name).ok_or_else(|| {
-                EvalError::UndefinedVariable(base_name.clone(), line_info.clone())
-            })?;
+            // Look up before borrowing mutably so the error builder can read scope.
+            if env.get_var(&base_name).is_none() {
+                return Err(env.undefined_variable_error(&base_name, line_info.clone()));
+            }
+            let var_info = env.get_var_mut(&base_name).expect("just confirmed present");
 
             if !var_info.is_morph {
                 return Err(EvalError::InvalidOperation(

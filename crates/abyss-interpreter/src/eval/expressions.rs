@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+use crate::diagnostics::did_you_mean_hint;
 use crate::env::{CallArg, Callable, EngravedFunction, RuntimeEnv, Value};
 use crate::stdlib::methods;
 use abyss_core::ast::{AST, LineInfo, Type};
@@ -526,11 +527,19 @@ fn evaluate_artifact_method_call(
 ) -> Result<EvalResult, EvalError> {
     let schema = lookup_schema_from_handle(env, &receiver_handle, line_info)?;
     let artifact_name = schema.name.clone();
+    let method_candidates: Vec<String> = schema.methods.keys().cloned().collect();
     let artifact_method = env
         .get_artifact_method(&artifact_name, method_name)
         .ok_or_else(|| {
+            let hint =
+                did_you_mean_hint(method_name, method_candidates.iter().map(String::as_str), 3)
+                    .map(|h| format!(" {}", h))
+                    .unwrap_or_default();
             EvalError::InvalidOperation(
-                format!("Method {}::{} is not defined", artifact_name, method_name),
+                format!(
+                    "Method {}::{} is not defined{}",
+                    artifact_name, method_name, hint
+                ),
                 line_info.clone(),
             )
         })?;

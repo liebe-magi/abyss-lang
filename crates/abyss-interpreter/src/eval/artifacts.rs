@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 use super::result::{EvalError, EvalResult};
 use super::values::describe_value;
+use crate::diagnostics::did_you_mean_hint;
 
 pub(crate) fn ensure_type_known(
     ty: &Type,
@@ -151,11 +152,15 @@ pub(crate) fn missing_field_error(
     field: &str,
     line_info: &Option<LineInfo>,
 ) -> EvalError {
-    let available = schema.field_names().join(", ");
+    let available_names = schema.field_names();
+    let hint = did_you_mean_hint(field, available_names.iter().map(String::as_str), 3)
+        .map(|h| format!(" {}", h))
+        .unwrap_or_default();
+    let available = available_names.join(", ");
     EvalError::InvalidOperation(
         format!(
-            "Field '{}' does not exist on artifact {} (available: [{}])",
-            field, schema.name, available
+            "Field '{}'{} does not exist on artifact {} (available: [{}])",
+            field, hint, schema.name, available
         ),
         line_info.clone(),
     )
@@ -506,5 +511,47 @@ mod tests {
 
         let lex_c = lexicon(vec![("key", rune("beta"))]);
         assert!(!values_equal(&env, &lex_a, &lex_c, &None).unwrap());
+    }
+
+    #[test]
+    fn missing_field_error_appends_did_you_mean_for_close_match() {
+        let env = env_with_schema(
+            "Player",
+            vec![
+                ("name", Type::Rune),
+                ("hp", Type::Arcana),
+                ("mp", Type::Arcana),
+            ],
+        );
+        let schema = lookup_schema_by_name(&env, "Player", &None).unwrap();
+        let err = missing_field_error(schema, "nmae", &None);
+        match err {
+            EvalError::InvalidOperation(msg, _) => {
+                assert!(
+                    msg.contains(
+                        "Field 'nmae' (did you mean: name?) does not exist on artifact Player"
+                    ),
+                    "missing did-you-mean hint in: {msg}"
+                );
+                // The "available" listing should still be present so users can
+                // see the full schema even when a close match is suggested.
+                assert!(msg.contains("(available: [name, hp, mp])"), "msg: {msg}");
+            }
+            other => panic!("expected invalid operation, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn missing_field_error_omits_hint_when_no_close_match() {
+        let env = env_with_schema("Player", vec![("name", Type::Rune), ("hp", Type::Arcana)]);
+        let schema = lookup_schema_by_name(&env, "Player", &None).unwrap();
+        let err = missing_field_error(schema, "completely_unrelated_field", &None);
+        match err {
+            EvalError::InvalidOperation(msg, _) => {
+                assert!(!msg.contains("did you mean"), "msg: {msg}");
+                assert!(msg.contains("(available: [name, hp])"));
+            }
+            other => panic!("expected invalid operation, got {:?}", other),
+        }
     }
 }

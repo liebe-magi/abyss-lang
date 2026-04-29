@@ -1,11 +1,19 @@
 //! Lightweight helpers shared between error-reporting sites.
 //!
 //! The interpreter raises errors as `EvalError` strings; this module supplies
-//! the bits of formatting reused across several call sites — currently the
+//! the bits of formatting reused across several call sites — chiefly the
 //! Levenshtein-based "did you mean?" suggestion logic that enriches messages
-//! about undefined identifiers (variables and functions). The same primitives
-//! are intended to be reused as more diagnostic flavours land (methods,
-//! artifact fields).
+//! about undefined identifiers (variables, functions, methods, and artifact
+//! fields). Two rendering modes are exposed so callers can pick the form that
+//! reads best in their message:
+//!
+//! - [`label_with_suggestions`] — appends the hint after a bare identifier
+//!   (`foo (did you mean: bar?)`); used where the identifier is the whole
+//!   message subject (e.g. `EvalError::UndefinedVariable`).
+//! - [`format_suggestions_hint`] / [`did_you_mean_hint`] — return just the
+//!   parenthesised suffix so the caller can splice it inside a longer
+//!   message that already wraps the identifier in punctuation
+//!   (`Field 'fild' (did you mean: field?) does not exist on …`).
 
 /// Compute the Levenshtein edit distance between two strings.
 ///
@@ -72,28 +80,56 @@ where
     scored.into_iter().map(|(_, name)| name).collect()
 }
 
-/// Append a parenthesised "did you mean: …" hint to `name` when at least one
-/// suggestion is available. Renders as:
+/// Render just the parenthesised "did you mean: …" suffix — without any
+/// preceding identifier. Returns `None` when the suggestion list is empty so
+/// callers can decide where to splice the hint into a larger message (e.g.
+/// outside of single quotes around a field name).
 ///
-/// - one suggestion: `"X"`
-/// - two suggestions: `"X or Y"`
-/// - three or more: `"X, Y, or Z"` (Oxford comma followed by `"or"`)
-///
-/// When the suggestion list is empty the original `name` is returned
-/// unchanged, so call sites can hand the result straight to
-/// `EvalError::UndefinedVariable(...)` without further branching.
-pub(crate) fn label_with_suggestions(name: &str, suggestions: &[String]) -> String {
+/// Format mirrors [`label_with_suggestions`]:
+/// - one suggestion: `"(did you mean: X?)"`
+/// - two suggestions: `"(did you mean: X or Y?)"`
+/// - three or more: `"(did you mean: X, Y, or Z?)"` (Oxford comma)
+pub(crate) fn format_suggestions_hint(suggestions: &[String]) -> Option<String> {
     match suggestions {
-        [] => name.to_string(),
-        [only] => format!("{} (did you mean: {}?)", name, only),
-        [first, second] => format!("{} (did you mean: {} or {}?)", name, first, second),
+        [] => None,
+        [only] => Some(format!("(did you mean: {}?)", only)),
+        [first, second] => Some(format!("(did you mean: {} or {}?)", first, second)),
         many => {
-            // Three or more — comma-separated with an Oxford comma before
-            // the final `"or"`, e.g. "a, b, or c".
             let (last, rest) = many.split_last().expect("non-empty in this arm");
-            format!("{} (did you mean: {}, or {}?)", name, rest.join(", "), last)
+            Some(format!("(did you mean: {}, or {}?)", rest.join(", "), last))
         }
     }
+}
+
+/// Append a parenthesised "did you mean: …" hint to `name` when at least one
+/// suggestion is available. When the suggestion list is empty the original
+/// `name` is returned unchanged, so call sites can hand the result straight to
+/// an `EvalError` variant without further branching.
+pub(crate) fn label_with_suggestions(name: &str, suggestions: &[String]) -> String {
+    match format_suggestions_hint(suggestions) {
+        None => name.to_string(),
+        Some(hint) => format!("{} {}", name, hint),
+    }
+}
+
+/// Convenience composition of [`did_you_mean`] and
+/// [`format_suggestions_hint`]: pick suggestions from `candidates` and return
+/// just the parenthesised "(did you mean: …)" suffix (or `None`).
+///
+/// Used when the call site needs to splice the hint into a larger message
+/// that already wraps the target identifier — for example, after a closing
+/// single quote around a field name in
+/// `Field 'fild' (did you mean: field?) does not exist on …`.
+pub(crate) fn did_you_mean_hint<'a, I>(
+    target: &str,
+    candidates: I,
+    max_count: usize,
+) -> Option<String>
+where
+    I: IntoIterator<Item = &'a str>,
+{
+    let suggestions = did_you_mean(target, candidates, max_count);
+    format_suggestions_hint(&suggestions)
 }
 
 #[cfg(test)]
@@ -181,5 +217,44 @@ mod tests {
         // Regardless of input order, alphabetical tie-break gives "abc" first.
         assert_eq!(did_you_mean("abz", ["abx", "abc"], 2), vec!["abc", "abx"]);
         assert_eq!(did_you_mean("abz", ["abc", "abx"], 2), vec!["abc", "abx"]);
+    }
+
+    #[test]
+    fn did_you_mean_hint_renders_parenthetical_when_close_match_exists() {
+        assert_eq!(
+            did_you_mean_hint("fild", ["name", "field", "level"], 3).as_deref(),
+            Some("(did you mean: field?)")
+        );
+    }
+
+    #[test]
+    fn did_you_mean_hint_returns_none_when_no_close_match() {
+        assert!(did_you_mean_hint("xyz", ["name", "field"], 3).is_none());
+    }
+
+    #[test]
+    fn format_suggestions_hint_returns_none_for_empty() {
+        assert!(format_suggestions_hint(&[]).is_none());
+    }
+
+    #[test]
+    fn format_suggestions_hint_renders_two_with_or() {
+        assert_eq!(
+            format_suggestions_hint(&["health".to_string(), "heat".to_string()]).as_deref(),
+            Some("(did you mean: health or heat?)")
+        );
+    }
+
+    #[test]
+    fn format_suggestions_hint_renders_three_or_more_with_oxford_comma() {
+        assert_eq!(
+            format_suggestions_hint(&[
+                "counter".to_string(),
+                "counted".to_string(),
+                "counters".to_string()
+            ])
+            .as_deref(),
+            Some("(did you mean: counter, counted, or counters?)")
+        );
     }
 }

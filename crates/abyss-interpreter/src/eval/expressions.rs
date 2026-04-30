@@ -527,14 +527,14 @@ fn evaluate_artifact_method_call(
 ) -> Result<EvalResult, EvalError> {
     let schema = lookup_schema_from_handle(env, &receiver_handle, line_info)?;
     let artifact_name = schema.name.clone();
-    let method_candidates: Vec<String> = schema.methods.keys().cloned().collect();
     let artifact_method = env
         .get_artifact_method(&artifact_name, method_name)
         .ok_or_else(|| {
-            let hint =
-                did_you_mean_hint(method_name, method_candidates.iter().map(String::as_str), 3)
-                    .map(|h| format!(" {}", h))
-                    .unwrap_or_default();
+            // Build candidate names lazily on the error path so the happy
+            // path does not iterate the schema's method table.
+            let hint = did_you_mean_hint(method_name, schema.methods.keys().map(String::as_str), 3)
+                .map(|h| format!(" {}", h))
+                .unwrap_or_default();
             EvalError::InvalidOperation(
                 format!(
                     "Method {}::{} is not defined{}",

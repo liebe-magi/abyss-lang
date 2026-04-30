@@ -4,7 +4,7 @@ use abyss_core::{
 };
 use abyss_interpreter::{
     env::Value,
-    eval::{EvalError, EvalResult, display_error_with_source, evaluate},
+    eval::{EvalResult, display_error_with_source, evaluate},
     stdlib,
 };
 use clap::{Parser, Subcommand};
@@ -95,16 +95,8 @@ fn execute_script(script: &str) {
 
     for ast in outcome.ast {
         if let Err(error) = evaluate(&ast, &mut env) {
-            let message = error.to_string();
-            match error {
-                EvalError::UndefinedVariable(_, line_info)
-                | EvalError::InvalidOperation(_, line_info)
-                | EvalError::NegativeExponent(line_info)
-                | EvalError::TypeError(_, line_info) => {
-                    display_error_with_source(script, line_info, &message);
-                    return;
-                }
-            }
+            display_error_with_source(script, &error);
+            return;
         }
     }
 }

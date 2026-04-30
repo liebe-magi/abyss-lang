@@ -1,6 +1,6 @@
 use crate::env::{ArtifactHandle, Value};
 use abyss_core::ast::LineInfo;
-use colored::*;
+use ariadne::{Color, Label, Report, ReportKind, Source};
 use std::fmt;
 
 /// Represents the result of an evaluation in the interpreter.
@@ -28,12 +28,41 @@ impl EvalResult {
 }
 
 /// Represents possible errors that can occur during evaluation.
+///
+/// Marked `#[non_exhaustive]` so future variants (richer span tracking,
+/// new diagnostic categories) can be added without breaking downstream
+/// matchers — they will need a wildcard arm. Within this crate the
+/// compiler still enforces full coverage.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum EvalError {
     UndefinedVariable(String, Option<LineInfo>),
     InvalidOperation(String, Option<LineInfo>),
     NegativeExponent(Option<LineInfo>),
     TypeError(String, Option<LineInfo>),
+}
+
+impl EvalError {
+    /// Returns the source-position metadata attached to this error, if any.
+    pub fn line_info(&self) -> Option<&LineInfo> {
+        match self {
+            EvalError::UndefinedVariable(_, info)
+            | EvalError::InvalidOperation(_, info)
+            | EvalError::TypeError(_, info)
+            | EvalError::NegativeExponent(info) => info.as_ref(),
+        }
+    }
+
+    /// Short, human-readable category label used as the report header in
+    /// [`display_error_with_source`].
+    fn kind_label(&self) -> &'static str {
+        match self {
+            EvalError::UndefinedVariable(_, _) => "Undefined variable",
+            EvalError::InvalidOperation(_, _) => "Invalid operation",
+            EvalError::NegativeExponent(_) => "Negative exponent",
+            EvalError::TypeError(_, _) => "Type error",
+        }
+    }
 }
 
 impl fmt::Display for EvalError {
@@ -51,35 +80,67 @@ impl fmt::Display for EvalError {
 
 impl std::error::Error for EvalError {}
 
-/// Displays an error message along with the relevant source code and line information, if available.
-pub fn display_error_with_source(script: &str, line_info: Option<LineInfo>, error_message: &str) {
-    if let Some(info) = line_info {
-        let lines: Vec<&str> = script.lines().collect();
-        if let Some(source_line) = lines.get(info.line - 1) {
-            // Line numbers start from 1, so we subtract 1
-            eprintln!(
-                "{}",
-                format!(
-                    "Error at line {}, column {}: {}",
-                    info.line, info.column, error_message
-                )
-                .red()
-            );
-            eprintln!("  {}", source_line.red());
-            eprintln!("  {}{}", " ".repeat(info.column - 1).red(), "^".red());
-        } else {
-            eprintln!("{}", format!("Error: {}", error_message).red());
-        }
+const RUNTIME_SOURCE_ID: &str = "<script>";
+
+/// Render a runtime error against the source script using
+/// [`ariadne`]'s annotated report style — matching the parser's diagnostic
+/// look. When the error carries a [`LineInfo`] that resolves into the source,
+/// the offending column is underlined; otherwise a plain "Error: …" line is
+/// printed to stderr as a fallback.
+///
+/// Output goes to stderr. Any I/O failure from ariadne is swallowed (matching
+/// the pre-migration `eprintln!`-based behaviour).
+pub fn display_error_with_source(script: &str, error: &EvalError) {
+    let message = error.to_string();
+    if let Some(info) = error.line_info()
+        && let Some(start) = line_col_to_byte_offset(script, info.line, info.column)
+    {
+        // Single-byte highlight at the reported column, clamped so the span
+        // never extends past the source. `LineInfo` carries no end position
+        // today, so finer-grained highlighting requires the larger Span
+        // refactor planned for a later release.
+        let end = (start + 1).min(script.len()).max(start);
+        let span = start..end;
+        let report = Report::build(ReportKind::Error, (RUNTIME_SOURCE_ID, span.clone()))
+            .with_message(error.kind_label())
+            .with_label(
+                Label::new((RUNTIME_SOURCE_ID, span))
+                    .with_message(&message)
+                    .with_color(Color::Red),
+            )
+            .finish();
+        let _ = report.eprint((RUNTIME_SOURCE_ID, Source::from(script)));
     } else {
-        eprintln!("{}", format!("Error: {}", error_message).red());
+        eprintln!("Error: {}", message);
     }
+}
+
+/// Convert a 1-based `(line, column)` pair (where `column` is a byte offset
+/// within the line, matching the parser's `LineMap`) into a byte offset
+/// suitable for ariadne's range-based labels. Returns `None` when the
+/// position cannot be resolved against `source`.
+fn line_col_to_byte_offset(source: &str, line: usize, column: usize) -> Option<usize> {
+    if line == 0 || column == 0 {
+        return None;
+    }
+    let mut line_starts: Vec<usize> = vec![0];
+    for (i, ch) in source.char_indices() {
+        if ch == '\n' {
+            line_starts.push(i + ch.len_utf8());
+        }
+    }
+    let line_start = *line_starts.get(line - 1)?;
+    let offset = line_start + (column - 1);
+    if offset > source.len() {
+        return None;
+    }
+    Some(offset)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::env::ArtifactValue;
-    use colored::control;
     use std::cell::RefCell;
     use std::collections::HashMap;
     use std::rc::Rc;
@@ -120,21 +181,76 @@ mod tests {
     }
 
     #[test]
-    fn display_error_with_valid_line_highlights_source() {
-        control::set_override(false);
+    fn line_info_returns_attached_position() {
+        let err = EvalError::TypeError("x".into(), Some(LineInfo::new(3, 4)));
+        let info = err.line_info().expect("line info attached");
+        assert_eq!(info.line, 3);
+        assert_eq!(info.column, 4);
+
+        let plain = EvalError::NegativeExponent(None);
+        assert!(plain.line_info().is_none());
+    }
+
+    #[test]
+    fn line_col_to_byte_offset_resolves_simple_positions() {
+        let source = "abc\ndef\nghi";
+        assert_eq!(line_col_to_byte_offset(source, 1, 1), Some(0));
+        assert_eq!(line_col_to_byte_offset(source, 2, 1), Some(4));
+        assert_eq!(line_col_to_byte_offset(source, 3, 2), Some(9));
+    }
+
+    #[test]
+    fn line_col_to_byte_offset_rejects_out_of_range() {
+        let source = "abc\ndef";
+        assert_eq!(line_col_to_byte_offset(source, 0, 1), None);
+        assert_eq!(line_col_to_byte_offset(source, 1, 0), None);
+        assert_eq!(line_col_to_byte_offset(source, 5, 1), None);
+        // Column past end of source returns None.
+        assert!(line_col_to_byte_offset(source, 2, 100).is_none());
+    }
+
+    #[test]
+    fn line_col_to_byte_offset_handles_multibyte_chars() {
+        // "あ" is 3 bytes in UTF-8; the second line starts after the newline
+        // following it.
+        let source = "あ\nb";
+        assert_eq!(line_col_to_byte_offset(source, 1, 1), Some(0));
+        assert_eq!(line_col_to_byte_offset(source, 2, 1), Some(4));
+    }
+
+    #[test]
+    fn display_error_with_valid_line_does_not_panic() {
         let script = "sigil = 1\nhex = sigil + 2";
-        display_error_with_source(script, Some(LineInfo::new(2, 5)), "invalid operation");
+        let err = EvalError::InvalidOperation("invalid op".into(), Some(LineInfo::new(2, 5)));
+        display_error_with_source(script, &err);
     }
 
     #[test]
     fn display_error_without_matching_line_falls_back_to_generic() {
-        control::set_override(false);
-        display_error_with_source("sigil = 1", Some(LineInfo::new(3, 1)), "out of range");
+        let err = EvalError::TypeError("out of range".into(), Some(LineInfo::new(99, 1)));
+        display_error_with_source("sigil = 1", &err);
     }
 
     #[test]
     fn display_error_without_line_info_still_prints_message() {
-        control::set_override(false);
-        display_error_with_source("sigil = 1", None, "missing context");
+        let err = EvalError::NegativeExponent(None);
+        display_error_with_source("sigil = 1", &err);
+    }
+
+    #[test]
+    fn kind_label_covers_every_variant() {
+        // If a new variant is added the compiler will flag this match
+        // (`#[non_exhaustive]` only restricts external matching); keeping
+        // this test guards against silently shipping a variant without a
+        // human-readable label.
+        let cases: [EvalError; 4] = [
+            EvalError::UndefinedVariable("x".into(), None),
+            EvalError::InvalidOperation("y".into(), None),
+            EvalError::NegativeExponent(None),
+            EvalError::TypeError("z".into(), None),
+        ];
+        for err in &cases {
+            assert!(!err.kind_label().is_empty());
+        }
     }
 }

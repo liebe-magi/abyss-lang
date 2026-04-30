@@ -13,5 +13,5 @@ homepage.workspace = true
 
 [dependencies]
 abyss-core.workspace = true
-colored = "3.0.0"
+ariadne = "0.6"
 ordered-float = "5"

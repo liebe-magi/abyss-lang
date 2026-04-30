@@ -237,3 +237,78 @@ hero.level;
         other => panic!("expected arcana result, found {:?}", other),
     }
 }
+
+#[test]
+fn artifact_field_typo_suggests_close_match() {
+    let input = r#"
+artifact Player { name: rune; health: arcana; };
+forge hero: Player = Player { name: "Ardyn", health: 100 };
+hero.helth;
+"#;
+
+    match test_base(input) {
+        Ok(_) => panic!("expected unknown-field error"),
+        Err(err) => match err.downcast_ref::<EvalError>() {
+            Some(EvalError::InvalidOperation(message, _)) => {
+                assert!(
+                    message.contains("Field 'helth'") && message.contains("did you mean: health"),
+                    "missing did-you-mean hint: {}",
+                    message
+                );
+            }
+            other => panic!("expected invalid operation error, found {:?}", other),
+        },
+    }
+}
+
+#[test]
+fn artifact_method_typo_suggests_close_match() {
+    let input = r#"
+artifact Player { level: arcana; };
+engrave Player::get_level(core) -> arcana {
+    reveal core.level;
+};
+forge hero: Player = Player { level: 7 };
+hero.get_levle();
+"#;
+
+    match test_base(input) {
+        Ok(_) => panic!("expected unknown-method error"),
+        Err(err) => match err.downcast_ref::<EvalError>() {
+            Some(EvalError::InvalidOperation(message, _)) => {
+                assert!(
+                    message.contains("Method Player::get_levle is not defined")
+                        && message.contains("did you mean: get_level"),
+                    "missing did-you-mean hint: {}",
+                    message
+                );
+            }
+            other => panic!("expected invalid operation error, found {:?}", other),
+        },
+    }
+}
+
+#[test]
+fn builtin_method_typo_suggests_close_match() {
+    // `scribe` lives on the Scroll table; a typo on a scroll receiver should
+    // surface it as a suggestion via the dispatch error path.
+    let input = r#"
+forge morph items: scroll = [1, 2, 3];
+items.scrieb(4);
+"#;
+
+    match test_base(input) {
+        Ok(_) => panic!("expected unknown-method error"),
+        Err(err) => match err.downcast_ref::<EvalError>() {
+            Some(EvalError::InvalidOperation(message, _)) => {
+                assert!(
+                    message.contains("Method scrieb is not defined")
+                        && message.contains("did you mean: scribe"),
+                    "missing did-you-mean hint: {}",
+                    message
+                );
+            }
+            other => panic!("expected invalid operation error, found {:?}", other),
+        },
+    }
+}

@@ -3,7 +3,7 @@ title: Roadmap
 description: Upcoming rituals and long-term compiler plans.
 ---
 
-The AbySS interpreter already ships collections, artifact structs and methods, themed pattern matching, and VS Code tooling. The sections below outline what is delivered today and what is being prepared next.
+The AbySS interpreter already ships collections, artifact structs and methods, themed pattern matching, and VS Code tooling. The sections below outline what is delivered today, the next few release cycles in order, and the longer-horizon items still in design.
 
 ## Delivered
 
@@ -13,15 +13,61 @@ The AbySS interpreter already ships collections, artifact structs and methods, t
 - **Themed Pattern Matching** – `oracle` runs in either if-else mode (top-down guard expressions) or match mode (scrutinee-based pattern arms with `=>`).
 - **Multi-crate Workspace** – `abyss-core` (AST / parser / semantics) and `abyss-interpreter` (runtime / stdlib) are published independently from the `abyss-lang` CLI so editor tooling and future Wasm playgrounds can depend on a lean core.
 - **Automated Release Pipeline** – Pushing a workspace version bump to `main` runs the test suite, tags the release, drafts notes from PRs since the previous tag, publishes the three crates to crates.io, attaches per-target binary archives (`tar.gz` / `zip` plus `.sha256` sidecars), and publishes the VS Code extension at the matching version.
+- **Diagnostic Polish (v0.4.1)** – Levenshtein-based "did you mean?" hints for undefined identifiers, missing artifact fields, and missing methods; runtime errors now render through the same `ariadne` reporter the parser uses, so script-time and runtime failures share one visual style.
 
-## In Flight
+## Release Plan
 
-- **Pattern Matching Enhancements** – Destructuring patterns (artifact field bindings, scroll `[head, ..rest]`, lexicon key extraction) and guard clauses on match arms.
-- **File I/O** – Extend beyond console I/O with filesystem rituals.
-- **Error Handling** – Provide first-class diagnostics and recovery primitives.
-- **Standard Library** – Grow reusable helpers for day-to-day scripting (string, math, time).
-- **Module System** – Import/export spells across files for large projects.
-- **Generics Introduction** – Parameterize functions and data structures with type glyphs.
-- **Interpreter Enhancements** – Faster REPL feedback, better debugging hooks, and performance tuning (potentially a bytecode VM further out).
+The next several release cycles, in order. Versioning follows the project's `0.x.y` convention (a `0.x.0` bump signals a substantial new feature; `0.x.y` is compatibility-preserving).
 
-Track progress via the GitHub issue tracker or discussions.
+### v0.5.0 — Pattern Matching Enhancements
+
+Make `oracle` match-mode genuinely useful for everyday scripting. All pieces are purely additive grammar; existing match arms continue to compile.
+
+- Guard clauses on match arms (`(x) if x > 0 => …`).
+- Scroll head/tail destructuring (`[head, ..rest]`).
+- Artifact field destructuring (`Player { name, health }`), surfacing the existing field "did you mean?" hint when a pattern names an unknown field.
+- Lexicon key destructuring (`{ "name": n, "port": p }`).
+- VS Code TextMate grammar update plus a dedicated pattern-matching reference page on this site.
+
+### v0.6.0 — Web Playground & Wasm
+
+Make AbySS runnable directly from the browser, hosted alongside the docs site.
+
+- Build the `abyss-core` and `abyss-interpreter` crates for the `wasm32-unknown-unknown` target.
+- Refactor `display_error_with_source` so the renderer can return its output as a string for non-CLI consumers (Wasm playground, future LSP).
+- New `crates/abyss-wasm` adapter exposing a single `eval(source) -> { stdout, stderr, error }` entry point via `wasm-bindgen`.
+- A code-editor component (CodeMirror or Monaco) embedded in the Starlight site, seeded with the `examples/` programs.
+
+### v0.6.x — Standard Library Growth
+
+Round out the everyday helpers as compatibility-preserving point releases.
+
+- `rune` methods: `upper`, `lower`, `contains`, `split`, `replace`.
+- `scroll` methods: `sort`, `unique`, `sum`, `min`, `max`.
+- Math and time rituals once their interaction with playground sandboxing has been decided.
+
+### v0.7.0 — Span-tracking Refactor
+
+Replace the current single-point `LineInfo` (`{ line, column }`) attached to AST nodes and `EvalError` with `start..end` byte spans. This is what the `#[non_exhaustive]` marker on `EvalError` shipped in v0.4.1 was reserved for. Pure infrastructure with no user-visible language change, but a hard prerequisite for the LSP work that follows.
+
+### v0.7.1+ — LSP MVP
+
+Ship a Language Server in stages so the VS Code extension can replace the current TextMate-only experience without waiting for a full implementation.
+
+1. **v0.7.1** – `crates/abyss-lsp` with the `tower-lsp` plumbing, exposing parser + semantic diagnostics over LSP. The extension launches the server alongside its existing TextMate grammar.
+2. **v0.7.2** – Hover (types and `engrave` doc strings), document symbols (outline view).
+3. **v0.7.3** – Completion (keywords, in-scope identifiers, methods on the receiver type), goto definition.
+4. **v0.7.4** – Semantic-tokens highlighting; the TextMate grammar becomes a bootstrap fallback.
+5. **v0.7.5** – Rename, plus broader workspace symbol search.
+
+## Later
+
+Items still in design — sequencing depends on what falls out of the cycles above.
+
+- **File I/O** – Filesystem rituals beyond console I/O. The Wasm playground will already have set the precedent that browser builds are console-only, so the design can lean into native-only `cfg`-gated modules.
+- **First-class Error Handling** – Try/recover primitives so scripts can surface and route runtime failures themselves, beyond the current "interpreter prints the diagnostic and exits" behaviour.
+- **Module System** – Import/export across files. Naturally couples with the LSP work because workspace symbol resolution is one of the bigger LSP wins.
+- **Generics** – Parameterise functions and data structures with type glyphs.
+- **Interpreter Performance** – Faster REPL feedback, debugging hooks, and (further out) a bytecode VM if the interpreter loop becomes a bottleneck for non-trivial scripts.
+
+Track progress via the [GitHub issue tracker](https://github.com/liebe-magi/abyss-lang/issues) or the project [CHANGELOG](https://github.com/liebe-magi/abyss-lang/blob/main/CHANGELOG.md).

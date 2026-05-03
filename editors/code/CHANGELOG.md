@@ -12,7 +12,7 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 - Bumped the extension version to 0.4.1 to stay in lockstep with the `abyss-lang` crate release. The 0.4.1 cycle was diagnostics polish ("did you mean?" hints, ariadne-rendered runtime errors) on the language side; **the grammar surface is unchanged from 0.4.0**, so existing snippets and completions continue to cover the current language surface.
 
-## [v0.4.0] - 2025-11-23
+## [v0.4.0] - 2026-04-25
 
 ### Changed
 

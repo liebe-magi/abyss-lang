@@ -228,6 +228,37 @@ fn format_control_flow_and_functions() {
     );
     assert_eq!(format_ast(&oracle, 0), oracle_expected);
 
+    let oracle_with_ward = AST::Oracle {
+        is_match: true,
+        conditionals: vec![abyss_core::ast::ConditionalAssignment {
+            variable: "__match_0".into(),
+            expression: var("count"),
+            line_info: None,
+        }],
+        branches: vec![
+            AST::OracleBranch {
+                pattern: vec![AST::Arcana(1, None)],
+                guard: Some(Box::new(AST::GreaterThan(var("count"), arcana(0), None))),
+                body: Box::new(AST::Reveal(Box::new(AST::Rune("ready".into(), None)), None)),
+                line_info: None,
+            },
+            AST::OracleBranch {
+                pattern: vec![AST::OracleDontCareItem(None)],
+                guard: None,
+                body: Box::new(AST::Reveal(Box::new(AST::Rune("idle".into(), None)), None)),
+                line_info: None,
+            },
+        ],
+        line_info: None,
+    };
+    let oracle_with_ward_expected = concat!(
+        "oracle (count) {\n",
+        "    (1) ward count > 0 => reveal \"ready\"\n",
+        "    (_) => reveal \"idle\"\n",
+        "}"
+    );
+    assert_eq!(format_ast(&oracle_with_ward, 0), oracle_with_ward_expected);
+
     let orbit = AST::Orbit {
         params: vec![AST::OrbitParam {
             name: "i".into(),

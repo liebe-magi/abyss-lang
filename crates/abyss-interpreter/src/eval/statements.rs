@@ -500,9 +500,9 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                     let matched = if matched {
                         match guard {
                             None => true,
-                            Some(guard_expr) => match evaluate(guard_expr.as_ref(), env)? {
-                                EvalResult::Data(Value::Omen(b)) => b,
-                                other => {
+                            Some(guard_expr) => match evaluate(guard_expr.as_ref(), env) {
+                                Ok(EvalResult::Data(Value::Omen(b))) => b,
+                                Ok(other) => {
                                     env.pop_scope();
                                     return Err(EvalError::InvalidOperation(
                                         format!(
@@ -511,6 +511,10 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                                         ),
                                         line_info.clone(),
                                     ));
+                                }
+                                Err(e) => {
+                                    env.pop_scope();
+                                    return Err(e);
                                 }
                             },
                         }

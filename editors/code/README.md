@@ -30,6 +30,10 @@ None at the moment. Please report any issues via GitHub.
 
 ## Release Notes
 
+### 0.4.1
+
+- Version bumped to track `abyss-lang` 0.4.1, a diagnostics-polish release ("did you mean?" hints for undefined identifiers, available-alternatives hints for missing artifact fields and methods, and ariadne-rendered runtime errors). No grammar changes since 0.4.0 — existing snippets and completions continue to cover the current language surface.
+
 ### 0.4.0
 
 - Version bumped to track `abyss-lang` 0.4.0 (multi-crate workspace split and release-automation milestone on the Rust side). No grammar changes since 0.3.0 — existing snippets and completions continue to cover the current language surface.

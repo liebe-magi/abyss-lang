@@ -2,6 +2,7 @@ mod lexicon;
 mod materia;
 mod scroll;
 
+use crate::diagnostics::did_you_mean_hint;
 use crate::env::{BuiltinMethodHandler, BuiltinMethodRegistry, CallArg, RuntimeEnv, Value};
 use crate::eval::artifacts::collect_field_chain;
 use crate::eval::values::describe_value;
@@ -34,11 +35,27 @@ pub fn dispatch_builtin_method(
     let handler = lookup_handler(registry, &receiver_type, method_name)
         .or_else(|| lookup_handler(registry, &fallback_type, method_name))
         .ok_or_else(|| {
+            // Pull candidate method names from both the receiver type's table
+            // and the Materia fallback table — the lookup itself walks both,
+            // so the suggestion list should mirror that surface.
+            let mut candidates: Vec<&str> = Vec::new();
+            if let Some(table) = registry.get(&receiver_type) {
+                candidates.extend(table.keys().map(String::as_str));
+            }
+            if receiver_type != fallback_type
+                && let Some(table) = registry.get(&fallback_type)
+            {
+                candidates.extend(table.keys().map(String::as_str));
+            }
+            let hint = did_you_mean_hint(method_name, candidates, 3)
+                .map(|h| format!(" {}", h))
+                .unwrap_or_default();
             EvalError::InvalidOperation(
                 format!(
-                    "Method {} is not defined for {}",
+                    "Method {} is not defined for {}{}",
                     method_name,
-                    describe_value(&receiver_value)
+                    describe_value(&receiver_value),
+                    hint
                 ),
                 line_info.clone(),
             )
@@ -171,6 +188,12 @@ mod tests {
     use super::*;
     use crate::env::Value;
 
+    fn env_with_builtin_methods() -> RuntimeEnv {
+        let mut env = RuntimeEnv::new();
+        env.set_builtin_methods(get_all_builtin_methods());
+        env
+    }
+
     #[test]
     fn test_dispatch_unknown_method() {
         let mut env = RuntimeEnv::new();
@@ -188,5 +211,79 @@ mod tests {
             result,
             Err(EvalError::InvalidOperation(msg, _)) if msg.contains("Method unknown_method is not defined")
         ));
+    }
+
+    #[test]
+    fn dispatch_unknown_method_suggests_close_match_from_receiver_table() {
+        // `Type::Scroll`'s real method table includes `scribe` — a typo of
+        // `"scrieb"` should surface that as a suggestion.
+        let mut env = env_with_builtin_methods();
+        let scroll_value = Value::Scroll(std::rc::Rc::new(std::cell::RefCell::new(vec![])));
+        let err = dispatch_builtin_method(
+            &mut env,
+            &AST::Abyss(None),
+            None,
+            scroll_value,
+            "scrieb",
+            vec![],
+            &None,
+        )
+        .unwrap_err();
+
+        match err {
+            EvalError::InvalidOperation(msg, _) => {
+                assert!(msg.contains("scrieb"), "msg: {msg}");
+                assert!(msg.contains("did you mean: scribe"), "msg: {msg}");
+            }
+            other => panic!("expected invalid operation, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn dispatch_unknown_method_falls_back_to_materia_table_for_suggestions() {
+        // `trans` lives on the Materia fallback table; a typo on a non-Materia
+        // receiver should still surface it as a suggestion.
+        let mut env = env_with_builtin_methods();
+        let scroll_value = Value::Scroll(std::rc::Rc::new(std::cell::RefCell::new(vec![])));
+        let err = dispatch_builtin_method(
+            &mut env,
+            &AST::Abyss(None),
+            None,
+            scroll_value,
+            "tarns",
+            vec![],
+            &None,
+        )
+        .unwrap_err();
+
+        match err {
+            EvalError::InvalidOperation(msg, _) => {
+                assert!(msg.contains("did you mean: trans"), "msg: {msg}");
+            }
+            other => panic!("expected invalid operation, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn dispatch_unknown_method_omits_hint_when_no_close_match() {
+        let mut env = env_with_builtin_methods();
+        let scroll_value = Value::Scroll(std::rc::Rc::new(std::cell::RefCell::new(vec![])));
+        let err = dispatch_builtin_method(
+            &mut env,
+            &AST::Abyss(None),
+            None,
+            scroll_value,
+            "completely_unrelated_method_name",
+            vec![],
+            &None,
+        )
+        .unwrap_err();
+
+        match err {
+            EvalError::InvalidOperation(msg, _) => {
+                assert!(!msg.contains("did you mean"), "msg: {msg}");
+            }
+            other => panic!("expected invalid operation, got {:?}", other),
+        }
     }
 }

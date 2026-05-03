@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "abyss-core"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "ariadne",
  "chumsky",
@@ -13,16 +13,16 @@ dependencies = [
 
 [[package]]
 name = "abyss-interpreter"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "abyss-core",
- "colored",
+ "ariadne",
  "ordered-float",
 ]
 
 [[package]]
 name = "abyss-lang"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "abyss-core",
  "abyss-interpreter",

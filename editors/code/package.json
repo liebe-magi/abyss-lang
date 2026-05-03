@@ -2,7 +2,7 @@
   "name": "abyss-codex-familiar",
   "displayName": "AbySS Codex Familiar",
   "description": "Custom syntax highlighting for the AbySS programming language.",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "publisher": "liebe-magi",
   "repository": {
     "type": "git",

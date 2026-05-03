@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+use crate::diagnostics::did_you_mean_hint;
 use crate::env::{CallArg, Callable, EngravedFunction, RuntimeEnv, Value};
 use crate::stdlib::methods;
 use abyss_core::ast::{AST, LineInfo, Type};
@@ -185,10 +186,7 @@ pub(crate) fn try_evaluate_expression(
         AST::Var(name, line_info) => match env.get_var(name) {
             Some(var_info) => value_to_eval_result(&var_info.value),
             None => {
-                return Err(EvalError::UndefinedVariable(
-                    name.clone(),
-                    line_info.clone(),
-                ));
+                return Err(env.undefined_variable_error(name, line_info.clone()));
             }
         },
         AST::IndexAccess {
@@ -505,7 +503,7 @@ fn ensure_method_receiver_mutability(
                 line_info.clone(),
             ));
         } else {
-            return Err(EvalError::UndefinedVariable(base_name, line_info.clone()));
+            return Err(env.undefined_variable_error(&base_name, line_info.clone()));
         }
     }
 
@@ -532,8 +530,16 @@ fn evaluate_artifact_method_call(
     let artifact_method = env
         .get_artifact_method(&artifact_name, method_name)
         .ok_or_else(|| {
+            // Build candidate names lazily on the error path so the happy
+            // path does not iterate the schema's method table.
+            let hint = did_you_mean_hint(method_name, schema.methods.keys().map(String::as_str), 3)
+                .map(|h| format!(" {}", h))
+                .unwrap_or_default();
             EvalError::InvalidOperation(
-                format!("Method {}::{} is not defined", artifact_name, method_name),
+                format!(
+                    "Method {}::{} is not defined{}",
+                    artifact_name, method_name, hint
+                ),
                 line_info.clone(),
             )
         })?;
@@ -572,10 +578,7 @@ fn evaluate_function_call(
     let callable = match env.get_function(name) {
         Some(func) => func.clone(),
         None => {
-            return Err(EvalError::UndefinedVariable(
-                name.to_string(),
-                line_info.clone(),
-            ));
+            return Err(env.undefined_function_error(name, line_info.clone()));
         }
     };
 

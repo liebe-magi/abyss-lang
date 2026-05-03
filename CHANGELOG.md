@@ -6,6 +6,26 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-05-03
+
+A diagnostics-polish release. Runtime errors now render through the same `ariadne` reporter the parser already uses, and three new "did you mean?" / "available alternatives" hint paths fire when AbySS programs reference identifiers, artifact fields, or methods that nearly match a known name. **Language semantics are unchanged from 0.4.0**; existing scripts continue to work without modification.
+
+### Added
+
+- **"Did you mean?" hints for undefined identifiers** ([#397](https://github.com/liebe-magi/abyss-lang/pull/397)) — `forge x = 1; reveal y;` now reports `Variable y (did you mean: x?) is not defined!` when a close lexical match exists in scope. Suggestions are deterministic, capped at three, and ordered by Levenshtein distance.
+- **"Did you mean?" + available-alternatives hints for methods and artifact fields** ([#401](https://github.com/liebe-magi/abyss-lang/pull/401)) — three new error sites enrich their messages: missing artifact field, missing artifact method, and missing builtin method on a value type. The artifact-field error additionally lists every defined field name so the schema is obvious without re-reading the declaration.
+- **Runtime errors render through `ariadne`** ([#404](https://github.com/liebe-magi/abyss-lang/pull/404)) — when an `EvalError` carries a source position, the offending column is underlined in the same labelled, coloured report style the parser uses, so the visual treatment is consistent across parser and runtime diagnostics. A plain `Error: …` line is still printed when no position is attached.
+
+### Changed
+
+- `EvalError` is now `#[non_exhaustive]` ([#404](https://github.com/liebe-magi/abyss-lang/pull/404)). The crate is pre-1.0, but the marker future-proofs it against the planned span-tracking refactor — downstream `match` on the error enum now needs a wildcard arm.
+
+### Removed
+
+- The redundant Claude Code Review GitHub workflow has been retired ([#408](https://github.com/liebe-magi/abyss-lang/pull/408)). It was failing on every Renovate PR ("Workflow initiated by non-human actor"), which had been blocking dependency-bump auto-merge. Copilot review covers the same feedback loop, so the duplicate stage was net cost.
+
+For the full diff including Renovate-driven dependency-lock-file updates, see the [GitHub compare v0.4.0...v0.4.1](https://github.com/liebe-magi/abyss-lang/compare/v0.4.0...v0.4.1).
+
 ## [0.4.0] - 2026-04-25
 
 A major housekeeping release: the Rust crate layout becomes a 3-crate workspace published in lockstep, the release pipeline is fully automated end-to-end (crates.io publish, GitHub Release with binary archives, VS Code Marketplace publish), and the spec-driven OpenSpec workflow is retired in favour of a leaner contributor guide. **Language semantics are unchanged from 0.3.1**; existing scripts continue to work without modification.

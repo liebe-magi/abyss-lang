@@ -198,17 +198,20 @@ fn format_control_flow_and_functions() {
         branches: vec![
             AST::OracleBranch {
                 pattern: vec![AST::Arcana(1, None)],
+                guard: None,
                 body: Box::new(AST::Reveal(var("spark"), None)),
                 line_info: None,
             },
             AST::Comment("// fallback".into(), None),
             AST::OracleBranch {
                 pattern: vec![AST::OracleDontCareItem(None)],
+                guard: None,
                 body: Box::new(AST::Reveal(Box::new(AST::Rune("wild".into(), None)), None)),
                 line_info: None,
             },
             AST::OracleBranch {
                 pattern: vec![],
+                guard: None,
                 body: Box::new(AST::Reveal(abyss(), None)),
                 line_info: None,
             },

@@ -213,20 +213,34 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
                     continue;
                 }
 
-                if let AST::OracleBranch { pattern, body, .. } = branch {
+                if let AST::OracleBranch {
+                    pattern,
+                    guard,
+                    body,
+                    ..
+                } = branch
+                {
                     let pattern = pattern
                         .iter()
                         .map(|pat| format_ast(pat, indent_level + 1))
                         .collect::<Vec<_>>()
                         .join(", ");
+                    let pattern_text = if pattern.is_empty() {
+                        "_".to_string()
+                    } else {
+                        format!("({})", pattern)
+                    };
+                    let guard_text = guard
+                        .as_ref()
+                        .map(|expr| {
+                            format!(" ward {}", format_ast(expr.as_ref(), indent_level + 1))
+                        })
+                        .unwrap_or_default();
                     result.push_str(&format!(
-                        "{}{} => {}\n",
+                        "{}{}{} => {}\n",
                         "    ".repeat(indent_level + 1),
-                        if pattern.is_empty() {
-                            "_".to_string()
-                        } else {
-                            format!("({})", pattern)
-                        },
+                        pattern_text,
+                        guard_text,
                         format_ast(body.as_ref(), indent_level + 1).trim()
                     ));
                 }

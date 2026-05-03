@@ -771,21 +771,30 @@ fn oracle_branch_parser<'src>(
 
     let body = block.clone().or(single_statement);
 
+    let guard = just(Token::Ward)
+        .ignore_then(expression.clone())
+        .map(|(ast, _)| Box::new(ast))
+        .or_not();
+
     pattern_parser(ctx.clone(), expression.clone())
+        .then(guard)
         .then_ignore(just(Token::FatArrow))
         .then(body)
-        .map(move |((pattern, pattern_span), (body_ast, body_span))| {
-            let span = merge_span(pattern_span, body_span);
-            let info = ctx.info(span);
-            (
-                AST::OracleBranch {
-                    pattern,
-                    body: Box::new(body_ast),
-                    line_info: info.clone(),
-                },
-                span,
-            )
-        })
+        .map(
+            move |(((pattern, pattern_span), guard_ast), (body_ast, body_span))| {
+                let span = merge_span(pattern_span, body_span);
+                let info = ctx.info(span);
+                (
+                    AST::OracleBranch {
+                        pattern,
+                        guard: guard_ast,
+                        body: Box::new(body_ast),
+                        line_info: info.clone(),
+                    },
+                    span,
+                )
+            },
+        )
         .boxed()
 }
 

@@ -402,6 +402,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
 
                 if let AST::OracleBranch {
                     pattern,
+                    guard,
                     body,
                     line_info,
                 } = branch
@@ -494,6 +495,27 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                             }
                         }
                         all_true
+                    };
+
+                    let matched = if matched {
+                        match guard {
+                            None => true,
+                            Some(guard_expr) => match evaluate(guard_expr.as_ref(), env)? {
+                                EvalResult::Data(Value::Omen(b)) => b,
+                                other => {
+                                    env.pop_scope();
+                                    return Err(EvalError::InvalidOperation(
+                                        format!(
+                                            "Oracle ward must evaluate to an omen, found {:?}",
+                                            other
+                                        ),
+                                        line_info.clone(),
+                                    ));
+                                }
+                            },
+                        }
+                    } else {
+                        false
                     };
 
                     if matched {
@@ -1005,6 +1027,7 @@ mod tests {
 
         let branch = AST::OracleBranch {
             pattern: vec![AST::Arcana(1, line())],
+            guard: None,
             body: Box::new(AST::Reveal(Box::new(AST::Arcana(42, line())), line())),
             line_info: line(),
         };
@@ -1041,6 +1064,7 @@ mod tests {
 
         let branch = AST::OracleBranch {
             pattern: vec![AST::Aether(1.5, line()), AST::Rune("moon".into(), line())],
+            guard: None,
             body: Box::new(AST::Arcana(7, line())),
             line_info: line(),
         };
@@ -1064,6 +1088,7 @@ mod tests {
         let mut env = RuntimeEnv::new();
         let guard_branch = AST::OracleBranch {
             pattern: vec![AST::Arcana(1, line())],
+            guard: None,
             body: Box::new(AST::Arcana(0, line())),
             line_info: line(),
         };
@@ -1099,6 +1124,7 @@ mod tests {
 
         let branch = AST::OracleBranch {
             pattern: vec![AST::Arcana(1, line()), AST::Arcana(2, line())],
+            guard: None,
             body: Box::new(AST::Arcana(0, line())),
             line_info: line(),
         };
@@ -1130,6 +1156,7 @@ mod tests {
 
         let branch = AST::OracleBranch {
             pattern: vec![AST::OracleDontCareItem(line())],
+            guard: None,
             body: Box::new(AST::Arcana(5, line())),
             line_info: line(),
         };

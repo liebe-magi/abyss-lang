@@ -23,7 +23,7 @@ The next several release cycles, in order. Versioning follows the project's `0.x
 
 Make `oracle` match-mode genuinely useful for everyday scripting. All pieces are purely additive grammar; existing match arms continue to compile.
 
-- Guard clauses on match arms (`(x) if x > 0 => …`).
+- Guard clauses on match arms (`(x) ward x > 0 => …`), introducing the new `ward` keyword for "the arm fires only when this condition holds".
 - Scroll head/tail destructuring (`[head, ..rest]`).
 - Artifact field destructuring (`Player { name, health }`), surfacing the existing field "did you mean?" hint when a pattern names an unknown field.
 - Lexicon key destructuring (`{ "name": n, "port": p }`).

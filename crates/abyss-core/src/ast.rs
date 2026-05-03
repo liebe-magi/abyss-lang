@@ -60,6 +60,7 @@ pub enum AST {
     },
     OracleBranch {
         pattern: Vec<AST>,
+        guard: Option<Box<AST>>,
         body: Box<AST>,
         line_info: Option<LineInfo>,
     },

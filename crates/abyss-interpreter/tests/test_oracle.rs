@@ -143,6 +143,96 @@ fn test_oracle_with_multiple_conditions_2() {
 }
 
 #[test]
+fn test_oracle_match_ward_passes_when_guard_is_boon() {
+    // The first arm matches ("active") and the ward expression is true,
+    // so it should fire instead of falling through to the bare ("active") arm.
+    let input = r#"
+    forge mode: rune = "active";
+    forge count: arcana = 5;
+    forge result: rune = oracle (mode) {
+        ("active") ward count > 0 => reveal("ready");
+        ("active") => reveal("idle");
+        _ => reveal("inactive");
+    };
+    result;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(
+            matches!(&results[3], EvalResult::Data(Value::Rune(s)) if s.as_ref() == "ready")
+        ),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_match_ward_falls_through_when_guard_is_hex() {
+    // The first arm matches ("active") but the ward fails, so the next
+    // ("active") arm without a ward should fire.
+    let input = r#"
+    forge mode: rune = "active";
+    forge count: arcana = 0;
+    forge result: rune = oracle (mode) {
+        ("active") ward count > 0 => reveal("ready");
+        ("active") => reveal("idle");
+        _ => reveal("inactive");
+    };
+    result;
+    "#;
+    match test_base(input) {
+        Ok(results) => {
+            assert!(matches!(&results[3], EvalResult::Data(Value::Rune(s)) if s.as_ref() == "idle"))
+        }
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_match_ward_with_non_omen_errors() {
+    // A ward expression that does not yield an omen surfaces a runtime error.
+    let input = r#"
+    forge n: arcana = 1;
+    oracle (n) {
+        (1) ward 42 => "never";
+        _ => "never either";
+    };
+    "#;
+    match test_base(input) {
+        Ok(results) => panic!("expected ward type error, got {:?}", results),
+        Err(e) => {
+            let msg = format!("{:?}", e);
+            assert!(
+                msg.contains("Oracle ward must evaluate to an omen"),
+                "unexpected error: {}",
+                msg
+            )
+        }
+    }
+}
+
+#[test]
+fn test_oracle_if_else_ward_acts_as_extra_condition() {
+    // In if-else mode, ward composes with the existing boolean pattern as
+    // an extra conjunctive condition. Here the pattern (x > 0) is true and
+    // the ward is true, so the arm fires.
+    let input = r#"
+    forge x: arcana = 7;
+    forge y: arcana = 3;
+    forge result: rune = oracle {
+        (x > 0) ward y > 0 => reveal("both positive");
+        (x > 0) => reveal("only x positive");
+        _ => reveal("other");
+    };
+    result;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(
+            matches!(&results[3], EvalResult::Data(Value::Rune(s)) if s.as_ref() == "both positive")
+        ),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
 fn test_oracle_with_block_and_reveal() {
     let input = r#"
     forge x: arcana = -10;

@@ -12,7 +12,7 @@ A diagnostics-polish release. Runtime errors now render through the same `ariadn
 
 ### Added
 
-- **"Did you mean?" hints for undefined identifiers** ([#397](https://github.com/liebe-magi/abyss-lang/pull/397)) — `forge x = 1; reveal y;` now reports `Variable y (did you mean: x?) is not defined!` when a close lexical match exists in scope. Suggestions are deterministic, capped at three, and ordered by Levenshtein distance.
+- **"Did you mean?" hints for undefined identifiers** ([#397](https://github.com/liebe-magi/abyss-lang/pull/397)) — `forge x: arcana = 1; reveal y;` now reports `Variable y (did you mean: x?) is not defined!` when a close lexical match exists in scope. Suggestions are deterministic, capped at three, and ordered by Levenshtein distance.
 - **"Did you mean?" + available-alternatives hints for methods and artifact fields** ([#401](https://github.com/liebe-magi/abyss-lang/pull/401)) — three new error sites enrich their messages: missing artifact field, missing artifact method, and missing builtin method on a value type. The artifact-field error additionally lists every defined field name so the schema is obvious without re-reading the declaration.
 - **Runtime errors render through `ariadne`** ([#404](https://github.com/liebe-magi/abyss-lang/pull/404)) — when an `EvalError` carries a source position, the offending column is underlined in the same labelled, coloured report style the parser uses, so the visual treatment is consistent across parser and runtime diagnostics. A plain `Error: …` line is still printed when no position is attached.
 

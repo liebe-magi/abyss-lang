@@ -28,6 +28,10 @@ AbySS is a magic-themed scripting language with its own interpreter, formatter, 
 - Prefer explicit `Result`/`?` handling in CLI paths; surface user-facing errors via `display_error_with_source` rather than `unwrap`.
 - Keep user-facing strings thematic ("spell casting" vocabulary) but concise; centralise repeated text in helpers where practical.
 
+### Documentation samples
+- Any AbySS snippet that appears in user-facing text — `README.md`, `CHANGELOG.md`, GitHub release notes, the Starlight site under `docs/`, the VS Code extension `README`, PR descriptions, or commit messages — must be executed end-to-end against the current interpreter before publishing. Write the snippet to a temp `.aby` file and run it via `cargo run -p abyss-lang -- invoke <file>`, or paste it into `cargo run -p abyss-lang -- cast`. Do not paste pseudocode or guess syntax — even for one-line examples — because subtle requirements (e.g. mandatory type annotations on `forge`) are easy to misremember.
+- For error-message examples, capture the *actual* string the interpreter emits rather than paraphrasing. Both the variant `Display` impl and any wrapper formatting (`label_with_suggestions`, `did_you_mean_hint`, ariadne's report header from `kind_label`) shape the final output, and the result is easy to get subtly wrong from memory.
+
 ### Testing
 - Primary coverage comes from per-crate integration tests under `crates/abyss-core/tests/` and `crates/abyss-interpreter/tests/`. New language behaviour must land with a focused test (e.g. `test_calc.rs`, `test_oracle.rs`, `test_collections.rs`).
 - Run `cargo test` locally before pushing. For coverage, use `cargo llvm-cov --all-features --lcov --output-path lcov.info` (requires the `llvm-tools-preview` component).

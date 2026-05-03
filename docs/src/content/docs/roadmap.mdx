@@ -13,11 +13,11 @@ The AbySS interpreter already ships collections, artifact structs and methods, t
 - **Themed Pattern Matching** – `oracle` runs in either if-else mode (top-down guard expressions) or match mode (scrutinee-based pattern arms with `=>`).
 - **Multi-crate Workspace** – `abyss-core` (AST / parser / semantics) and `abyss-interpreter` (runtime / stdlib) are published independently from the `abyss-lang` CLI so editor tooling and future Wasm playgrounds can depend on a lean core.
 - **Automated Release Pipeline** – Pushing a workspace version bump to `main` runs the test suite, tags the release, drafts notes from PRs since the previous tag, publishes the three crates to crates.io, attaches per-target binary archives (`tar.gz` / `zip` plus `.sha256` sidecars), and publishes the VS Code extension at the matching version.
-- **Diagnostic Polish (v0.4.1)** – Levenshtein-based "did you mean?" hints for undefined identifiers, missing artifact fields, and missing methods; runtime errors now render through the same `ariadne` reporter the parser uses, so script-time and runtime failures share one visual style.
+- **Diagnostic Polish (v0.4.1)** – Levenshtein-based "did you mean?" hints for undefined identifiers, missing artifact fields, and missing methods; runtime errors that carry a resolvable source position now render through the same `ariadne` reporter the parser uses (positionless errors still fall back to a plain `Error: …` line), so script-time and runtime failures with location info share one visual style.
 
 ## Release Plan
 
-The next several release cycles, in order. Versioning follows the project's `0.x.y` convention (a `0.x.0` bump signals a substantial new feature; `0.x.y` is compatibility-preserving).
+The next several release cycles, in order. Versioning follows the project's `0.x.y` convention (a `0.x.0` bump signals a potentially-breaking release; `0.x.y` is compatibility-preserving).
 
 ### v0.5.0 — Pattern Matching Enhancements
 
@@ -52,9 +52,9 @@ Replace the current single-point `LineInfo` (`{ line, column }`) attached to AST
 
 ### v0.7.1+ — LSP MVP
 
-Ship a Language Server in stages so the VS Code extension can replace the current TextMate-only experience without waiting for a full implementation.
+Ship a Language Server in stages so the VS Code extension can layer source-aware features on top of its current TextMate grammar, snippets, and static keyword-completion provider without waiting for a full implementation.
 
-1. **v0.7.1** – `crates/abyss-lsp` with the `tower-lsp` plumbing, exposing parser + semantic diagnostics over LSP. The extension launches the server alongside its existing TextMate grammar.
+1. **v0.7.1** – `crates/abyss-lsp` with the `tower-lsp` plumbing, exposing parser + semantic diagnostics over LSP. The extension launches the server alongside its existing grammar, snippets, and keyword-completion provider.
 2. **v0.7.2** – Hover (types and `engrave` doc strings), document symbols (outline view).
 3. **v0.7.3** – Completion (keywords, in-scope identifiers, methods on the receiver type), goto definition.
 4. **v0.7.4** – Semantic-tokens highlighting; the TextMate grammar becomes a bootstrap fallback.
@@ -65,7 +65,7 @@ Ship a Language Server in stages so the VS Code extension can replace the curren
 Items still in design — sequencing depends on what falls out of the cycles above.
 
 - **File I/O** – Filesystem rituals beyond console I/O. The Wasm playground will already have set the precedent that browser builds are console-only, so the design can lean into native-only `cfg`-gated modules.
-- **First-class Error Handling** – Try/recover primitives so scripts can surface and route runtime failures themselves, beyond the current "interpreter prints the diagnostic and exits" behaviour.
+- **First-class Error Handling** – Try/recover primitives so scripts can surface and route runtime failures themselves, beyond the current behaviour where `invoke` aborts the script after printing the diagnostic and `cast` prints it before returning to the next prompt.
 - **Module System** – Import/export across files. Naturally couples with the LSP work because workspace symbol resolution is one of the bigger LSP wins.
 - **Generics** – Parameterise functions and data structures with type glyphs.
 - **Interpreter Performance** – Faster REPL feedback, debugging hooks, and (further out) a bytecode VM if the interpreter loop becomes a bottleneck for non-trivial scripts.

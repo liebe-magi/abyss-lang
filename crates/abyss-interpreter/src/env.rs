@@ -96,6 +96,17 @@ impl RuntimeEnv {
         self.artifact_scopes.pop();
     }
 
+    /// Returns the current variable-scope stack depth. Used today by the
+    /// oracle scope-leak regression test in `eval::statements`; if future
+    /// work adds analogous regression tests for `engrave` or `orbit`
+    /// scopes they can reuse the same accessor. Test-only — exposing the
+    /// depth in production builds would freeze it as part of the public
+    /// API for no concrete user need today.
+    #[cfg(test)]
+    pub(crate) fn scope_depth(&self) -> usize {
+        self.scopes.len()
+    }
+
     /// Sets a variable in the current scope, specifying its name, value, type, and whether it's mutable.
     pub fn set_var(
         &mut self,

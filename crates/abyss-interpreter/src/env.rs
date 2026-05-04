@@ -96,12 +96,12 @@ impl RuntimeEnv {
         self.artifact_scopes.pop();
     }
 
-    /// Returns the current variable-scope stack depth. Used by regression
-    /// tests that confirm scopes pushed by `oracle` / `engrave` / `orbit`
-    /// blocks are unconditionally popped on every exit path, including
-    /// runtime errors raised mid-evaluation. Test-only — exposing the depth
-    /// in production builds would freeze it as part of the public API for
-    /// no concrete user need today.
+    /// Returns the current variable-scope stack depth. Used today by the
+    /// oracle scope-leak regression test in `eval::statements`; if future
+    /// work adds analogous regression tests for `engrave` or `orbit`
+    /// scopes they can reuse the same accessor. Test-only — exposing the
+    /// depth in production builds would freeze it as part of the public
+    /// API for no concrete user need today.
     #[cfg(test)]
     pub(crate) fn scope_depth(&self) -> usize {
         self.scopes.len()

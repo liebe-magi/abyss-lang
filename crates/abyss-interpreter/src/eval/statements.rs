@@ -1314,6 +1314,110 @@ mod tests {
     }
 
     #[test]
+    fn oracle_question_mark_propagation_does_not_leak_scope() {
+        // The four `?`-propagated error sites that motivated the refactor —
+        // scrutinee evaluation, the match-mode pattern loop, the if-else-mode
+        // pattern loop, and the new ward expression — must also unwind the
+        // pushed scope. The cases above hit the explicit `return Err(...)`
+        // arms; these specifically exercise the `?` operator by feeding a
+        // sub-expression that fails to evaluate (an undefined variable, which
+        // surfaces `EvalError::UndefinedVariable`).
+
+        // A. Scrutinee expression itself fails — exercises
+        //    `evaluate(&conditional.expression, env)?`.
+        let mut env = RuntimeEnv::new();
+        let oracle = AST::Oracle {
+            is_match: true,
+            conditionals: vec![ConditionalAssignment {
+                variable: "v".into(),
+                expression: Box::new(AST::Var("missing".into(), line())),
+                line_info: line(),
+            }],
+            branches: vec![AST::OracleBranch {
+                pattern: vec![AST::Arcana(1, line())],
+                guard: None,
+                body: Box::new(AST::Arcana(0, line())),
+                line_info: line(),
+            }],
+            line_info: line(),
+        };
+        evaluate(&oracle, &mut env).expect_err("scrutinee var lookup error");
+        assert_eq!(
+            env.scope_depth(),
+            1,
+            "scrutinee `?` propagation leaked a scope"
+        );
+
+        // B. Match-mode pattern expression fails — exercises
+        //    `evaluate(pattern, env)?` inside the pattern loop.
+        let mut env = RuntimeEnv::new();
+        let oracle = AST::Oracle {
+            is_match: true,
+            conditionals: vec![ConditionalAssignment {
+                variable: "v".into(),
+                expression: Box::new(AST::Arcana(1, line())),
+                line_info: line(),
+            }],
+            branches: vec![AST::OracleBranch {
+                pattern: vec![AST::Var("missing".into(), line())],
+                guard: None,
+                body: Box::new(AST::Arcana(0, line())),
+                line_info: line(),
+            }],
+            line_info: line(),
+        };
+        evaluate(&oracle, &mut env).expect_err("match-mode pattern var lookup error");
+        assert_eq!(
+            env.scope_depth(),
+            1,
+            "match-mode pattern `?` propagation leaked a scope"
+        );
+
+        // C. If-else-mode pattern expression fails — exercises
+        //    `evaluate(pattern_expr, env)?` inside the all-true loop.
+        let mut env = RuntimeEnv::new();
+        let oracle = AST::Oracle {
+            is_match: false,
+            conditionals: vec![],
+            branches: vec![AST::OracleBranch {
+                pattern: vec![AST::Var("missing".into(), line())],
+                guard: None,
+                body: Box::new(AST::Arcana(0, line())),
+                line_info: line(),
+            }],
+            line_info: line(),
+        };
+        evaluate(&oracle, &mut env).expect_err("if-else-mode pattern var lookup error");
+        assert_eq!(
+            env.scope_depth(),
+            1,
+            "if-else-mode pattern `?` propagation leaked a scope"
+        );
+
+        // D. Ward expression itself fails — exercises
+        //    `evaluate(guard_expr.as_ref(), env)?` (the original bug site
+        //    from PR #414, now folded into the central pop_scope).
+        let mut env = RuntimeEnv::new();
+        let oracle = AST::Oracle {
+            is_match: true,
+            conditionals: vec![ConditionalAssignment {
+                variable: "v".into(),
+                expression: Box::new(AST::Arcana(1, line())),
+                line_info: line(),
+            }],
+            branches: vec![AST::OracleBranch {
+                pattern: vec![AST::Arcana(1, line())],
+                guard: Some(Box::new(AST::Var("missing".into(), line()))),
+                body: Box::new(AST::Arcana(0, line())),
+                line_info: line(),
+            }],
+            line_info: line(),
+        };
+        evaluate(&oracle, &mut env).expect_err("ward var lookup error");
+        assert_eq!(env.scope_depth(), 1, "ward `?` propagation leaked a scope");
+    }
+
+    #[test]
     fn clone_indexed_child_errors_on_non_collections() {
         let err = clone_indexed_child(
             &Value::Arcana(1),

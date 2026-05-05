@@ -220,15 +220,24 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
                     ..
                 } = branch
                 {
-                    let pattern = pattern
-                        .iter()
-                        .map(|pat| format_ast(pat, indent_level + 1))
-                        .collect::<Vec<_>>()
-                        .join(", ");
-                    let pattern_text = if pattern.is_empty() {
-                        "_".to_string()
-                    } else {
-                        format!("({})", pattern)
+                    // Top-level scroll pattern (`[…] =>`) keeps its bracket
+                    // form rather than getting re-wrapped in `(…)`. A single
+                    // `OracleScrollPattern` element formats itself with
+                    // brackets already, so the outer parens would be
+                    // redundant noise on round-trip.
+                    let pattern_text = match pattern.as_slice() {
+                        [] => "_".to_string(),
+                        [only @ AST::OracleScrollPattern { .. }] => {
+                            format_ast(only, indent_level + 1)
+                        }
+                        elems => {
+                            let inner = elems
+                                .iter()
+                                .map(|pat| format_ast(pat, indent_level + 1))
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            format!("({})", inner)
+                        }
                     };
                     let guard_text = guard
                         .as_ref()
@@ -249,6 +258,18 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
             result
         }
         AST::OracleDontCareItem(_) => "_".to_string(),
+        AST::OracleScrollPattern { elements, .. } => {
+            let inner = elements
+                .iter()
+                .map(|elem| format_ast(elem, indent_level))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("[{}]", inner)
+        }
+        AST::OracleScrollRest { name, .. } => match name {
+            Some(name) => format!("..{}", name),
+            None => "..".to_string(),
+        },
         AST::Orbit { params, body, .. } => {
             let mut result = "orbit".to_string();
             if !params.is_empty() {

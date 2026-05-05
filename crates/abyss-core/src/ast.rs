@@ -65,6 +65,21 @@ pub enum AST {
         line_info: Option<LineInfo>,
     },
     OracleDontCareItem(Option<LineInfo>),
+    /// Scroll-shape pattern that destructures a `scroll` scrutinee into
+    /// its elements. Each element is one of: `OracleDontCareItem`,
+    /// `OracleScrollRest`, `Var(name)` (binding), or any other AST node
+    /// (treated as a literal expression to compare against).
+    OracleScrollPattern {
+        elements: Vec<AST>,
+        line_info: Option<LineInfo>,
+    },
+    /// Rest segment inside an `OracleScrollPattern`. `name = Some("rest")`
+    /// for `..rest` (binds the unmatched tail to a fresh sub-scroll);
+    /// `name = None` for `..` (anonymous, drops the tail).
+    OracleScrollRest {
+        name: Option<String>,
+        line_info: Option<LineInfo>,
+    },
     Block(Vec<AST>, Option<LineInfo>),
     Comment(String, Option<LineInfo>),
     Orbit {

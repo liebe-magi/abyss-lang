@@ -1,5 +1,6 @@
 use crate::env::{ArtifactMethod, Callable, EngravedFunction, RuntimeEnv, Value};
 use abyss_core::ast::{AST, AssignmentOp, ConditionalAssignment, LineInfo, Type};
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use super::artifacts::{
@@ -597,6 +598,12 @@ fn evaluate_oracle(
             EvalResult::Data(Value::Aether(n)) => Value::Aether(n),
             EvalResult::Data(Value::Rune(rune)) => Value::Rune(rune.clone()),
             EvalResult::Data(Value::Omen(b)) => Value::Omen(b),
+            // Scrolls flow through as their shared handle so a scroll pattern
+            // arm sees the same elements the user passed in. Mutating the
+            // scroll inside the arm body therefore visibly mutates the
+            // outer value, matching the existing aliasing semantics for the
+            // `scroll` type elsewhere in the interpreter.
+            EvalResult::Data(Value::Scroll(handle)) => Value::Scroll(handle.clone()),
             other => {
                 return Err(EvalError::InvalidOperation(
                     format!("Unsupported type in oracle scrutinee: {:?}", other),
@@ -707,6 +714,20 @@ fn evaluate_oracle_branch(
                 continue;
             }
 
+            // Scroll-shape pattern destructures the scrutinee — which must be
+            // a `scroll` — into its elements, with optional trailing rest.
+            if let AST::OracleScrollPattern {
+                elements,
+                line_info: scroll_line,
+            } = pattern_elem
+            {
+                if !match_scroll_pattern(elements, scrutinee_value, scroll_line, env)? {
+                    matched = false;
+                    break;
+                }
+                continue;
+            }
+
             let pattern_result = evaluate(pattern_elem, env)?;
 
             match (scrutinee_value, pattern_result) {
@@ -806,6 +827,142 @@ fn type_of_scrutinee(value: &Value) -> Type {
         Value::Rune(_) => Type::Rune,
         Value::Omen(_) => Type::Omen,
         _ => Type::Materia,
+    }
+}
+
+/// Match a scroll-shape pattern against a scrutinee `Value`, performing any
+/// element-level bindings into the caller's scope as side-effects.
+///
+/// Returns `Ok(true)` when the scrutinee is a scroll whose contents satisfy
+/// the pattern (and any bindings have been applied). Returns `Ok(false)`
+/// when the scrutinee is a scroll but the lengths or element values do not
+/// line up — in which case any bindings written before the mismatch are
+/// left in place and the caller is expected to discard them by popping the
+/// per-branch scope. Returns `Err` when the scrutinee is not a scroll
+/// (type-mismatch error) or the pattern is malformed (multiple rest
+/// segments, or a rest that is not at the end).
+///
+/// PR3 minimum scope: at most one rest segment, and only as the trailing
+/// element. Mid-list rests like `[a, .., last]` are rejected here so the
+/// matching logic stays linear.
+fn match_scroll_pattern(
+    elements: &[AST],
+    scrutinee_value: &Value,
+    line_info: &Option<LineInfo>,
+    env: &mut RuntimeEnv,
+) -> Result<bool, EvalError> {
+    let scroll_handle = match scrutinee_value {
+        Value::Scroll(handle) => handle.clone(),
+        _ => {
+            return Err(EvalError::InvalidOperation(
+                format!(
+                    "Scroll pattern requires a scroll scrutinee, found {:?}",
+                    scrutinee_value
+                ),
+                line_info.clone(),
+            ));
+        }
+    };
+
+    let scroll_values: Vec<Value> = scroll_handle.borrow().clone();
+
+    let mut rest_index: Option<usize> = None;
+    for (idx, element) in elements.iter().enumerate() {
+        if matches!(element, AST::OracleScrollRest { .. }) {
+            if rest_index.is_some() {
+                return Err(EvalError::InvalidOperation(
+                    "Scroll pattern may contain at most one rest segment".to_string(),
+                    line_info.clone(),
+                ));
+            }
+            rest_index = Some(idx);
+        }
+    }
+
+    if let Some(idx) = rest_index
+        && idx != elements.len() - 1
+    {
+        return Err(EvalError::InvalidOperation(
+            "Scroll rest segment must appear at the end of the pattern".to_string(),
+            line_info.clone(),
+        ));
+    }
+
+    let prefix_len = match rest_index {
+        Some(_) => elements.len() - 1,
+        None => elements.len(),
+    };
+
+    if rest_index.is_some() {
+        if scroll_values.len() < prefix_len {
+            return Ok(false);
+        }
+    } else if scroll_values.len() != prefix_len {
+        return Ok(false);
+    }
+
+    for (idx, element) in elements.iter().take(prefix_len).enumerate() {
+        let elem_value = &scroll_values[idx];
+        match element {
+            AST::OracleDontCareItem(_) => continue,
+            AST::Var(name, var_line) => {
+                env.set_var(
+                    name.clone(),
+                    elem_value.clone(),
+                    type_of_scrutinee(elem_value),
+                    false,
+                    var_line.clone(),
+                );
+            }
+            other => {
+                let pattern_result = evaluate(other, env)?;
+                if !values_match_for_pattern(elem_value, &pattern_result, line_info)? {
+                    return Ok(false);
+                }
+            }
+        }
+    }
+
+    if let Some(idx) = rest_index
+        && let AST::OracleScrollRest {
+            name: Some(name),
+            line_info: rest_line,
+        } = &elements[idx]
+    {
+        let tail: Vec<Value> = scroll_values.iter().skip(prefix_len).cloned().collect();
+        let tail_handle: Rc<RefCell<Vec<Value>>> = Rc::new(RefCell::new(tail));
+        env.set_var(
+            name.clone(),
+            Value::Scroll(tail_handle),
+            Type::Scroll,
+            false,
+            rest_line.clone(),
+        );
+    }
+
+    Ok(true)
+}
+
+/// Equality check shared by scroll-element matching: returns `true` when
+/// `actual` (a scrutinee element value) equals `expected` (a freshly-evaluated
+/// pattern expression result). Mismatched types raise the same
+/// "pattern type must match scrutinee type" error the tuple-pattern path
+/// already emits, so a heterogeneous scroll pattern fails loudly rather than
+/// silently treating a type mismatch as "not equal".
+fn values_match_for_pattern(
+    actual: &Value,
+    expected: &EvalResult,
+    line_info: &Option<LineInfo>,
+) -> Result<bool, EvalError> {
+    match (actual, expected) {
+        (Value::Arcana(a), EvalResult::Data(Value::Arcana(b))) => Ok(a == b),
+        (Value::Aether(a), EvalResult::Data(Value::Aether(b))) => Ok((*a - b).abs() < f64::EPSILON),
+        (Value::Rune(a), EvalResult::Data(Value::Rune(b))) => Ok(a.as_ref() == b.as_ref()),
+        (Value::Omen(a), EvalResult::Data(Value::Omen(b))) => Ok(a == b),
+        _ => Err(EvalError::InvalidOperation(
+            "Scroll pattern element type must match scrutinee element type".to_string(),
+            line_info.clone(),
+        )),
     }
 }
 

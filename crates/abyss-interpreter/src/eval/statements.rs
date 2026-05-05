@@ -816,17 +816,24 @@ fn evaluate_oracle_branch(
     }
 }
 
-/// Maps an oracle scrutinee `Value` (always one of the four scalar variants
-/// guaranteed by `evaluate_oracle`'s scrutinee setup) to the `Type` used when
-/// declaring its match-mode binding. The `Materia` fallback is unreachable in
-/// practice but keeps the helper total without panicking.
+/// Maps a `Value` to the runtime `Type` recorded when binding it into a
+/// pattern arm. The mapping is exhaustive over the `Value` enum and mirrors
+/// `stdlib::methods::receiver_type`, so a binding like `[x, ..]` against a
+/// scroll-of-scrolls captures the inner scroll under `Type::Scroll` rather
+/// than collapsing to `Materia`. The two helpers should ideally share a
+/// single home (e.g. `eval/values.rs`); deferred to a focused refactor so
+/// this PR stays scoped to scroll destructuring.
 fn type_of_scrutinee(value: &Value) -> Type {
     match value {
         Value::Arcana(_) => Type::Arcana,
         Value::Aether(_) => Type::Aether,
         Value::Rune(_) => Type::Rune,
         Value::Omen(_) => Type::Omen,
-        _ => Type::Materia,
+        Value::Abyss => Type::Abyss,
+        Value::Scroll(_) => Type::Scroll,
+        Value::Lexicon(_) => Type::Lexicon,
+        Value::Glyph(_) => Type::Glyph,
+        Value::Artifact(handle) => Type::Artifact(handle.borrow().type_name.clone()),
     }
 }
 
@@ -945,10 +952,12 @@ fn match_scroll_pattern(
 
 /// Equality check shared by scroll-element matching: returns `true` when
 /// `actual` (a scrutinee element value) equals `expected` (a freshly-evaluated
-/// pattern expression result). Mismatched types raise the same
-/// "pattern type must match scrutinee type" error the tuple-pattern path
-/// already emits, so a heterogeneous scroll pattern fails loudly rather than
-/// silently treating a type mismatch as "not equal".
+/// pattern expression result). Mismatched types raise an
+/// `Invalid operation: Scroll pattern element type must match scrutinee
+/// element type` error — analogous to the tuple-pattern path's
+/// `Oracle branch pattern type must match scrutinee type` but worded for the
+/// scroll-element context, so a heterogeneous scroll pattern fails loudly
+/// rather than silently treating a type mismatch as "not equal".
 fn values_match_for_pattern(
     actual: &Value,
     expected: &EvalResult,

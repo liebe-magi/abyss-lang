@@ -5,7 +5,8 @@ use std::rc::Rc;
 
 use super::artifacts::{
     build_artifact_schema, collect_field_chain, ensure_field_exists, ensure_type_known,
-    expect_artifact_handle, lookup_schema_from_handle, missing_field_error,
+    expect_artifact_handle, lookup_schema_from_handle, missing_field_error, read_artifact_field,
+    values_equal,
 };
 use super::collections::{collect_index_chain, expect_arcana_index, expect_rune_key};
 use super::expressions::try_evaluate_expression;
@@ -604,6 +605,13 @@ fn evaluate_oracle(
             // outer value, matching the existing aliasing semantics for the
             // `scroll` type elsewhere in the interpreter.
             EvalResult::Data(Value::Scroll(handle)) => Value::Scroll(handle.clone()),
+            // Artifacts (typed records) flow through similarly so an
+            // artifact pattern arm sees the same handle the user passed
+            // in. The `EvalResult::Artifact` variant is also accepted so
+            // the helper can be invoked equally from places that hand
+            // through the dedicated artifact result.
+            EvalResult::Data(Value::Artifact(handle)) => Value::Artifact(handle.clone()),
+            EvalResult::Artifact(handle) => Value::Artifact(handle.clone()),
             other => {
                 return Err(EvalError::InvalidOperation(
                     format!("Unsupported type in oracle scrutinee: {:?}", other),
@@ -722,6 +730,24 @@ fn evaluate_oracle_branch(
             } = pattern_elem
             {
                 if !match_scroll_pattern(elements, scrutinee_value, scroll_line, env)? {
+                    matched = false;
+                    break;
+                }
+                continue;
+            }
+
+            // Artifact-shape pattern destructures the scrutinee — which must
+            // be an artifact of the named type — by pulling out the listed
+            // fields. Fields not listed are not matched against, so partial
+            // patterns like `Player { name }` are valid.
+            if let AST::OracleArtifactPattern {
+                type_name,
+                fields,
+                line_info: artifact_line,
+            } = pattern_elem
+            {
+                if !match_artifact_pattern(type_name, fields, scrutinee_value, artifact_line, env)?
+                {
                     matched = false;
                     break;
                 }
@@ -921,6 +947,15 @@ fn match_scroll_pattern(
                     var_line.clone(),
                 );
             }
+            AST::OracleArtifactPattern {
+                type_name,
+                fields,
+                line_info: artifact_line,
+            } => {
+                if !match_artifact_pattern(type_name, fields, elem_value, artifact_line, env)? {
+                    return Ok(false);
+                }
+            }
             other => {
                 let pattern_result = evaluate(other, env)?;
                 if !values_match_for_pattern(elem_value, &pattern_result, line_info)? {
@@ -945,6 +980,149 @@ fn match_scroll_pattern(
             false,
             rest_line.clone(),
         );
+    }
+
+    Ok(true)
+}
+
+/// Match an artifact-shape pattern against a scrutinee `Value`, performing
+/// any field-level bindings into the caller's scope as side-effects.
+///
+/// Returns `Ok(true)` when the scrutinee is an artifact of the named type
+/// whose listed fields satisfy their sub-patterns (and any bindings have
+/// been applied). Returns `Ok(false)` in two no-match cases:
+///
+/// - the scrutinee is an artifact, but of a different type than the
+///   pattern names — falling through here lets users dispatch by writing
+///   one arm per artifact type;
+/// - the scrutinee is the right artifact type but a field-level
+///   sub-pattern (a literal compare, a nested scroll pattern, etc.) did
+///   not match.
+///
+/// Returns `Err` when the scrutinee is not an artifact at all, when the
+/// pattern's `type_name` is not a defined artifact in scope, or when a
+/// listed field name is not declared on that artifact's schema (in which
+/// case the existing `did_you_mean` infrastructure from PR4-B surfaces a
+/// "did you mean: …" hint via [`super::artifacts::missing_field_error`]).
+///
+/// Fields not mentioned in the pattern are intentionally unrestricted —
+/// the pattern is non-exhaustive, mirroring the per-field "pick what you
+/// need" ergonomics that Rust spells with `..` and OCaml requires
+/// exhaustively. Adding an explicit rest marker can come later if the
+/// distinction proves valuable.
+fn match_artifact_pattern(
+    type_name: &str,
+    fields: &[(String, AST)],
+    scrutinee_value: &Value,
+    line_info: &Option<LineInfo>,
+    env: &mut RuntimeEnv,
+) -> Result<bool, EvalError> {
+    let handle = match scrutinee_value {
+        Value::Artifact(handle) => handle.clone(),
+        _ => {
+            return Err(EvalError::InvalidOperation(
+                format!(
+                    "Artifact pattern requires an artifact scrutinee, found {:?}",
+                    scrutinee_value
+                ),
+                line_info.clone(),
+            ));
+        }
+    };
+
+    if env.get_artifact(type_name).is_none() {
+        return Err(EvalError::InvalidOperation(
+            format!("Artifact pattern references undefined type {}", type_name),
+            line_info.clone(),
+        ));
+    }
+
+    let actual_type = handle.borrow().type_name.clone();
+    if actual_type != type_name {
+        // Different artifact type — fall through so a sibling arm can
+        // dispatch on the actual type (`Player {…} =>` vs `Enemy {…} =>`).
+        return Ok(false);
+    }
+
+    let schema = lookup_schema_from_handle(env, &handle, line_info)?;
+    let schema_field_names: Vec<String> = schema.field_names();
+    let schema_name = schema.name.clone();
+
+    for (field_name, sub_pattern) in fields {
+        if !schema_field_names.iter().any(|n| n == field_name) {
+            return Err(super::artifacts::missing_field_error(
+                env.get_artifact(&schema_name).expect("schema present"),
+                field_name,
+                line_info,
+            ));
+        }
+
+        // `read_artifact_field` re-validates the field against the schema and
+        // returns a recoverable `EvalError` if the runtime value is missing
+        // the field for any reason — preferable to the previous
+        // `expect("schema-validated field must be present in artifact value")`
+        // panic if a future malformed artifact slips through.
+        let field_value = read_artifact_field(env, &handle, field_name, line_info)?;
+
+        match sub_pattern {
+            AST::OracleDontCareItem(_) => continue,
+            AST::Var(name, var_line) => {
+                let bound_type = type_of_scrutinee(&field_value);
+                env.set_var(
+                    name.clone(),
+                    field_value,
+                    bound_type,
+                    false,
+                    var_line.clone(),
+                );
+            }
+            AST::OracleScrollPattern {
+                elements,
+                line_info: scroll_line,
+            } => {
+                if !match_scroll_pattern(elements, &field_value, scroll_line, env)? {
+                    return Ok(false);
+                }
+            }
+            AST::OracleArtifactPattern {
+                type_name: nested_type,
+                fields: nested_fields,
+                line_info: nested_line,
+            } => {
+                if !match_artifact_pattern(
+                    nested_type,
+                    nested_fields,
+                    &field_value,
+                    nested_line,
+                    env,
+                )? {
+                    return Ok(false);
+                }
+            }
+            other => {
+                // For literal-compare on an artifact field we want a deep,
+                // type-aware equality so nested scrolls / lexicons / artifacts
+                // compare by structure (matching the existing `==` semantics
+                // in `eval/artifacts::values_equal`). The scroll-specific
+                // `values_match_for_pattern` would only handle scalars and
+                // emit a misleading "Scroll pattern element" error for any
+                // non-scalar field.
+                let pattern_result = evaluate(other, env)?;
+                let pattern_value = match pattern_result {
+                    EvalResult::Data(value) => value,
+                    EvalResult::Artifact(handle) => Value::Artifact(handle),
+                    EvalResult::Revealed(_) | EvalResult::Resume(_) | EvalResult::Eject(_) => {
+                        return Err(EvalError::InvalidOperation(
+                            "Artifact field pattern compare must yield a value".to_string(),
+                            line_info.clone(),
+                        ));
+                    }
+                };
+                if !values_equal(env, &field_value, &pattern_value, line_info)? {
+                    return Ok(false);
+                }
+            }
+        }
     }
 
     Ok(true)

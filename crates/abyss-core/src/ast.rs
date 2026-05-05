@@ -80,6 +80,18 @@ pub enum AST {
         name: Option<String>,
         line_info: Option<LineInfo>,
     },
+    /// Artifact-shape pattern that matches a `TypeName { field, … }`
+    /// scrutinee. Each `(field_name, sub_pattern)` entry pulls the named
+    /// field out of the artifact and matches it against `sub_pattern`
+    /// (typically `Var` for binding, a literal for compare, or
+    /// `OracleDontCareItem` to ignore). Fields not listed here are not
+    /// matched against — the pattern is non-exhaustive by default, so
+    /// users can pick out only the fields they care about.
+    OracleArtifactPattern {
+        type_name: String,
+        fields: Vec<(String, AST)>,
+        line_info: Option<LineInfo>,
+    },
     Block(Vec<AST>, Option<LineInfo>),
     Comment(String, Option<LineInfo>),
     Orbit {

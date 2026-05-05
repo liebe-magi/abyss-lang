@@ -518,6 +518,206 @@ fn test_oracle_scroll_pattern_against_non_scroll_scrutinee_errors() {
 }
 
 #[test]
+fn test_oracle_artifact_pattern_shorthand_binds_each_field() {
+    // `Player { name, health }` shorthand binds both fields by their
+    // declared names.
+    let input = r#"
+    artifact Player { name: rune; health: arcana; };
+    forge hero: Player = Player { name: "Ardyn", health: 100 };
+    forge result: arcana = oracle (hero) {
+        Player { name, health } => reveal(health);
+    };
+    result;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(matches!(results[3], EvalResult::Data(Value::Arcana(100)))),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_artifact_pattern_partial_field_list() {
+    // Listing only some fields is allowed — the pattern is non-exhaustive
+    // by default, so `Player { name }` matches without mentioning `health`.
+    let input = r#"
+    artifact Player { name: rune; health: arcana; };
+    forge hero: Player = Player { name: "Ardyn", health: 100 };
+    forge greeting: rune = oracle (hero) {
+        Player { name } => reveal("hello, " + name);
+    };
+    greeting;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(
+            matches!(&results[3], EvalResult::Data(Value::Rune(s)) if s.as_ref() == "hello, Ardyn")
+        ),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_artifact_pattern_literal_field_value() {
+    // Explicit `field_name: <expr>` compares the field by value rather
+    // than binding it; the binding next to it still captures.
+    let input = r#"
+    artifact Player { name: rune; health: arcana; };
+    forge hero: Player = Player { name: "Ardyn", health: 100 };
+    forge label: rune = oracle (hero) {
+        Player { name: "Ardyn", health } => reveal("chosen, hp=" + health.trans(rune));
+        Player { name } => reveal("someone: " + name);
+    };
+    label;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(
+            matches!(&results[3], EvalResult::Data(Value::Rune(s)) if s.as_ref() == "chosen, hp=100")
+        ),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_artifact_pattern_dispatches_on_type() {
+    // Wrong artifact type falls through so sibling arms can match.
+    let input = r#"
+    artifact Player { name: rune; health: arcana; };
+    artifact Enemy { name: rune; damage: arcana; };
+    forge foe: Enemy = Enemy { name: "Goblin", damage: 7 };
+    forge label: rune = oracle (foe) {
+        Player { name } => reveal("hero " + name);
+        Enemy { name, damage } => reveal("foe " + name + " (" + damage.trans(rune) + ")");
+    };
+    label;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(
+            matches!(&results[4], EvalResult::Data(Value::Rune(s)) if s.as_ref() == "foe Goblin (7)")
+        ),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_artifact_pattern_binding_visible_in_ward() {
+    // Bindings introduced by an artifact pattern are visible to the same
+    // arm's ward expression.
+    let input = r#"
+    artifact Player { name: rune; health: arcana; };
+    forge weak: Player = Player { name: "Frail", health: 20 };
+    forge label: rune = oracle (weak) {
+        Player { name, health } ward health < 50 => reveal("run, " + name + "!");
+        Player { name } => reveal("hello, " + name);
+    };
+    label;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(
+            matches!(&results[3], EvalResult::Data(Value::Rune(s)) if s.as_ref() == "run, Frail!")
+        ),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_artifact_pattern_unknown_field_errors_with_hint() {
+    // A misspelled field surfaces the existing PR4-B did-you-mean hint via
+    // `missing_field_error`.
+    let input = r#"
+    artifact Player { name: rune; health: arcana; };
+    forge hero: Player = Player { name: "Ardyn", health: 100 };
+    oracle (hero) {
+        Player { helt } => reveal("never");
+    };
+    "#;
+    match test_base(input) {
+        Ok(results) => panic!("expected unknown-field error, got {:?}", results),
+        Err(e) => {
+            let msg = format!("{:?}", e);
+            assert!(
+                msg.contains("Field 'helt'") && msg.contains("did you mean: health"),
+                "unexpected error: {}",
+                msg
+            )
+        }
+    }
+}
+
+#[test]
+fn test_oracle_artifact_pattern_against_non_artifact_errors() {
+    // A non-artifact scrutinee is a clear programmer mistake and surfaces
+    // a runtime error rather than silently falling through.
+    let input = r#"
+    artifact Player { name: rune; health: arcana; };
+    forge n: arcana = 5;
+    oracle (n) {
+        Player { name } => reveal("never");
+        _ => reveal("never either");
+    };
+    "#;
+    match test_base(input) {
+        Ok(results) => panic!("expected non-artifact scrutinee error, got {:?}", results),
+        Err(e) => {
+            let msg = format!("{:?}", e);
+            assert!(
+                msg.contains("Artifact pattern requires an artifact scrutinee"),
+                "unexpected error: {}",
+                msg
+            )
+        }
+    }
+}
+
+#[test]
+fn test_oracle_artifact_pattern_nested_artifact_and_scroll() {
+    // Field values may themselves be destructuring patterns (scroll
+    // head/tail, nested artifact). All bindings flow into the same
+    // per-branch scope and are visible in the body.
+    let input = r#"
+    artifact Inventory { items: scroll; gold: arcana; };
+    artifact Player { name: rune; bag: Inventory; };
+    forge inv: Inventory = Inventory { items: ["sword", "shield"], gold: 50 };
+    forge hero: Player = Player { name: "Ardyn", bag: inv };
+    forge label: rune = oracle (hero) {
+        Player { name, bag: Inventory { items: [first, ..rest], gold } } =>
+            reveal(name + " carries " + first + " and " + gold.trans(rune) + " gold");
+    };
+    label;
+    "#;
+    match test_base(input) {
+        Ok(results) => {
+            // 4 forges + 1 expression statement
+            assert!(matches!(
+                &results[5],
+                EvalResult::Data(Value::Rune(s))
+                    if s.as_ref() == "Ardyn carries sword and 50 gold"
+            ));
+        }
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_artifact_pattern_empty_fields_matches_by_type() {
+    // `Tag {}` matches any artifact of type `Tag` regardless of field
+    // values — useful for type-only dispatch.
+    let input = r#"
+    artifact Tag { value: arcana; };
+    forge t: Tag = Tag { value: 7 };
+    forge label: rune = oracle (t) {
+        Tag {} => reveal("a tag");
+        _ => reveal("other");
+    };
+    label;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(
+            matches!(&results[3], EvalResult::Data(Value::Rune(s)) if s.as_ref() == "a tag")
+        ),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
 fn test_oracle_with_block_and_reveal() {
     let input = r#"
     forge x: arcana = -10;

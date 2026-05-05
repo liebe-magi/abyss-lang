@@ -357,6 +357,167 @@ fn test_oracle_match_binding_does_not_leak_between_arms() {
 }
 
 #[test]
+fn test_oracle_scroll_pattern_empty_matches_empty_scroll() {
+    let input = r#"
+    forge xs: scroll = [];
+    forge result: rune = oracle (xs) {
+        [] => reveal("empty");
+        [..] => reveal("non-empty");
+    };
+    result;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(
+            matches!(&results[2], EvalResult::Data(Value::Rune(s)) if s.as_ref() == "empty")
+        ),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_scroll_pattern_exact_length_binds_each_element() {
+    let input = r#"
+    forge xs: scroll = [10, 20];
+    forge result: arcana = oracle (xs) {
+        [a, b] => reveal(a + b);
+        _ => reveal(0);
+    };
+    result;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(matches!(results[2], EvalResult::Data(Value::Arcana(30)))),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_scroll_pattern_head_tail_binds_rest_as_subscroll() {
+    // The named rest should bind a fresh sub-scroll containing every
+    // unmatched trailing element. Verified here by counting it with
+    // `tally` and reading its first element back.
+    let input = r#"
+    forge xs: scroll = [10, 20, 30, 40];
+    forge head_val: arcana = oracle (xs) {
+        [head, ..rest] => reveal(head);
+    };
+    forge rest_len: arcana = oracle (xs) {
+        [_, ..rest] => reveal(rest.tally());
+    };
+    head_val;
+    rest_len;
+    "#;
+    match test_base(input) {
+        Ok(results) => {
+            assert!(matches!(results[3], EvalResult::Data(Value::Arcana(10))));
+            assert!(matches!(results[4], EvalResult::Data(Value::Arcana(3))));
+        }
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_scroll_pattern_anonymous_rest_drops_tail() {
+    // `[head, ..]` keeps the head binding but ignores the trailing
+    // values entirely.
+    let input = r#"
+    forge xs: scroll = [7, 8, 9];
+    forge result: arcana = oracle (xs) {
+        [head, ..] => reveal(head);
+    };
+    result;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(matches!(results[2], EvalResult::Data(Value::Arcana(7)))),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_scroll_pattern_falls_through_on_length_mismatch() {
+    // The first arm requires exactly two elements; the input has three,
+    // so the arm should not fire and the trailing-rest arm should match.
+    let input = r#"
+    forge xs: scroll = [1, 2, 3];
+    forge label: rune = oracle (xs) {
+        [a, b] => reveal("two");
+        [head, ..rest] => reveal("more");
+        _ => reveal("other");
+    };
+    label;
+    "#;
+    match test_base(input) {
+        Ok(results) => {
+            assert!(matches!(&results[2], EvalResult::Data(Value::Rune(s)) if s.as_ref() == "more"))
+        }
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_scroll_pattern_literal_elements_compare_by_value() {
+    // A literal element is still compared by value; a binding next to
+    // it captures the matching neighbour.
+    let input = r#"
+    forge xs: scroll = [42, 100];
+    forge label: rune = oracle (xs) {
+        [42, x] => reveal("starts with 42, second=" + x.trans(rune));
+        [_, x] => reveal("other, second=" + x.trans(rune));
+    };
+    label;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(
+            matches!(&results[2], EvalResult::Data(Value::Rune(s)) if s.as_ref() == "starts with 42, second=100")
+        ),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_scroll_pattern_binding_visible_in_ward() {
+    // A binding from a scroll pattern is visible to the same arm's ward.
+    let input = r#"
+    forge xs: scroll = [3, 4, 5];
+    forge label: rune = oracle (xs) {
+        [head, ..rest] ward head > 10 => reveal("big");
+        [head, ..rest] => reveal("small head: " + head.trans(rune));
+    };
+    label;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(
+            matches!(&results[2], EvalResult::Data(Value::Rune(s)) if s.as_ref() == "small head: 3")
+        ),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_scroll_pattern_against_non_scroll_scrutinee_errors() {
+    // Type mismatch (scroll pattern against an arcana scrutinee) raises
+    // a runtime error rather than silently falling through, matching
+    // the existing tuple-pattern type-mismatch behaviour.
+    let input = r#"
+    forge n: arcana = 5;
+    oracle (n) {
+        [a, b] => reveal("never");
+        _ => reveal("never either");
+    };
+    "#;
+    match test_base(input) {
+        Ok(results) => panic!("expected scroll/scalar mismatch, got {:?}", results),
+        Err(e) => {
+            let msg = format!("{:?}", e);
+            assert!(
+                msg.contains("Scroll pattern requires a scroll scrutinee"),
+                "unexpected error: {}",
+                msg
+            )
+        }
+    }
+}
+
+#[test]
 fn test_oracle_with_block_and_reveal() {
     let input = r#"
     forge x: arcana = -10;

@@ -808,7 +808,7 @@ fn pattern_parser<'src>(
     let list = just(Token::OpenParen)
         .map_with(|_, extra| extra.span())
         .then(
-            pattern_element_parser(ctx.clone(), expression)
+            pattern_element_parser(ctx.clone(), expression.clone())
                 .separated_by(just(Token::Comma))
                 .at_least(1)
                 .collect::<Vec<_>>(),
@@ -819,7 +819,17 @@ fn pattern_parser<'src>(
             (elements, span)
         });
 
-    wildcard.or(list).boxed()
+    // A scroll pattern `[…]` at the top of an arm targets a single-scrutinee
+    // oracle and is wrapped in a one-element pattern vector to match the
+    // shape produced by `wildcard` and `list`. The same parser is also
+    // available inside `pattern_element_parser` so a scroll pattern can sit
+    // alongside other elements in a multi-scrutinee tuple pattern.
+    let scroll = scroll_pattern_parser(ctx.clone(), expression).map_with(|ast, extra| {
+        let span: SimpleSpan<usize> = SimpleSpan::new(extra.span().start(), extra.span().end());
+        (vec![ast], span)
+    });
+
+    wildcard.or(list).or(scroll).boxed()
 }
 
 fn pattern_element_parser<'src>(
@@ -833,9 +843,76 @@ fn pattern_element_parser<'src>(
             AST::OracleDontCareItem(ctx_for_wild.info(span))
         });
 
+    let scroll = scroll_pattern_parser(ctx.clone(), expression.clone());
+
     let expr = expression.map(|(ast, _)| ast);
 
-    dont_care.or(expr).boxed()
+    dont_care.or(scroll).or(expr).boxed()
+}
+
+/// Parses a scroll-shape pattern `[e0, e1, …, ..rest]` for an oracle
+/// match-mode arm. Each inner element is one of:
+///
+/// - `_` — wildcard, matches and discards a single element.
+/// - `..` — anonymous rest, drops the trailing slice (only one allowed,
+///   only at the end).
+/// - `..ident` — named rest, binds the trailing slice to a fresh sub-scroll.
+/// - bare identifier — binding, captures the element at this position.
+/// - any other expression — literal compare against the element value.
+///
+/// We must run before the generic expression branch in `pattern_element_parser`
+/// so `[a, b]` in pattern position becomes a destructuring pattern rather
+/// than the list literal it would be in expression position.
+fn scroll_pattern_parser<'src>(
+    ctx: ParserContext,
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, AST> {
+    let ctx_for_inner_wild = ctx.clone();
+    let inner_dont_care =
+        select! { Token::Identifier(name) if name == "_" => () }.map_with(move |_, extra| {
+            let span = extra.span();
+            AST::OracleDontCareItem(ctx_for_inner_wild.info(span))
+        });
+
+    let ctx_for_rest = ctx.clone();
+    let rest = just(Token::RangeExclusive)
+        .map_with(|_, extra| extra.span())
+        .then(
+            select! { Token::Identifier(name) => name }
+                .map_with(|name, extra| (name, extra.span()))
+                .or_not(),
+        )
+        .map(move |(open_span, named)| {
+            let close_span: SimpleSpan<usize> =
+                named.as_ref().map(|(_, span)| *span).unwrap_or(open_span);
+            let span = SimpleSpan::new(open_span.start(), close_span.end());
+            AST::OracleScrollRest {
+                name: named.map(|(name, _)| name),
+                line_info: ctx_for_rest.info(span),
+            }
+        });
+
+    let inner_expr = expression.map(|(ast, _)| ast);
+    let element = inner_dont_care.or(rest).or(inner_expr);
+
+    let ctx_for_outer = ctx;
+    just(Token::OpenBracket)
+        .map_with(|_, extra| extra.span())
+        .then(
+            element
+                .separated_by(just(Token::Comma))
+                .allow_trailing()
+                .collect::<Vec<_>>(),
+        )
+        .then(just(Token::CloseBracket).map_with(|_, extra| extra.span()))
+        .map(move |((open_span, elements), close_span)| {
+            let span = SimpleSpan::new(open_span.start(), close_span.end());
+            AST::OracleScrollPattern {
+                elements,
+                line_info: ctx_for_outer.info(span),
+            }
+        })
+        .boxed()
 }
 
 fn orbit_param_parser<'src>(

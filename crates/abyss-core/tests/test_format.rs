@@ -259,6 +259,52 @@ fn format_control_flow_and_functions() {
     );
     assert_eq!(format_ast(&oracle_with_ward, 0), oracle_with_ward_expected);
 
+    let oracle_with_scroll_pattern = AST::Oracle {
+        is_match: true,
+        conditionals: vec![abyss_core::ast::ConditionalAssignment {
+            variable: "__match_0".into(),
+            expression: var("xs"),
+            line_info: None,
+        }],
+        branches: vec![
+            AST::OracleBranch {
+                pattern: vec![AST::OracleScrollPattern {
+                    elements: vec![],
+                    line_info: None,
+                }],
+                guard: None,
+                body: Box::new(AST::Reveal(Box::new(AST::Rune("empty".into(), None)), None)),
+                line_info: None,
+            },
+            AST::OracleBranch {
+                pattern: vec![AST::OracleScrollPattern {
+                    elements: vec![
+                        AST::Var("head".into(), None),
+                        AST::OracleScrollRest {
+                            name: Some("rest".into()),
+                            line_info: None,
+                        },
+                    ],
+                    line_info: None,
+                }],
+                guard: None,
+                body: Box::new(AST::Reveal(var("head"), None)),
+                line_info: None,
+            },
+        ],
+        line_info: None,
+    };
+    let oracle_with_scroll_pattern_expected = concat!(
+        "oracle (xs) {\n",
+        "    [] => reveal \"empty\"\n",
+        "    [head, ..rest] => reveal head\n",
+        "}"
+    );
+    assert_eq!(
+        format_ast(&oracle_with_scroll_pattern, 0),
+        oracle_with_scroll_pattern_expected
+    );
+
     let orbit = AST::Orbit {
         params: vec![AST::OrbitParam {
             name: "i".into(),

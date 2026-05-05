@@ -679,8 +679,8 @@ fn evaluate_oracle_branch(
         }
 
         let mut matched = true;
-        for (idx, pattern) in pattern.iter().enumerate() {
-            if let AST::OracleDontCareItem(_) = pattern {
+        for (idx, pattern_elem) in pattern.iter().enumerate() {
+            if let AST::OracleDontCareItem(_) = pattern_elem {
                 continue;
             }
 
@@ -696,7 +696,7 @@ fn evaluate_oracle_branch(
             // identifier up as an expression). The binding lives in the
             // per-branch scope the caller pushed, so it is visible to the
             // ward and body of this arm and disappears when the arm finishes.
-            if let AST::Var(name, var_line) = pattern {
+            if let AST::Var(name, var_line) = pattern_elem {
                 env.set_var(
                     name.clone(),
                     scrutinee_value.clone(),
@@ -707,7 +707,7 @@ fn evaluate_oracle_branch(
                 continue;
             }
 
-            let pattern_result = evaluate(pattern, env)?;
+            let pattern_result = evaluate(pattern_elem, env)?;
 
             match (scrutinee_value, pattern_result) {
                 (Value::Arcana(cond_n), EvalResult::Data(Value::Arcana(pat_n))) => {
@@ -754,7 +754,10 @@ fn evaluate_oracle_branch(
                 }
                 other => {
                     return Err(EvalError::InvalidOperation(
-                        format!("Oracle guard must evaluate to an omen, found {:?}", other),
+                        format!(
+                            "Oracle if-else pattern must evaluate to an omen, found {:?}",
+                            other
+                        ),
                         line_info.clone(),
                     ));
                 }
@@ -1163,9 +1166,9 @@ mod tests {
     }
 
     #[test]
-    fn oracle_guard_requires_omen_values() {
+    fn oracle_if_else_pattern_requires_omen_values() {
         let mut env = RuntimeEnv::new();
-        let guard_branch = AST::OracleBranch {
+        let pattern_branch = AST::OracleBranch {
             pattern: vec![AST::Arcana(1, line())],
             guard: None,
             body: Box::new(AST::Arcana(0, line())),
@@ -1175,15 +1178,15 @@ mod tests {
         let oracle = AST::Oracle {
             is_match: false,
             conditionals: vec![],
-            branches: vec![guard_branch],
+            branches: vec![pattern_branch],
             line_info: line(),
         };
 
-        let err = evaluate(&oracle, &mut env).expect_err("guards must yield omens");
+        let err = evaluate(&oracle, &mut env).expect_err("if-else mode patterns must yield omens");
         match err {
             EvalError::InvalidOperation(message, _) => {
                 assert!(
-                    message.contains("Oracle guard must evaluate to an omen"),
+                    message.contains("Oracle if-else pattern must evaluate to an omen"),
                     "{}",
                     message
                 );

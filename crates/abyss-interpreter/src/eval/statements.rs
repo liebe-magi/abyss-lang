@@ -5,7 +5,8 @@ use std::rc::Rc;
 
 use super::artifacts::{
     build_artifact_schema, collect_field_chain, ensure_field_exists, ensure_type_known,
-    expect_artifact_handle, lookup_schema_from_handle, missing_field_error,
+    expect_artifact_handle, lookup_schema_from_handle, missing_field_error, read_artifact_field,
+    values_equal,
 };
 use super::collections::{collect_index_chain, expect_arcana_index, expect_rune_key};
 use super::expressions::try_evaluate_expression;
@@ -1056,12 +1057,12 @@ fn match_artifact_pattern(
             ));
         }
 
-        let field_value = handle
-            .borrow()
-            .fields
-            .get(field_name)
-            .cloned()
-            .expect("schema-validated field must be present in artifact value");
+        // `read_artifact_field` re-validates the field against the schema and
+        // returns a recoverable `EvalError` if the runtime value is missing
+        // the field for any reason — preferable to the previous
+        // `expect("schema-validated field must be present in artifact value")`
+        // panic if a future malformed artifact slips through.
+        let field_value = read_artifact_field(env, &handle, field_name, line_info)?;
 
         match sub_pattern {
             AST::OracleDontCareItem(_) => continue,
@@ -1099,8 +1100,25 @@ fn match_artifact_pattern(
                 }
             }
             other => {
+                // For literal-compare on an artifact field we want a deep,
+                // type-aware equality so nested scrolls / lexicons / artifacts
+                // compare by structure (matching the existing `==` semantics
+                // in `eval/artifacts::values_equal`). The scroll-specific
+                // `values_match_for_pattern` would only handle scalars and
+                // emit a misleading "Scroll pattern element" error for any
+                // non-scalar field.
                 let pattern_result = evaluate(other, env)?;
-                if !values_match_for_pattern(&field_value, &pattern_result, line_info)? {
+                let pattern_value = match pattern_result {
+                    EvalResult::Data(value) => value,
+                    EvalResult::Artifact(handle) => Value::Artifact(handle),
+                    EvalResult::Revealed(_) | EvalResult::Resume(_) | EvalResult::Eject(_) => {
+                        return Err(EvalError::InvalidOperation(
+                            "Artifact field pattern compare must yield a value".to_string(),
+                            line_info.clone(),
+                        ));
+                    }
+                };
+                if !values_equal(env, &field_value, &pattern_value, line_info)? {
                     return Ok(false);
                 }
             }

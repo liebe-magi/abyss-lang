@@ -274,17 +274,24 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
         AST::OracleArtifactPattern {
             type_name, fields, ..
         } => {
-            let inner = fields
-                .iter()
-                .map(|(name, sub)| match sub {
-                    // Shorthand `{ name }` keeps its compact form when the
-                    // sub-pattern is just `Var(name)` with the same name.
-                    AST::Var(var_name, _) if var_name == name => name.clone(),
-                    other => format!("{}: {}", name, format_ast(other, indent_level)),
-                })
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!("{} {{ {} }}", type_name, inner)
+            if fields.is_empty() {
+                // `Type {}` matches by type alone (any artifact of this
+                // type). Mirror `ArtifactLiteral`'s empty-fields formatting
+                // rather than emitting `Type {  }` with double spaces.
+                format!("{} {{}}", type_name)
+            } else {
+                let inner = fields
+                    .iter()
+                    .map(|(name, sub)| match sub {
+                        // Shorthand `{ name }` keeps its compact form when the
+                        // sub-pattern is just `Var(name)` with the same name.
+                        AST::Var(var_name, _) if var_name == name => name.clone(),
+                        other => format!("{}: {}", name, format_ast(other, indent_level)),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{} {{ {} }}", type_name, inner)
+            }
         }
         AST::Orbit { params, body, .. } => {
             let mut result = "orbit".to_string();

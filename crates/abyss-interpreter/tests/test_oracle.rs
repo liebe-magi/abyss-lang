@@ -668,6 +668,56 @@ fn test_oracle_artifact_pattern_against_non_artifact_errors() {
 }
 
 #[test]
+fn test_oracle_artifact_pattern_nested_artifact_and_scroll() {
+    // Field values may themselves be destructuring patterns (scroll
+    // head/tail, nested artifact). All bindings flow into the same
+    // per-branch scope and are visible in the body.
+    let input = r#"
+    artifact Inventory { items: scroll; gold: arcana; };
+    artifact Player { name: rune; bag: Inventory; };
+    forge inv: Inventory = Inventory { items: ["sword", "shield"], gold: 50 };
+    forge hero: Player = Player { name: "Ardyn", bag: inv };
+    forge label: rune = oracle (hero) {
+        Player { name, bag: Inventory { items: [first, ..rest], gold } } =>
+            reveal(name + " carries " + first + " and " + gold.trans(rune) + " gold");
+    };
+    label;
+    "#;
+    match test_base(input) {
+        Ok(results) => {
+            // 4 forges + 1 expression statement
+            assert!(matches!(
+                &results[5],
+                EvalResult::Data(Value::Rune(s))
+                    if s.as_ref() == "Ardyn carries sword and 50 gold"
+            ));
+        }
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_artifact_pattern_empty_fields_matches_by_type() {
+    // `Tag {}` matches any artifact of type `Tag` regardless of field
+    // values — useful for type-only dispatch.
+    let input = r#"
+    artifact Tag { value: arcana; };
+    forge t: Tag = Tag { value: 7 };
+    forge label: rune = oracle (t) {
+        Tag {} => reveal("a tag");
+        _ => reveal("other");
+    };
+    label;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(
+            matches!(&results[3], EvalResult::Data(Value::Rune(s)) if s.as_ref() == "a tag")
+        ),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
 fn test_oracle_with_block_and_reveal() {
     let input = r#"
     forge x: arcana = -10;

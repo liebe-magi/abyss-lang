@@ -252,7 +252,7 @@ pub(crate) fn collect_field_chain(ast: &AST) -> Option<(String, Vec<String>)> {
     }
 }
 
-fn values_equal(
+pub(crate) fn values_equal(
     env: &RuntimeEnv,
     left: &Value,
     right: &Value,

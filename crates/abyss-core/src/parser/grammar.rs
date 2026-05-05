@@ -776,7 +776,17 @@ fn oracle_branch_parser<'src>(
         .map(|(ast, _)| Box::new(ast))
         .or_not();
 
-    pattern_parser(ctx.clone(), expression.clone())
+    // The pattern element parser is mutually recursive with the scroll- and
+    // artifact-pattern parsers (since a scroll element or an artifact field
+    // value may itself be a scroll / artifact / wildcard pattern). Build it
+    // once via `recursive` and thread it into both the top-level pattern
+    // recogniser and the inner sub-parsers so nested patterns like
+    // `Player { items: [head, ..rest] }` actually parse into the AST nodes
+    // the evaluator already knows how to match.
+    let pattern_element = pattern_element_parser(ctx.clone(), expression.clone());
+    let pattern = pattern_parser(ctx.clone(), expression.clone(), pattern_element);
+
+    pattern
         .then(guard)
         .then_ignore(just(Token::FatArrow))
         .then(body)
@@ -801,6 +811,7 @@ fn oracle_branch_parser<'src>(
 fn pattern_parser<'src>(
     ctx: ParserContext,
     expression: BoxedParser<'src, SpannedAst>,
+    pattern_element: BoxedParser<'src, AST>,
 ) -> BoxedParser<'src, (Vec<AST>, SimpleSpan<usize>)> {
     let wildcard = select! { Token::Identifier(name) if name == "_" => () }
         .map_with(|_, extra| (Vec::new(), extra.span()));
@@ -808,7 +819,8 @@ fn pattern_parser<'src>(
     let list = just(Token::OpenParen)
         .map_with(|_, extra| extra.span())
         .then(
-            pattern_element_parser(ctx.clone(), expression.clone())
+            pattern_element
+                .clone()
                 .separated_by(just(Token::Comma))
                 .at_least(1)
                 .collect::<Vec<_>>(),
@@ -821,23 +833,23 @@ fn pattern_parser<'src>(
 
     // A scroll pattern `[…]` at the top of an arm targets a single-scrutinee
     // oracle and is wrapped in a one-element pattern vector to match the
-    // shape produced by `wildcard` and `list`. The same parser is also
-    // available inside `pattern_element_parser` so a scroll pattern can sit
+    // shape produced by `wildcard` and `list`. The same scroll-pattern parser
+    // is also referenced through `pattern_element` so scroll patterns can sit
     // alongside other elements in a multi-scrutinee tuple pattern.
-    let scroll = scroll_pattern_parser(ctx.clone(), expression.clone()).map_with(|ast, extra| {
-        let span: SimpleSpan<usize> = SimpleSpan::new(extra.span().start(), extra.span().end());
-        (vec![ast], span)
-    });
+    let scroll = scroll_pattern_parser(ctx.clone(), pattern_element.clone(), expression.clone())
+        .map_with(|ast, extra| {
+            let span: SimpleSpan<usize> = SimpleSpan::new(extra.span().start(), extra.span().end());
+            (vec![ast], span)
+        });
 
     // An artifact pattern `TypeName { … }` at the top of an arm — same shape
-    // wrapping logic as `scroll`. The same parser is reused inside
-    // `pattern_element_parser` (and `scroll_pattern_parser`) so an artifact
-    // pattern can also sit nested inside a multi-scrutinee tuple pattern or
-    // alongside elements inside a scroll pattern.
-    let artifact = artifact_pattern_parser(ctx.clone(), expression).map_with(|ast, extra| {
-        let span: SimpleSpan<usize> = SimpleSpan::new(extra.span().start(), extra.span().end());
-        (vec![ast], span)
-    });
+    // wrapping logic as `scroll`. The recursive `pattern_element` lets each
+    // field value itself be a nested scroll / artifact / wildcard pattern.
+    let artifact =
+        artifact_pattern_parser(ctx, pattern_element, expression).map_with(|ast, extra| {
+            let span: SimpleSpan<usize> = SimpleSpan::new(extra.span().start(), extra.span().end());
+            (vec![ast], span)
+        });
 
     wildcard.or(list).or(scroll).or(artifact).boxed()
 }
@@ -846,22 +858,27 @@ fn pattern_element_parser<'src>(
     ctx: ParserContext,
     expression: BoxedParser<'src, SpannedAst>,
 ) -> BoxedParser<'src, AST> {
-    let ctx_for_wild = ctx.clone();
-    let dont_care =
-        select! { Token::Identifier(name) if name == "_" => () }.map_with(move |_, extra| {
-            let span = extra.span();
-            AST::OracleDontCareItem(ctx_for_wild.info(span))
-        });
+    recursive(|pattern_elem: RecursiveParser<'src, AST>| {
+        let ctx_for_wild = ctx.clone();
+        let dont_care =
+            select! { Token::Identifier(name) if name == "_" => () }.map_with(move |_, extra| {
+                let span = extra.span();
+                AST::OracleDontCareItem(ctx_for_wild.info(span))
+            });
 
-    let scroll = scroll_pattern_parser(ctx.clone(), expression.clone());
-    // Run before the generic expression branch so `Player { … }` is parsed
-    // as a destructuring pattern rather than the artifact literal it would
-    // be in expression position.
-    let artifact = artifact_pattern_parser(ctx.clone(), expression.clone());
+        let pattern_elem_boxed = pattern_elem.clone().boxed();
+        let scroll =
+            scroll_pattern_parser(ctx.clone(), pattern_elem_boxed.clone(), expression.clone());
+        // Run before the generic expression branch so `Player { … }` is
+        // parsed as a destructuring pattern rather than the artifact literal
+        // it would be in expression position.
+        let artifact = artifact_pattern_parser(ctx.clone(), pattern_elem_boxed, expression.clone());
 
-    let expr = expression.map(|(ast, _)| ast);
+        let expr = expression.clone().map(|(ast, _)| ast);
 
-    dont_care.or(scroll).or(artifact).or(expr).boxed()
+        dont_care.or(scroll).or(artifact).or(expr).boxed()
+    })
+    .boxed()
 }
 
 /// Parses an artifact-shape pattern `TypeName { f0, f1: pat, … }` for an
@@ -883,25 +900,21 @@ fn pattern_element_parser<'src>(
 /// would be in expression position.
 fn artifact_pattern_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
+    pattern_element: BoxedParser<'src, AST>,
+    _expression: BoxedParser<'src, SpannedAst>,
 ) -> BoxedParser<'src, AST> {
-    let ctx_for_inner_wild = ctx.clone();
-    let inner_dont_care =
-        select! { Token::Identifier(name) if name == "_" => () }.map_with(move |_, extra| {
-            let span = extra.span();
-            AST::OracleDontCareItem(ctx_for_inner_wild.info(span))
-        });
-
-    let inner_expr = expression.map(|(ast, _)| ast);
-    let field_value = inner_dont_care.or(inner_expr);
-
-    let ctx_for_field = ctx.clone();
     // Each field entry is `name (: value)?`. The shorthand expands to a
     // `Var(name)` so the evaluator's existing `Var`-as-binding path applies
-    // uniformly with tuple and scroll patterns.
+    // uniformly with tuple and scroll patterns. The explicit `: value` form
+    // accepts any pattern element (wildcard, nested scroll/artifact patterns,
+    // bindings, literal expressions), so nested destructuring like
+    // `Player { items: [head, ..rest], friend: Enemy { name } }` parses into
+    // the `OracleScrollPattern` / `OracleArtifactPattern` nodes the evaluator
+    // already knows how to match.
+    let ctx_for_field = ctx.clone();
     let field = select! { Token::Identifier(name) => name }
         .map_with(move |name, extra| (name, extra.span()))
-        .then(just(Token::Colon).ignore_then(field_value).or_not())
+        .then(just(Token::Colon).ignore_then(pattern_element).or_not())
         .map(move |((name, name_span), value)| {
             let pattern = value.unwrap_or_else(|| {
                 AST::Var(
@@ -949,15 +962,9 @@ fn artifact_pattern_parser<'src>(
 /// than the list literal it would be in expression position.
 fn scroll_pattern_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
+    pattern_element: BoxedParser<'src, AST>,
+    _expression: BoxedParser<'src, SpannedAst>,
 ) -> BoxedParser<'src, AST> {
-    let ctx_for_inner_wild = ctx.clone();
-    let inner_dont_care =
-        select! { Token::Identifier(name) if name == "_" => () }.map_with(move |_, extra| {
-            let span = extra.span();
-            AST::OracleDontCareItem(ctx_for_inner_wild.info(span))
-        });
-
     let ctx_for_rest = ctx.clone();
     let rest = just(Token::RangeExclusive)
         .map_with(|_, extra| extra.span())
@@ -976,13 +983,11 @@ fn scroll_pattern_parser<'src>(
             }
         });
 
-    // Artifact patterns can appear inside scroll patterns
-    // (`[Player { name }, ..rest]` etc.); run before the generic expression
-    // branch so the brace form is destructuring, not an artifact literal.
-    let inner_artifact = artifact_pattern_parser(ctx.clone(), expression.clone());
-
-    let inner_expr = expression.map(|(ast, _)| ast);
-    let element = inner_dont_care.or(rest).or(inner_artifact).or(inner_expr);
+    // Non-rest scroll elements use the recursive `pattern_element`, which
+    // already covers wildcards, nested scroll patterns, nested artifact
+    // patterns, and arbitrary expressions. `rest` is scroll-specific so it
+    // lives here as the alternation's first branch.
+    let element = rest.or(pattern_element);
 
     let ctx_for_outer = ctx;
     just(Token::OpenBracket)

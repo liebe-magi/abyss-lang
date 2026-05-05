@@ -305,6 +305,54 @@ fn format_control_flow_and_functions() {
         oracle_with_scroll_pattern_expected
     );
 
+    let oracle_with_artifact_pattern = AST::Oracle {
+        is_match: true,
+        conditionals: vec![abyss_core::ast::ConditionalAssignment {
+            variable: "__match_0".into(),
+            expression: var("hero"),
+            line_info: None,
+        }],
+        branches: vec![
+            // Shorthand `Player { name }` (one binding, sub-pattern is
+            // `Var(name)` matching the field name).
+            AST::OracleBranch {
+                pattern: vec![AST::OracleArtifactPattern {
+                    type_name: "Player".into(),
+                    fields: vec![("name".into(), AST::Var("name".into(), None))],
+                    line_info: None,
+                }],
+                guard: None,
+                body: Box::new(AST::Reveal(var("name"), None)),
+                line_info: None,
+            },
+            // Explicit field with literal compare and a trailing binding.
+            AST::OracleBranch {
+                pattern: vec![AST::OracleArtifactPattern {
+                    type_name: "Player".into(),
+                    fields: vec![
+                        ("name".into(), AST::Rune("Ardyn".into(), None)),
+                        ("health".into(), AST::Var("health".into(), None)),
+                    ],
+                    line_info: None,
+                }],
+                guard: None,
+                body: Box::new(AST::Reveal(var("health"), None)),
+                line_info: None,
+            },
+        ],
+        line_info: None,
+    };
+    let oracle_with_artifact_pattern_expected = concat!(
+        "oracle (hero) {\n",
+        "    Player { name } => reveal name\n",
+        "    Player { name: \"Ardyn\", health } => reveal health\n",
+        "}"
+    );
+    assert_eq!(
+        format_ast(&oracle_with_artifact_pattern, 0),
+        oracle_with_artifact_pattern_expected
+    );
+
     let orbit = AST::Orbit {
         params: vec![AST::OrbitParam {
             name: "i".into(),

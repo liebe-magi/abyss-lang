@@ -824,12 +824,22 @@ fn pattern_parser<'src>(
     // shape produced by `wildcard` and `list`. The same parser is also
     // available inside `pattern_element_parser` so a scroll pattern can sit
     // alongside other elements in a multi-scrutinee tuple pattern.
-    let scroll = scroll_pattern_parser(ctx.clone(), expression).map_with(|ast, extra| {
+    let scroll = scroll_pattern_parser(ctx.clone(), expression.clone()).map_with(|ast, extra| {
         let span: SimpleSpan<usize> = SimpleSpan::new(extra.span().start(), extra.span().end());
         (vec![ast], span)
     });
 
-    wildcard.or(list).or(scroll).boxed()
+    // An artifact pattern `TypeName { … }` at the top of an arm — same shape
+    // wrapping logic as `scroll`. The same parser is reused inside
+    // `pattern_element_parser` (and `scroll_pattern_parser`) so an artifact
+    // pattern can also sit nested inside a multi-scrutinee tuple pattern or
+    // alongside elements inside a scroll pattern.
+    let artifact = artifact_pattern_parser(ctx.clone(), expression).map_with(|ast, extra| {
+        let span: SimpleSpan<usize> = SimpleSpan::new(extra.span().start(), extra.span().end());
+        (vec![ast], span)
+    });
+
+    wildcard.or(list).or(scroll).or(artifact).boxed()
 }
 
 fn pattern_element_parser<'src>(
@@ -844,10 +854,84 @@ fn pattern_element_parser<'src>(
         });
 
     let scroll = scroll_pattern_parser(ctx.clone(), expression.clone());
+    // Run before the generic expression branch so `Player { … }` is parsed
+    // as a destructuring pattern rather than the artifact literal it would
+    // be in expression position.
+    let artifact = artifact_pattern_parser(ctx.clone(), expression.clone());
 
     let expr = expression.map(|(ast, _)| ast);
 
-    dont_care.or(scroll).or(expr).boxed()
+    dont_care.or(scroll).or(artifact).or(expr).boxed()
+}
+
+/// Parses an artifact-shape pattern `TypeName { f0, f1: pat, … }` for an
+/// oracle match-mode arm. Each field entry is one of:
+///
+/// - `field_name` — shorthand binding; the field value is bound to a fresh
+///   variable named after the field.
+/// - `field_name: _` — explicit wildcard; the field is matched but its
+///   value is discarded.
+/// - `field_name: ident` — explicit binding; the field value is bound to
+///   `ident` (which may differ from the field name).
+/// - `field_name: <expr>` — literal compare against the field value.
+///
+/// Fields not listed here are not matched against — the pattern is
+/// non-exhaustive by default, so users can pick out only the fields they
+/// care about. We must run before the generic expression branch in
+/// `pattern_element_parser` so `Player { name }` in pattern position is
+/// parsed as a destructuring pattern rather than the artifact literal it
+/// would be in expression position.
+fn artifact_pattern_parser<'src>(
+    ctx: ParserContext,
+    expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, AST> {
+    let ctx_for_inner_wild = ctx.clone();
+    let inner_dont_care =
+        select! { Token::Identifier(name) if name == "_" => () }.map_with(move |_, extra| {
+            let span = extra.span();
+            AST::OracleDontCareItem(ctx_for_inner_wild.info(span))
+        });
+
+    let inner_expr = expression.map(|(ast, _)| ast);
+    let field_value = inner_dont_care.or(inner_expr);
+
+    let ctx_for_field = ctx.clone();
+    // Each field entry is `name (: value)?`. The shorthand expands to a
+    // `Var(name)` so the evaluator's existing `Var`-as-binding path applies
+    // uniformly with tuple and scroll patterns.
+    let field = select! { Token::Identifier(name) => name }
+        .map_with(move |name, extra| (name, extra.span()))
+        .then(just(Token::Colon).ignore_then(field_value).or_not())
+        .map(move |((name, name_span), value)| {
+            let pattern = value.unwrap_or_else(|| {
+                AST::Var(
+                    name.clone(),
+                    ctx_for_field.info(SimpleSpan::new(name_span.start(), name_span.end())),
+                )
+            });
+            (name, pattern)
+        });
+
+    let ctx_for_outer = ctx;
+    select! { Token::Identifier(name) => name }
+        .map_with(|name, extra| (name, extra.span()))
+        .then_ignore(just(Token::OpenBrace))
+        .then(
+            field
+                .separated_by(just(Token::Comma))
+                .allow_trailing()
+                .collect::<Vec<_>>(),
+        )
+        .then(just(Token::CloseBrace).map_with(|_, extra| extra.span()))
+        .map(move |(((type_name, type_span), fields), close_span)| {
+            let span = SimpleSpan::new(type_span.start(), close_span.end());
+            AST::OracleArtifactPattern {
+                type_name,
+                fields,
+                line_info: ctx_for_outer.info(span),
+            }
+        })
+        .boxed()
 }
 
 /// Parses a scroll-shape pattern `[e0, e1, …, ..rest]` for an oracle
@@ -892,8 +976,13 @@ fn scroll_pattern_parser<'src>(
             }
         });
 
+    // Artifact patterns can appear inside scroll patterns
+    // (`[Player { name }, ..rest]` etc.); run before the generic expression
+    // branch so the brace form is destructuring, not an artifact literal.
+    let inner_artifact = artifact_pattern_parser(ctx.clone(), expression.clone());
+
     let inner_expr = expression.map(|(ast, _)| ast);
-    let element = inner_dont_care.or(rest).or(inner_expr);
+    let element = inner_dont_care.or(rest).or(inner_artifact).or(inner_expr);
 
     let ctx_for_outer = ctx;
     just(Token::OpenBracket)

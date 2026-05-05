@@ -220,14 +220,15 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
                     ..
                 } = branch
                 {
-                    // Top-level scroll pattern (`[…] =>`) keeps its bracket
-                    // form rather than getting re-wrapped in `(…)`. A single
-                    // `OracleScrollPattern` element formats itself with
-                    // brackets already, so the outer parens would be
-                    // redundant noise on round-trip.
+                    // Top-level scroll / artifact patterns keep their natural
+                    // form (`[…] =>`, `Player { name } =>`) rather than
+                    // getting re-wrapped in `(…)`. The single-element AST
+                    // already self-formats in the right shape, so the outer
+                    // parens would be redundant noise on round-trip.
                     let pattern_text = match pattern.as_slice() {
                         [] => "_".to_string(),
-                        [only @ AST::OracleScrollPattern { .. }] => {
+                        [only @ AST::OracleScrollPattern { .. }]
+                        | [only @ AST::OracleArtifactPattern { .. }] => {
                             format_ast(only, indent_level + 1)
                         }
                         elems => {
@@ -270,6 +271,21 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
             Some(name) => format!("..{}", name),
             None => "..".to_string(),
         },
+        AST::OracleArtifactPattern {
+            type_name, fields, ..
+        } => {
+            let inner = fields
+                .iter()
+                .map(|(name, sub)| match sub {
+                    // Shorthand `{ name }` keeps its compact form when the
+                    // sub-pattern is just `Var(name)` with the same name.
+                    AST::Var(var_name, _) if var_name == name => name.clone(),
+                    other => format!("{}: {}", name, format_ast(other, indent_level)),
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{} {{ {} }}", type_name, inner)
+        }
         AST::Orbit { params, body, .. } => {
             let mut result = "orbit".to_string();
             if !params.is_empty() {

@@ -233,6 +233,130 @@ fn test_oracle_if_else_ward_acts_as_extra_condition() {
 }
 
 #[test]
+fn test_oracle_match_binds_bare_identifier_pattern() {
+    // A bare identifier pattern in match mode binds the scrutinee to that
+    // name in the arm's scope. The body can then read the bound value.
+    let input = r#"
+    forge n: arcana = 7;
+    forge result: arcana = oracle (n) {
+        (x) => reveal(x * 2);
+    };
+    result;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(matches!(results[2], EvalResult::Data(Value::Arcana(14)))),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_match_binding_visible_in_ward() {
+    // The bound name is visible to the ward expression of the same arm.
+    // First arm: ward succeeds, so it fires. Second arm is the fallback.
+    let input = r#"
+    forge n: arcana = 7;
+    forge result: rune = oracle (n) {
+        (x) ward x > 0 => reveal("positive");
+        (x) => reveal("non-positive");
+    };
+    result;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(
+            matches!(&results[2], EvalResult::Data(Value::Rune(s)) if s.as_ref() == "positive")
+        ),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_match_multiple_bindings_across_scrutinees() {
+    // Multi-scrutinee patterns bind every bare-identifier element to the
+    // matching scrutinee value.
+    let input = r#"
+    forge a: arcana = 3;
+    forge b: arcana = 4;
+    forge sum: arcana = oracle (a, b) {
+        (x, y) => reveal(x + y);
+    };
+    sum;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(matches!(results[3], EvalResult::Data(Value::Arcana(7)))),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_match_binding_mixed_with_literals_and_wildcards() {
+    // Literals still match by value, wildcards still skip, and identifiers
+    // still bind — composing freely inside the same pattern tuple.
+    let input = r#"
+    forge a: arcana = 1;
+    forge b: arcana = 99;
+    forge result: rune = oracle (a, b) {
+        (1, x) => reveal("first is one");
+        (_, x) => reveal("first is not one");
+    };
+    result;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(
+            matches!(&results[3], EvalResult::Data(Value::Rune(s)) if s.as_ref() == "first is one")
+        ),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_match_binding_does_not_leak_to_outer_scope() {
+    // The binding is confined to the per-branch scope, so the outer script
+    // cannot see it after the oracle finishes.
+    let input = r#"
+    forge n: arcana = 5;
+    oracle (n) {
+        (x) => reveal(x);
+    };
+    x;
+    "#;
+    match test_base(input) {
+        Ok(results) => panic!(
+            "expected the post-oracle reference to `x` to fail, got {:?}",
+            results
+        ),
+        Err(e) => {
+            let msg = format!("{:?}", e);
+            assert!(
+                msg.contains("UndefinedVariable") && msg.contains('x'),
+                "unexpected error: {}",
+                msg
+            )
+        }
+    }
+}
+
+#[test]
+fn test_oracle_match_binding_does_not_leak_between_arms() {
+    // First arm binds x = the scrutinee, but its ward fails so the arm is
+    // skipped. The second arm then re-binds x to the same scrutinee in its
+    // own fresh scope; if the first arm's binding had leaked it would show
+    // up here, but each arm runs in its own scope so the second arm's body
+    // sees the value via its own binding cleanly.
+    let input = r#"
+    forge n: arcana = 5;
+    forge picked: arcana = oracle (n) {
+        (x) ward x > 100 => reveal(0);
+        (x) => reveal(x);
+    };
+    picked;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(matches!(results[2], EvalResult::Data(Value::Arcana(5)))),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
 fn test_oracle_with_block_and_reveal() {
     let input = r#"
     forge x: arcana = -10;

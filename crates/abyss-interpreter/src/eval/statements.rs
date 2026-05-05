@@ -576,11 +576,12 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
 /// Inner body of `AST::Oracle` evaluation. The caller is responsible for
 /// pairing one `env.push_scope()` before this call with one `env.pop_scope()`
 /// after, so every `?` inside this helper unwinds through the caller and the
-/// scope is always popped — including on failed scrutinee evaluation,
-/// pattern type errors, ward errors, and body errors. Keeping the cleanup
-/// outside the `?`-using body removes the previous five hand-written
-/// `env.pop_scope(); return Err(...)` branches and the matching scope-leak
-/// risk that prompted the v0.5.0 PR1 review feedback.
+/// outer oracle scope is always popped.
+///
+/// Each branch additionally gets its own nested scope (push/pop) so that
+/// match-mode bindings (`(x) =>`) and any `forge` declarations in the body
+/// stay confined to the arm that produced them — without leaking sideways
+/// to subsequent arms or upward to the script.
 fn evaluate_oracle(
     is_match: bool,
     conditionals: &[ConditionalAssignment],
@@ -621,117 +622,191 @@ fn evaluate_oracle(
             continue;
         };
 
-        let matched = if pattern.is_empty() {
-            true
-        } else if is_match {
-            if pattern.len() != scrutinee_values.len() {
-                return Err(EvalError::InvalidOperation(
-                    format!(
-                        "Oracle branch pattern length {} does not match scrutinee length {}",
-                        pattern.len(),
-                        scrutinee_values.len()
-                    ),
-                    line_info.clone(),
-                ));
-            }
+        env.push_scope();
+        let outcome = evaluate_oracle_branch(
+            is_match,
+            pattern,
+            guard.as_deref(),
+            body,
+            line_info,
+            &scrutinee_values,
+            env,
+        );
+        env.pop_scope();
 
-            let mut matched = true;
-            for (idx, pattern) in pattern.iter().enumerate() {
-                if let AST::OracleDontCareItem(_) = pattern {
-                    continue;
-                }
-
-                let Some(scrutinee_value) = scrutinee_values.get(idx) else {
-                    return Err(EvalError::InvalidOperation(
-                        "Oracle branch references missing scrutinee".to_string(),
-                        line_info.clone(),
-                    ));
-                };
-
-                let pattern_result = evaluate(pattern, env)?;
-
-                match (scrutinee_value, pattern_result) {
-                    (Value::Arcana(cond_n), EvalResult::Data(Value::Arcana(pat_n))) => {
-                        if *cond_n != pat_n {
-                            matched = false;
-                            break;
-                        }
-                    }
-                    (Value::Aether(cond_n), EvalResult::Data(Value::Aether(pat_n))) => {
-                        if (*cond_n - pat_n).abs() >= f64::EPSILON {
-                            matched = false;
-                            break;
-                        }
-                    }
-                    (Value::Rune(cond_s), EvalResult::Data(Value::Rune(pat_s))) => {
-                        if cond_s.as_ref() != pat_s.as_ref() {
-                            matched = false;
-                            break;
-                        }
-                    }
-                    (Value::Omen(cond_b), EvalResult::Data(Value::Omen(pat_b))) => {
-                        if *cond_b != pat_b {
-                            matched = false;
-                            break;
-                        }
-                    }
-                    _ => {
-                        return Err(EvalError::InvalidOperation(
-                            "Oracle branch pattern type must match scrutinee type".to_string(),
-                            line_info.clone(),
-                        ));
-                    }
-                }
-            }
-            matched
-        } else {
-            let mut all_true = true;
-            for pattern_expr in pattern {
-                match evaluate(pattern_expr, env)? {
-                    EvalResult::Data(Value::Omen(true)) => continue,
-                    EvalResult::Data(Value::Omen(false)) => {
-                        all_true = false;
-                        break;
-                    }
-                    other => {
-                        return Err(EvalError::InvalidOperation(
-                            format!("Oracle guard must evaluate to an omen, found {:?}", other),
-                            line_info.clone(),
-                        ));
-                    }
-                }
-            }
-            all_true
-        };
-
-        let matched = if matched {
-            match guard {
-                None => true,
-                Some(guard_expr) => match evaluate(guard_expr.as_ref(), env)? {
-                    EvalResult::Data(Value::Omen(b)) => b,
-                    other => {
-                        return Err(EvalError::InvalidOperation(
-                            format!("Oracle ward must evaluate to an omen, found {:?}", other),
-                            line_info.clone(),
-                        ));
-                    }
-                },
-            }
-        } else {
-            false
-        };
-
-        if matched {
-            let result = evaluate(body.as_ref(), env)?;
-            let result = match result {
-                EvalResult::Revealed(revealed) => *revealed,
-                _ => result,
-            };
-            return Ok(result);
+        match outcome? {
+            None => continue,
+            Some(result) => return Ok(result),
         }
     }
 
     Ok(EvalResult::abyss())
+}
+
+/// Evaluate a single `OracleBranch`. Returns:
+/// - `Ok(Some(result))` when the pattern matches, the optional ward holds,
+///   and the body has been evaluated to `result`;
+/// - `Ok(None)` when the arm does not apply (pattern mismatch or ward
+///   yielded `hex`) and the caller should try the next arm;
+/// - `Err(e)` on any evaluation error.
+///
+/// The caller is responsible for pushing and popping the per-branch scope
+/// around this call. Match-mode bindings introduced by bare-identifier
+/// patterns are written into the current (caller-pushed) scope so they are
+/// visible to the ward expression and the body, then unwound when the
+/// caller pops.
+fn evaluate_oracle_branch(
+    is_match: bool,
+    pattern: &[AST],
+    guard: Option<&AST>,
+    body: &AST,
+    line_info: &Option<LineInfo>,
+    scrutinee_values: &[Value],
+    env: &mut RuntimeEnv,
+) -> Result<Option<EvalResult>, EvalError> {
+    let matched = if pattern.is_empty() {
+        true
+    } else if is_match {
+        if pattern.len() != scrutinee_values.len() {
+            return Err(EvalError::InvalidOperation(
+                format!(
+                    "Oracle branch pattern length {} does not match scrutinee length {}",
+                    pattern.len(),
+                    scrutinee_values.len()
+                ),
+                line_info.clone(),
+            ));
+        }
+
+        let mut matched = true;
+        for (idx, pattern_elem) in pattern.iter().enumerate() {
+            if let AST::OracleDontCareItem(_) = pattern_elem {
+                continue;
+            }
+
+            let Some(scrutinee_value) = scrutinee_values.get(idx) else {
+                return Err(EvalError::InvalidOperation(
+                    "Oracle branch references missing scrutinee".to_string(),
+                    line_info.clone(),
+                ));
+            };
+
+            // A bare identifier in match-mode pattern position introduces a
+            // fresh binding to the scrutinee value (rather than looking the
+            // identifier up as an expression). The binding lives in the
+            // per-branch scope the caller pushed, so it is visible to the
+            // ward and body of this arm and disappears when the arm finishes.
+            if let AST::Var(name, var_line) = pattern_elem {
+                env.set_var(
+                    name.clone(),
+                    scrutinee_value.clone(),
+                    type_of_scrutinee(scrutinee_value),
+                    false,
+                    var_line.clone(),
+                );
+                continue;
+            }
+
+            let pattern_result = evaluate(pattern_elem, env)?;
+
+            match (scrutinee_value, pattern_result) {
+                (Value::Arcana(cond_n), EvalResult::Data(Value::Arcana(pat_n))) => {
+                    if *cond_n != pat_n {
+                        matched = false;
+                        break;
+                    }
+                }
+                (Value::Aether(cond_n), EvalResult::Data(Value::Aether(pat_n))) => {
+                    if (*cond_n - pat_n).abs() >= f64::EPSILON {
+                        matched = false;
+                        break;
+                    }
+                }
+                (Value::Rune(cond_s), EvalResult::Data(Value::Rune(pat_s))) => {
+                    if cond_s.as_ref() != pat_s.as_ref() {
+                        matched = false;
+                        break;
+                    }
+                }
+                (Value::Omen(cond_b), EvalResult::Data(Value::Omen(pat_b))) => {
+                    if *cond_b != pat_b {
+                        matched = false;
+                        break;
+                    }
+                }
+                _ => {
+                    return Err(EvalError::InvalidOperation(
+                        "Oracle branch pattern type must match scrutinee type".to_string(),
+                        line_info.clone(),
+                    ));
+                }
+            }
+        }
+        matched
+    } else {
+        let mut all_true = true;
+        for pattern_expr in pattern {
+            match evaluate(pattern_expr, env)? {
+                EvalResult::Data(Value::Omen(true)) => continue,
+                EvalResult::Data(Value::Omen(false)) => {
+                    all_true = false;
+                    break;
+                }
+                other => {
+                    return Err(EvalError::InvalidOperation(
+                        format!(
+                            "Oracle if-else pattern must evaluate to an omen, found {:?}",
+                            other
+                        ),
+                        line_info.clone(),
+                    ));
+                }
+            }
+        }
+        all_true
+    };
+
+    let matched = if matched {
+        match guard {
+            None => true,
+            Some(guard_expr) => match evaluate(guard_expr, env)? {
+                EvalResult::Data(Value::Omen(b)) => b,
+                other => {
+                    return Err(EvalError::InvalidOperation(
+                        format!("Oracle ward must evaluate to an omen, found {:?}", other),
+                        line_info.clone(),
+                    ));
+                }
+            },
+        }
+    } else {
+        false
+    };
+
+    if matched {
+        let result = evaluate(body, env)?;
+        let result = match result {
+            EvalResult::Revealed(revealed) => *revealed,
+            _ => result,
+        };
+        Ok(Some(result))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Maps an oracle scrutinee `Value` (always one of the four scalar variants
+/// guaranteed by `evaluate_oracle`'s scrutinee setup) to the `Type` used when
+/// declaring its match-mode binding. The `Materia` fallback is unreachable in
+/// practice but keeps the helper total without panicking.
+fn type_of_scrutinee(value: &Value) -> Type {
+    match value {
+        Value::Arcana(_) => Type::Arcana,
+        Value::Aether(_) => Type::Aether,
+        Value::Rune(_) => Type::Rune,
+        Value::Omen(_) => Type::Omen,
+        _ => Type::Materia,
+    }
 }
 
 fn clone_indexed_child(
@@ -1091,9 +1166,9 @@ mod tests {
     }
 
     #[test]
-    fn oracle_guard_requires_omen_values() {
+    fn oracle_if_else_pattern_requires_omen_values() {
         let mut env = RuntimeEnv::new();
-        let guard_branch = AST::OracleBranch {
+        let pattern_branch = AST::OracleBranch {
             pattern: vec![AST::Arcana(1, line())],
             guard: None,
             body: Box::new(AST::Arcana(0, line())),
@@ -1103,15 +1178,15 @@ mod tests {
         let oracle = AST::Oracle {
             is_match: false,
             conditionals: vec![],
-            branches: vec![guard_branch],
+            branches: vec![pattern_branch],
             line_info: line(),
         };
 
-        let err = evaluate(&oracle, &mut env).expect_err("guards must yield omens");
+        let err = evaluate(&oracle, &mut env).expect_err("if-else mode patterns must yield omens");
         match err {
             EvalError::InvalidOperation(message, _) => {
                 assert!(
-                    message.contains("Oracle guard must evaluate to an omen"),
+                    message.contains("Oracle if-else pattern must evaluate to an omen"),
                     "{}",
                     message
                 );
@@ -1349,7 +1424,14 @@ mod tests {
         );
 
         // B. Match-mode pattern expression fails — exercises
-        //    `evaluate(pattern, env)?` inside the pattern loop.
+        //    `evaluate(pattern, env)?` inside the pattern loop. We use
+        //    `AST::Add(Var("missing"), Arcana(1))` here rather than a bare
+        //    `AST::Var("missing", _)` because, after PR2's binding-pattern
+        //    work, a bare identifier in match-mode pattern position is
+        //    intercepted as a fresh binding and never reaches `evaluate`.
+        //    Wrapping the missing identifier inside an `Add` keeps the
+        //    pattern an expression so the inner `evaluate` actually runs and
+        //    can raise `UndefinedVariable`.
         let mut env = RuntimeEnv::new();
         let oracle = AST::Oracle {
             is_match: true,
@@ -1359,7 +1441,11 @@ mod tests {
                 line_info: line(),
             }],
             branches: vec![AST::OracleBranch {
-                pattern: vec![AST::Var("missing".into(), line())],
+                pattern: vec![AST::Add(
+                    Box::new(AST::Var("missing".into(), line())),
+                    Box::new(AST::Arcana(1, line())),
+                    line(),
+                )],
                 guard: None,
                 body: Box::new(AST::Arcana(0, line())),
                 line_info: line(),

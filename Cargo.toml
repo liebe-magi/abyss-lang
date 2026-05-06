@@ -1,6 +1,11 @@
 [workspace]
 resolver = "2"
-members = ["crates/abyss-core", "crates/abyss-interpreter", "crates/abyss-cli"]
+members = [
+    "crates/abyss-core",
+    "crates/abyss-interpreter",
+    "crates/abyss-cli",
+    "crates/abyss-wasm",
+]
 
 [workspace.package]
 version = "0.5.0"

@@ -1,0 +1,26 @@
+[package]
+name = "abyss-wasm"
+description = "Wasm adapter for the AbySS interpreter, exposing a single `eval(source)` entry point for the docs-site Playground."
+readme = "README.md"
+keywords = ["abyss", "wasm", "playground", "interpreter"]
+categories = ["wasm", "development-tools"]
+publish = false
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+abyss-core.workspace = true
+abyss-interpreter.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde-wasm-bindgen = "0.6"
+wasm-bindgen = "0.2"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1"

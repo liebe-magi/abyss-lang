@@ -1,38 +1,18 @@
 use crate::env::{CallArg, RuntimeEnv, Value};
 use crate::eval::{EvalError, EvalResult};
+use crate::io_bridge::IoBridge;
 use abyss_core::ast::{LineInfo, Type};
-use std::io::{self, Write};
 use std::rc::Rc;
-
-pub trait IoBridge {
-    fn write_str(&mut self, content: &str) -> io::Result<()>;
-    fn flush(&mut self) -> io::Result<()>;
-    fn read_line(&mut self, buffer: &mut String) -> io::Result<()>;
-}
-
-struct StdIoBridge;
-
-impl IoBridge for StdIoBridge {
-    fn write_str(&mut self, content: &str) -> io::Result<()> {
-        io::stdout().write_all(content.as_bytes())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        io::stdout().flush()
-    }
-
-    fn read_line(&mut self, buffer: &mut String) -> io::Result<()> {
-        io::stdin().read_line(buffer).map(|_| ())
-    }
-}
 
 pub fn native_unveil(
     env: &mut RuntimeEnv,
     args: Vec<CallArg>,
     line: Option<LineInfo>,
 ) -> Result<EvalResult, EvalError> {
-    let mut io = StdIoBridge;
-    native_unveil_with_io(env, args, line, &mut io)
+    // Route writes through the bridge `RuntimeEnv` carries, so non-CLI
+    // hosts (Wasm playground, future LSP) can capture output without
+    // touching `stdout`. CLI builds default to `StdIoBridge`.
+    native_unveil_with_io(args, line, env.io_bridge_mut())
 }
 
 fn map_io_error(message: &str, line: &Option<LineInfo>) -> EvalError {
@@ -40,7 +20,6 @@ fn map_io_error(message: &str, line: &Option<LineInfo>) -> EvalError {
 }
 
 pub(crate) fn native_unveil_with_io(
-    _env: &mut RuntimeEnv,
     args: Vec<CallArg>,
     line: Option<LineInfo>,
     io: &mut dyn IoBridge,
@@ -70,12 +49,10 @@ pub fn native_summon(
     args: Vec<CallArg>,
     line: Option<LineInfo>,
 ) -> Result<EvalResult, EvalError> {
-    let mut io = StdIoBridge;
-    native_summon_with_io(env, args, line, &mut io)
+    native_summon_with_io(args, line, env.io_bridge_mut())
 }
 
 pub(crate) fn native_summon_with_io(
-    _env: &mut RuntimeEnv,
     args: Vec<CallArg>,
     line: Option<LineInfo>,
     io: &mut dyn IoBridge,
@@ -200,6 +177,7 @@ mod tests {
     use crate::env::{ArtifactHandle, ArtifactValue};
     use std::cell::RefCell;
     use std::collections::{HashMap, VecDeque};
+    use std::io;
     use std::rc::Rc;
 
     #[derive(Default)]
@@ -290,24 +268,21 @@ mod tests {
 
     #[test]
     fn native_unveil_with_io_writes_all_arguments() {
-        let mut env = RuntimeEnv::new();
         let args = vec![
             arg(EvalResult::data(Value::Omen(true))),
             arg(EvalResult::data(Value::Rune(Rc::new("hex".to_string())))),
         ];
         let mut io = MockIo::default();
-        let result =
-            native_unveil_with_io(&mut env, args, None, &mut io).expect("unveil should succeed");
+        let result = native_unveil_with_io(args, None, &mut io).expect("unveil should succeed");
         assert!(matches!(result, EvalResult::Data(Value::Abyss)));
         assert_eq!(io.writes.join(""), "boonhex\n");
     }
 
     #[test]
     fn native_unveil_with_io_rejects_control_flow() {
-        let mut env = RuntimeEnv::new();
         let args = vec![arg(EvalResult::Revealed(Box::new(EvalResult::abyss())))];
         let mut io = MockIo::default();
-        let err = native_unveil_with_io(&mut env, args, None, &mut io)
+        let err = native_unveil_with_io(args, None, &mut io)
             .expect_err("control flow values should error");
         if let EvalError::InvalidOperation(msg, _) = err {
             assert!(msg.contains("Revealed"));
@@ -318,19 +293,16 @@ mod tests {
 
     #[test]
     fn native_unveil_with_io_propagates_write_errors() {
-        let mut env = RuntimeEnv::new();
         let args = vec![arg(EvalResult::data(Value::Arcana(1)))];
         let mut io = MockIo::with_write_failure();
-        assert!(native_unveil_with_io(&mut env, args, None, &mut io).is_err());
+        assert!(native_unveil_with_io(args, None, &mut io).is_err());
     }
 
     #[test]
     fn native_summon_with_io_returns_trimmed_input() {
-        let mut env = RuntimeEnv::new();
         let args = vec![arg(EvalResult::data(Value::Rune(Rc::new("?".to_string()))))];
         let mut io = MockIo::with_reads(&["mage answer\n"]);
-        let result =
-            native_summon_with_io(&mut env, args, None, &mut io).expect("summon should succeed");
+        let result = native_summon_with_io(args, None, &mut io).expect("summon should succeed");
         match result {
             EvalResult::Data(Value::Rune(text)) => assert_eq!(text.as_ref(), "mage answer"),
             other => panic!("expected rune result, got {:?}", other),
@@ -340,19 +312,17 @@ mod tests {
 
     #[test]
     fn native_summon_with_io_errors_on_read_failure() {
-        let mut env = RuntimeEnv::new();
         let args = vec![arg(EvalResult::data(Value::Rune(Rc::new("?".to_string()))))];
         let mut io = MockIo::with_reads(&[]);
         io.push_error("read failure");
-        assert!(native_summon_with_io(&mut env, args, None, &mut io).is_err());
+        assert!(native_summon_with_io(args, None, &mut io).is_err());
     }
 
     #[test]
     fn native_summon_with_io_errors_on_flush_failure() {
-        let mut env = RuntimeEnv::new();
         let args = vec![arg(EvalResult::data(Value::Rune(Rc::new("?".to_string()))))];
         let mut io = MockIo::with_flush_failure();
-        assert!(native_summon_with_io(&mut env, args, None, &mut io).is_err());
+        assert!(native_summon_with_io(args, None, &mut io).is_err());
     }
 
     #[test]
@@ -381,10 +351,9 @@ mod tests {
 
     #[test]
     fn native_unveil_requires_arguments() {
-        let mut env = RuntimeEnv::new();
         let args = vec![];
         let mut io = MockIo::default();
-        let result = native_unveil_with_io(&mut env, args, None, &mut io);
+        let result = native_unveil_with_io(args, None, &mut io);
         assert!(matches!(
             result,
             Err(EvalError::InvalidOperation(msg, _)) if msg.contains("requires at least 1 argument")
@@ -393,10 +362,9 @@ mod tests {
 
     #[test]
     fn native_summon_requires_exactly_one_argument() {
-        let mut env = RuntimeEnv::new();
         let args = vec![];
         let mut io = MockIo::default();
-        let result = native_summon_with_io(&mut env, args, None, &mut io);
+        let result = native_summon_with_io(args, None, &mut io);
         assert!(matches!(
             result,
             Err(EvalError::InvalidOperation(msg, _)) if msg.contains("requires exactly 1 argument")
@@ -405,10 +373,9 @@ mod tests {
 
     #[test]
     fn native_summon_requires_rune_argument() {
-        let mut env = RuntimeEnv::new();
         let args = vec![arg(EvalResult::data(Value::Arcana(1)))];
         let mut io = MockIo::default();
-        let result = native_summon_with_io(&mut env, args, None, &mut io);
+        let result = native_summon_with_io(args, None, &mut io);
         assert!(matches!(
             result,
             Err(EvalError::TypeError(msg, _)) if msg.contains("must be a Rune")

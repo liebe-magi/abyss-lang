@@ -62,24 +62,48 @@ pub struct VarInfo {
 }
 
 /// Manages variable and function scopes in the execution environment, including
-/// both the global scope and any nested local scopes.
-#[derive(Debug, Clone)]
+/// both the global scope and any nested local scopes. Carries the
+/// [`IoBridge`](crate::io_bridge::IoBridge) used by `unveil` / `summon`,
+/// so non-CLI hosts (Wasm playground, future LSP) can swap in a custom
+/// implementation that captures output instead of touching `stdout`.
 pub struct RuntimeEnv {
     scopes: Vec<HashMap<String, VarInfo>>, // Variable scopes
     function_scopes: Vec<HashMap<String, Callable>>, // Function scopes
     artifact_scopes: Vec<HashMap<String, ArtifactSchema>>, // Artifact schemas per scope
     builtin_methods: BuiltinMethodRegistry,
+    io_bridge: Box<dyn crate::io_bridge::IoBridge>,
 }
 
 impl RuntimeEnv {
-    /// Creates a new environment with an initial global scope.
+    /// Creates a new environment with an initial global scope and the
+    /// default [`StdIoBridge`](crate::io_bridge::StdIoBridge), so CLI /
+    /// REPL paths get the same `stdout` / `stdin` behaviour they had
+    /// before the bridge abstraction landed. Non-CLI hosts call
+    /// [`set_io_bridge`](Self::set_io_bridge) afterwards to swap in
+    /// their own implementation.
     pub fn new() -> Self {
         RuntimeEnv {
             scopes: vec![HashMap::new()],
             function_scopes: vec![HashMap::new()],
             artifact_scopes: vec![HashMap::new()],
             builtin_methods: HashMap::new(),
+            io_bridge: Box::new(crate::io_bridge::StdIoBridge),
         }
+    }
+
+    /// Replace the I/O bridge used by `unveil` / `summon`. Wasm callers
+    /// install a `String`-backed implementation here so output the
+    /// playground would otherwise drop to `stdout` is captured into a
+    /// buffer the host can hand back to JavaScript.
+    pub fn set_io_bridge(&mut self, bridge: Box<dyn crate::io_bridge::IoBridge>) {
+        self.io_bridge = bridge;
+    }
+
+    /// Mutable access to the installed I/O bridge. Used by
+    /// `stdlib::functions::io` to route `unveil` writes and `summon`
+    /// reads through the bridge the host provided.
+    pub fn io_bridge_mut(&mut self) -> &mut dyn crate::io_bridge::IoBridge {
+        self.io_bridge.as_mut()
     }
 
     /// Pushes a new scope onto the stack, creating a new local environment for variables and functions.

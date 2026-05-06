@@ -718,6 +718,137 @@ fn test_oracle_artifact_pattern_empty_fields_matches_by_type() {
 }
 
 #[test]
+fn test_oracle_lexicon_pattern_binds_listed_keys() {
+    // Listing keys with bindings pulls each value out and binds it for
+    // the body, similar to artifact patterns but keyed by rune literals.
+    let input = r#"
+    forge config: lexicon = { "name": "Ardyn", "port": 8080 };
+    forge label: rune = oracle (config) {
+        { "name": n, "port": p } => reveal(n + "@" + p.trans(rune));
+    };
+    label;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(
+            matches!(&results[2], EvalResult::Data(Value::Rune(s)) if s.as_ref() == "Ardyn@8080")
+        ),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_lexicon_pattern_literal_value_compare() {
+    // Explicit `key: <expr>` compares the entry by value; a binding next
+    // to it still captures.
+    let input = r#"
+    forge config: lexicon = { "name": "Ardyn", "active": boon };
+    forge label: rune = oracle (config) {
+        { "name": "Ardyn", "active": boon } => reveal("the chosen one is online");
+        _ => reveal("someone else");
+    };
+    label;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(matches!(
+            &results[2],
+            EvalResult::Data(Value::Rune(s))
+                if s.as_ref() == "the chosen one is online"
+        )),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_lexicon_pattern_falls_through_on_missing_key() {
+    // A pattern that lists a key absent from the scrutinee falls through
+    // so a sibling arm with a smaller key set can match. Compatible with
+    // the artifact pattern's "non-exhaustive by default" ergonomics.
+    let input = r#"
+    forge solo: lexicon = { "name": "alone" };
+    forge label: rune = oracle (solo) {
+        { "name": n, "port": p } => reveal("got both");
+        { "name": n } => reveal("just name: " + n);
+        _ => reveal("none");
+    };
+    label;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(
+            matches!(&results[2], EvalResult::Data(Value::Rune(s)) if s.as_ref() == "just name: alone")
+        ),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_lexicon_pattern_empty_matches_any_lexicon() {
+    // `{}` is the catch-all "match any lexicon" form, mirroring `Tag {}`
+    // for artifacts. Useful at the end of a lexicon-dispatch chain.
+    let input = r#"
+    forge anything: lexicon = { "x": 1, "y": 2 };
+    forge label: rune = oracle (anything) {
+        {} => reveal("a lexicon");
+        _ => reveal("other");
+    };
+    label;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(
+            matches!(&results[2], EvalResult::Data(Value::Rune(s)) if s.as_ref() == "a lexicon")
+        ),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
+fn test_oracle_lexicon_pattern_against_non_lexicon_errors() {
+    // A non-lexicon scrutinee surfaces a runtime error rather than
+    // silently falling through, matching the artifact pattern's
+    // type-mismatch behaviour.
+    let input = r#"
+    forge n: arcana = 5;
+    oracle (n) {
+        { "key": v } => reveal("never");
+        _ => reveal("never either");
+    };
+    "#;
+    match test_base(input) {
+        Ok(results) => panic!("expected non-lexicon scrutinee error, got {:?}", results),
+        Err(e) => {
+            let msg = format!("{:?}", e);
+            assert!(
+                msg.contains("Lexicon pattern requires a lexicon scrutinee"),
+                "unexpected error: {}",
+                msg
+            )
+        }
+    }
+}
+
+#[test]
+fn test_oracle_lexicon_pattern_nested_value_destructure() {
+    // Lexicon entries can themselves be nested patterns — here the
+    // "items" entry is destructured as a scroll head/tail and the
+    // bindings flow into the same arm scope.
+    let input = r#"
+    forge bag: lexicon = { "name": "satchel", "items": ["sword", "shield", "rune"] };
+    forge label: rune = oracle (bag) {
+        { "name": n, "items": [first, ..rest] } =>
+            reveal(n + " holds " + first + " plus " + rest.tally().trans(rune) + " more");
+    };
+    label;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(matches!(
+            &results[2],
+            EvalResult::Data(Value::Rune(s))
+                if s.as_ref() == "satchel holds sword plus 2 more"
+        )),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
 fn test_oracle_with_block_and_reveal() {
     let input = r#"
     forge x: arcana = -10;

@@ -846,12 +846,32 @@ fn pattern_parser<'src>(
     // wrapping logic as `scroll`. The recursive `pattern_element` lets each
     // field value itself be a nested scroll / artifact / wildcard pattern.
     let artifact =
-        artifact_pattern_parser(ctx, pattern_element, expression).map_with(|ast, extra| {
+        artifact_pattern_parser(ctx.clone(), pattern_element.clone(), expression.clone()).map_with(
+            |ast, extra| {
+                let span: SimpleSpan<usize> =
+                    SimpleSpan::new(extra.span().start(), extra.span().end());
+                (vec![ast], span)
+            },
+        );
+
+    // A lexicon pattern `{ "key": value, … }` at the top of an arm — same
+    // shape wrapping logic. Distinguished from artifact pattern by the
+    // absence of a leading identifier, and from a generic block `{ stmt; }`
+    // by the rune-literal-and-colon entries. Each value uses the recursive
+    // `pattern_element`, so nested patterns work the same way as inside
+    // artifact patterns.
+    let lexicon =
+        lexicon_pattern_parser(ctx, pattern_element, expression).map_with(|ast, extra| {
             let span: SimpleSpan<usize> = SimpleSpan::new(extra.span().start(), extra.span().end());
             (vec![ast], span)
         });
 
-    wildcard.or(list).or(scroll).or(artifact).boxed()
+    wildcard
+        .or(list)
+        .or(scroll)
+        .or(artifact)
+        .or(lexicon)
+        .boxed()
 }
 
 fn pattern_element_parser<'src>(
@@ -872,11 +892,24 @@ fn pattern_element_parser<'src>(
         // Run before the generic expression branch so `Player { … }` is
         // parsed as a destructuring pattern rather than the artifact literal
         // it would be in expression position.
-        let artifact = artifact_pattern_parser(ctx.clone(), pattern_elem_boxed, expression.clone());
+        let artifact =
+            artifact_pattern_parser(ctx.clone(), pattern_elem_boxed.clone(), expression.clone());
+        // Lexicon pattern shares the brace token but starts directly with a
+        // rune-literal key followed by `:`, which neither an empty block
+        // nor an artifact literal (which needs a leading identifier) can
+        // start with. Run before the expression branch so `{ "k": v }` in
+        // pattern position becomes a destructuring pattern rather than the
+        // map literal it would otherwise be.
+        let lexicon = lexicon_pattern_parser(ctx.clone(), pattern_elem_boxed, expression.clone());
 
         let expr = expression.clone().map(|(ast, _)| ast);
 
-        dont_care.or(scroll).or(artifact).or(expr).boxed()
+        dont_care
+            .or(scroll)
+            .or(artifact)
+            .or(lexicon)
+            .or(expr)
+            .boxed()
     })
     .boxed()
 }
@@ -941,6 +974,49 @@ fn artifact_pattern_parser<'src>(
             AST::OracleArtifactPattern {
                 type_name,
                 fields,
+                line_info: ctx_for_outer.info(span),
+            }
+        })
+        .boxed()
+}
+
+/// Parses a lexicon-shape pattern `{ "k0": v0, "k1": v1, … }` for an
+/// oracle match-mode arm. Each entry's value is a recursive pattern
+/// element (binding, wildcard, nested scroll/artifact pattern, literal
+/// expression). Keys not listed here are not matched against — the pattern
+/// is non-exhaustive by default, mirroring the artifact pattern's
+/// "pick what you need" ergonomics.
+///
+/// Empty `{}` matches any lexicon (a "match by shape" catch-all), reusing
+/// the same brace tokens as the lexicon literal it would be in expression
+/// position. Disambiguation: the parser tries this before the generic
+/// expression branch in `pattern_element_parser`, so the brace form in
+/// pattern position is a destructuring pattern rather than the map literal.
+fn lexicon_pattern_parser<'src>(
+    ctx: ParserContext,
+    pattern_element: BoxedParser<'src, AST>,
+    _expression: BoxedParser<'src, SpannedAst>,
+) -> BoxedParser<'src, AST> {
+    let entry = select! { Token::Rune(key) => key }
+        .map_with(|key, extra| (key, extra.span()))
+        .then_ignore(just(Token::Colon))
+        .then(pattern_element)
+        .map(|((key, _), value)| (key, value));
+
+    let ctx_for_outer = ctx;
+    just(Token::OpenBrace)
+        .map_with(|_, extra| extra.span())
+        .then(
+            entry
+                .separated_by(just(Token::Comma))
+                .allow_trailing()
+                .collect::<Vec<_>>(),
+        )
+        .then(just(Token::CloseBrace).map_with(|_, extra| extra.span()))
+        .map(move |((open_span, entries), close_span)| {
+            let span = SimpleSpan::new(open_span.start(), close_span.end());
+            AST::OracleLexiconPattern {
+                entries,
                 line_info: ctx_for_outer.info(span),
             }
         })

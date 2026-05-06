@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/abyss-core", "crates/abyss-interpreter", "crates/abyss-cli"]
 
 [workspace.package]
-version = "0.4.1"
+version = "0.5.0"
 edition = "2024"
 authors = ["liebe-magi <ripe.gold1058@fastmail.com>"]
 license = "MIT"
@@ -11,8 +11,8 @@ repository = "https://github.com/liebe-magi/abyss-lang"
 homepage = "https://abyss-lang.dev"
 
 [workspace.dependencies]
-abyss-core = { path = "crates/abyss-core", version = "0.4.1" }
-abyss-interpreter = { path = "crates/abyss-interpreter", version = "0.4.1" }
+abyss-core = { path = "crates/abyss-core", version = "0.5.0" }
+abyss-interpreter = { path = "crates/abyss-interpreter", version = "0.5.0" }
 
 [workspace.metadata.release]
 shared-version = true

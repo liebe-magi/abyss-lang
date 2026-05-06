@@ -849,6 +849,29 @@ fn test_oracle_lexicon_pattern_nested_value_destructure() {
 }
 
 #[test]
+fn test_oracle_nested_scroll_pattern_inside_scroll() {
+    // Regression: `match_scroll_pattern` previously only handled
+    // `OracleArtifactPattern` and `OracleLexiconPattern` as element
+    // sub-patterns, so `[[a, b], [c, d]]` (a scroll pattern as an element
+    // of another scroll pattern) fell into the generic-expression path
+    // and raised `Unsupported operation: OracleScrollPattern { … }`
+    // instead of recursing. Add an explicit `OracleScrollPattern` arm
+    // alongside the artifact/lexicon ones so nesting actually works,
+    // matching the page's "patterns can nest" claim.
+    let input = r#"
+    forge xss: scroll = [[1, 2], [3, 4]];
+    forge sum: arcana = oracle (xss) {
+        [[a, b], [c, d]] => reveal(a + b + c + d);
+    };
+    sum;
+    "#;
+    match test_base(input) {
+        Ok(results) => assert!(matches!(results[2], EvalResult::Data(Value::Arcana(10)))),
+        Err(e) => panic!("Error: {:?}", e),
+    }
+}
+
+#[test]
 fn test_oracle_with_block_and_reveal() {
     let input = r#"
     forge x: arcana = -10;

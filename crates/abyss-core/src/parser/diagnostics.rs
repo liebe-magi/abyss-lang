@@ -63,6 +63,25 @@ pub fn emit_diagnostics(
     source: &str,
     diagnostics: &[ParserDiagnostic],
 ) -> Result<(), std::io::Error> {
+    let rendered = render_diagnostics(source_id, source, diagnostics)?;
+    use std::io::Write;
+    std::io::stdout().write_all(rendered.as_bytes())?;
+    std::io::stdout().flush()
+}
+
+/// Render parser diagnostics as a single string instead of writing to
+/// stdout. Output includes the same `ariadne` formatting (ANSI colour
+/// codes and all) that [`emit_diagnostics`] would print, so consumers
+/// running on a non-CLI surface — Wasm playground, future LSP, embedded
+/// REPL — can capture and post-process the bytes themselves (strip ANSI,
+/// translate to HTML, etc.). The CLI renders via [`emit_diagnostics`],
+/// which is now a thin wrapper around this function.
+pub fn render_diagnostics(
+    source_id: &str,
+    source: &str,
+    diagnostics: &[ParserDiagnostic],
+) -> Result<String, std::io::Error> {
+    let mut buffer: Vec<u8> = Vec::new();
     for diagnostic in diagnostics {
         let span_range = diagnostic.span.into_range();
         let mut report = Report::build(ReportKind::Error, (source_id, span_range.clone()))
@@ -77,7 +96,13 @@ pub fn emit_diagnostics(
             report = report.with_help(help.clone());
         }
 
-        report.finish().print((source_id, Source::from(source)))?;
+        report
+            .finish()
+            .write((source_id, Source::from(source)), &mut buffer)?;
     }
-    Ok(())
+    // ariadne writes valid UTF-8 (it formats `&str` content), so the
+    // conversion is infallible in practice; surface the (impossible)
+    // error as a `std::io::Error` to match the stdout path's signature.
+    String::from_utf8(buffer)
+        .map_err(|err| std::io::Error::new(std::io::ErrorKind::InvalidData, err))
 }

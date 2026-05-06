@@ -21,6 +21,32 @@ jobs:
       - name: Run cargo check
         run: cargo check
 
+  wasm-check:
+    # Locks down wasm-readiness for the v0.6.0 Web Playground cycle:
+    # `abyss-core` and `abyss-interpreter` must keep building for
+    # `wasm32-unknown-unknown` (the future `crates/abyss-wasm` adapter
+    # depends on this, and the playground feature would silently break
+    # if a new dependency or `cfg` choice broke wasm support). The CLI
+    # crate (`abyss-lang`) is excluded — it pulls in `rustyline` /
+    # `dirs` / `colored` which are CLI-only and intentionally not
+    # wasm-compatible.
+    name: Wasm Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master 2026-04
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+
+      - name: Run cargo check (wasm32-unknown-unknown)
+        run: cargo check --target wasm32-unknown-unknown -p abyss-core -p abyss-interpreter
+
   version-check:
     name: Version Check
     runs-on: ubuntu-latest

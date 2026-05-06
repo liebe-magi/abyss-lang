@@ -1,6 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": ". /rust/env && rustup target add wasm32-unknown-unknown && cargo install --locked wasm-pack && cd docs && bun install --frozen-lockfile",
-  "buildCommand": ". /rust/env && cd docs && bun run build",
-  "outputDirectory": "docs/dist"
+  "installCommand": ". /rust/env && rustup target add wasm32-unknown-unknown && cargo install --locked wasm-pack && bun install --frozen-lockfile",
+  "buildCommand": ". /rust/env && bun run build"
 }

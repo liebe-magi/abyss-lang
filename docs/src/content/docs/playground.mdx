@@ -1,0 +1,14 @@
+---
+title: Playground
+description: Run AbySS code directly in your browser. The interpreter is compiled to WebAssembly and shipped with this page.
+---
+
+import Playground from '../../components/Playground.astro';
+
+Try AbySS without installing anything. The interpreter compiles to WebAssembly (the same `abyss-core` and `abyss-interpreter` crates the CLI uses), so what you see here matches what `abyss invoke` would print on your machine.
+
+`unveil` writes appear under **Output**. Parser and runtime diagnostics appear under **Diagnostic** with the same labels the CLI shows; an inline **Error summary** is displayed when execution could not complete. `summon` (interactive input) is intentionally not wired up in the browser — calling it raises a clear runtime error rather than blocking forever.
+
+<Playground />
+
+Pick a sample from the dropdown to seed the editor, or start from scratch and write your own. Hit **Run** to evaluate.

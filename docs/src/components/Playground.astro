@@ -1,0 +1,239 @@
+---
+// Playground component for the AbySS docs site.
+//
+// Embeds a code editor (currently a plain textarea — CodeMirror is
+// queued for the v0.6.0 PR4 polish pass) plus a Run button that loads
+// the wasm-pack output produced by `bun run build:wasm` and feeds the
+// editor contents through `eval(source)`. The captured stdout, the
+// rendered diagnostic, and the short error summary are surfaced in
+// dedicated panels so the user can correlate them with each other.
+//
+// The wasm module is loaded on the first Run click rather than at page
+// load — keeps the docs site fast for visitors who land on the
+// Playground page but never run anything.
+---
+<style>
+    .playground {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        margin-top: 1rem;
+    }
+
+    .playground__toolbar {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+
+    .playground__select,
+    .playground__run {
+        font: inherit;
+        padding: 0.4rem 0.75rem;
+        border-radius: 0.25rem;
+        border: 1px solid var(--sl-color-gray-5);
+        background: var(--sl-color-bg-sidebar);
+        color: var(--sl-color-text);
+        cursor: pointer;
+    }
+
+    .playground__run:hover:not(:disabled) {
+        background: var(--sl-color-accent-low);
+    }
+
+    .playground__run:disabled {
+        opacity: 0.6;
+        cursor: progress;
+    }
+
+    .playground__editor {
+        width: 100%;
+        min-height: 16rem;
+        font-family: var(--sl-font-mono);
+        font-size: 0.9rem;
+        padding: 0.75rem;
+        border-radius: 0.25rem;
+        border: 1px solid var(--sl-color-gray-5);
+        background: var(--sl-color-bg);
+        color: var(--sl-color-text);
+        resize: vertical;
+        tab-size: 4;
+    }
+
+    .playground__panel {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .playground__panel-label {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--sl-color-gray-2);
+    }
+
+    .playground__output,
+    .playground__error,
+    .playground__summary {
+        font-family: var(--sl-font-mono);
+        font-size: 0.85rem;
+        padding: 0.75rem;
+        border-radius: 0.25rem;
+        background: var(--sl-color-bg-sidebar);
+        border: 1px solid var(--sl-color-gray-5);
+        white-space: pre-wrap;
+        word-break: break-word;
+        min-height: 1.5rem;
+        max-height: 24rem;
+        overflow: auto;
+    }
+
+    .playground__error {
+        border-color: var(--sl-color-red);
+    }
+
+    .playground__summary {
+        border-color: var(--sl-color-red);
+        color: var(--sl-color-red);
+    }
+</style>
+
+<div class="playground">
+    <div class="playground__toolbar">
+        <label for="playground-sample" class="sl-sr-only">Sample</label>
+        <select id="playground-sample" class="playground__select">
+            <option value="hello">hello: unveil &quot;Hello, AbySS!&quot;</option>
+            <option value="patterns">patterns: ward + scroll destructuring</option>
+            <option value="empty">empty: start from scratch</option>
+        </select>
+        <button id="playground-run" type="button" class="playground__run">
+            Run
+        </button>
+        <span id="playground-status" aria-live="polite"></span>
+    </div>
+
+    <textarea
+        id="playground-editor"
+        class="playground__editor"
+        spellcheck="false"
+        autocapitalize="off"
+        autocomplete="off"
+        autocorrect="off"
+    ></textarea>
+
+    <div class="playground__panel" id="playground-summary-panel" hidden>
+        <div class="playground__panel-label">Error summary</div>
+        <pre id="playground-summary" class="playground__summary"></pre>
+    </div>
+
+    <div class="playground__panel">
+        <div class="playground__panel-label">Output</div>
+        <pre id="playground-output" class="playground__output"></pre>
+    </div>
+
+    <div class="playground__panel" id="playground-error-panel" hidden>
+        <div class="playground__panel-label">Diagnostic</div>
+        <pre id="playground-error" class="playground__error"></pre>
+    </div>
+</div>
+
+<script>
+    // Astro's default `<script>` (no `lang` attribute) is processed by
+    // Vite/esbuild, which transparently handles TypeScript syntax and
+    // bundles the output. Adding `lang="ts"` flipped Astro into inline
+    // mode and shipped the raw `interface` keyword to the browser, so
+    // we keep the plain `<script>` form. Type annotations below stay
+    // for editor support during development; the bundler strips them.
+    interface AbyssWasmModule {
+        default: () => Promise<unknown>;
+        evaluate: (source: string) => EvalOutcome;
+    }
+
+    type EvalOutcome = {
+        stdout: string;
+        stderr: string;
+        error: string | null;
+    };
+
+    const SAMPLES: Record<string, string> = {
+        hello: `unveil("Hello, AbySS!");\n`,
+        patterns: `forge xs: scroll = [10, 20, 30, 40];\n\noracle (xs) {\n    [] => unveil("empty");\n    [head, ..rest] ward head > 5 => unveil(\n        "head=" + head.trans(rune) + ", " + rest.tally().trans(rune) + " more"\n    );\n    _ => unveil("other");\n};\n`,
+        empty: '',
+    };
+
+    const editor = document.getElementById('playground-editor') as HTMLTextAreaElement;
+    const sample = document.getElementById('playground-sample') as HTMLSelectElement;
+    const runBtn = document.getElementById('playground-run') as HTMLButtonElement;
+    const status = document.getElementById('playground-status') as HTMLSpanElement;
+    const output = document.getElementById('playground-output') as HTMLPreElement;
+    const errorPanel = document.getElementById('playground-error-panel') as HTMLElement;
+    const errorPre = document.getElementById('playground-error') as HTMLPreElement;
+    const summaryPanel = document.getElementById('playground-summary-panel') as HTMLElement;
+    const summaryPre = document.getElementById('playground-summary') as HTMLPreElement;
+
+    // Strip ANSI colour codes from the rendered diagnostic so the inline
+    // panel stays readable. A future polish pass can swap this for an
+    // ANSI-aware terminal-emulator component (xterm.js etc.).
+    function stripAnsi(input: string): string {
+        // eslint-disable-next-line no-control-regex
+        return input.replace(/\x1b\[[0-9;]*m/g, '');
+    }
+
+    editor.value = SAMPLES[sample.value] ?? '';
+    sample.addEventListener('change', () => {
+        editor.value = SAMPLES[sample.value] ?? '';
+    });
+
+    let wasmReady: Promise<AbyssWasmModule> | null = null;
+    function loadWasm(): Promise<AbyssWasmModule> {
+        if (wasmReady === null) {
+            status.textContent = 'Loading interpreter…';
+            // The wasm-pack output is served from /wasm/ as a static
+            // asset; the .wasm sibling is fetched relative to the
+            // bundle URL by wasm-bindgen's generated initialiser.
+            // The `// @ts-ignore` skips type resolution for this
+            // absolute-URL specifier.
+            // @ts-ignore - dynamic import of wasm-pack ESM bundle
+            wasmReady = import(/* @vite-ignore */ '/wasm/abyss_wasm.js')
+                .then(async (mod: AbyssWasmModule) => {
+                    await mod.default();
+                    status.textContent = '';
+                    return mod;
+                })
+                .catch((err) => {
+                    status.textContent = '';
+                    wasmReady = null;
+                    throw err;
+                });
+        }
+        return wasmReady;
+    }
+
+    runBtn.addEventListener('click', async () => {
+        runBtn.disabled = true;
+        output.textContent = '';
+        errorPanel.hidden = true;
+        summaryPanel.hidden = true;
+
+        try {
+            const mod = await loadWasm();
+            const outcome = mod.evaluate(editor.value);
+            output.textContent = outcome.stdout;
+            if (outcome.stderr) {
+                errorPre.textContent = stripAnsi(outcome.stderr);
+                errorPanel.hidden = false;
+            }
+            if (outcome.error) {
+                summaryPre.textContent = outcome.error;
+                summaryPanel.hidden = false;
+            }
+        } catch (err) {
+            summaryPre.textContent =
+                'Failed to run: ' + (err instanceof Error ? err.message : String(err));
+            summaryPanel.hidden = false;
+        } finally {
+            runBtn.disabled = false;
+        }
+    });
+</script>

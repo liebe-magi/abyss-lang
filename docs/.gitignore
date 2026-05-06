@@ -3,6 +3,9 @@ dist/
 # generated types
 .astro/
 
+# wasm-pack output for the Playground (rebuilt by `bun run build:wasm`)
+public/wasm/
+
 # dependencies
 node_modules/
 

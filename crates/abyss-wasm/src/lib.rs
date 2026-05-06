@@ -1,9 +1,9 @@
 //! Wasm adapter for the AbySS interpreter.
 //!
-//! Exposes a single `eval(source)` entry point that the docs-site
-//! Playground (introduced in PR3 of the v0.6.0 cycle) calls from
-//! JavaScript. Output is captured into a [`String`] via the
-//! [`PlaygroundBridge`] implementation of
+//! Exposes a single `evaluate(source)` entry point (defined in
+//! [`bindings`]) that the docs-site Playground (introduced in PR3 of the
+//! v0.6.0 cycle) calls from JavaScript. Output is captured into a
+//! [`String`] via the [`PlaygroundBridge`] implementation of
 //! [`abyss_interpreter::io_bridge::IoBridge`], and diagnostics flow
 //! through the same `render_*` renderers the CLI uses (so the
 //! playground sees the same ariadne formatting the user would see in a
@@ -14,13 +14,14 @@ use std::io;
 use std::rc::Rc;
 
 use abyss_core::parser::{parse, render_diagnostics};
-use abyss_interpreter::eval::{evaluate, render_error_with_source_id};
+use abyss_interpreter::eval::{evaluate as evaluate_ast, render_error_with_source_id};
 use abyss_interpreter::io_bridge::IoBridge;
 use abyss_interpreter::stdlib::create_global_environment;
 use serde::Serialize;
-use wasm_bindgen::prelude::*;
 
-/// Result handed back to JavaScript for each `eval(source)` call.
+mod bindings;
+
+/// Result handed back to JavaScript for each `evaluate(source)` call.
 ///
 /// `stdout` captures everything `unveil` would print on the CLI.
 /// `stderr` carries the parser / runtime diagnostic, ANSI-coloured the
@@ -59,28 +60,9 @@ impl IoBridge for PlaygroundBridge {
     }
 }
 
-/// Initialise panic hooks once per Wasm instance so a Rust panic gets
-/// surfaced to the browser console instead of an opaque
-/// `RuntimeError: unreachable executed`.
-#[wasm_bindgen(start)]
-pub fn start() {
-    #[cfg(target_arch = "wasm32")]
-    console_error_panic_hook::set_once();
-}
-
-/// Evaluate `source` and return the captured stdout, the rendered
-/// diagnostic (if any), and an `error` string when evaluation could not
-/// complete. The function is exposed to JavaScript as a plain function
-/// taking a string and returning an `EvalOutcome` JSON object.
-#[wasm_bindgen]
-pub fn eval(source: String) -> Result<JsValue, JsValue> {
-    let outcome = run(&source);
-    serde_wasm_bindgen::to_value(&outcome).map_err(|err| JsValue::from_str(&err.to_string()))
-}
-
 const PLAYGROUND_SOURCE_ID: &str = "<playground>";
 
-fn run(source: &str) -> EvalOutcome {
+pub(crate) fn run(source: &str) -> EvalOutcome {
     let mut outcome = EvalOutcome::default();
 
     let parsed = parse(source);
@@ -113,7 +95,7 @@ fn run(source: &str) -> EvalOutcome {
     env.set_io_bridge(Box::new(bridge));
 
     for ast in parsed.ast {
-        if let Err(error) = evaluate(&ast, &mut env) {
+        if let Err(error) = evaluate_ast(&ast, &mut env) {
             // Use the same `<playground>` source id the parser
             // diagnostics carry so the labels stay consistent across
             // both rendering paths.

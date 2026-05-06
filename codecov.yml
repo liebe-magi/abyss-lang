@@ -15,3 +15,11 @@ comment:
   behavior: default
   require_changes: false
   hide_project_coverage: false
+
+# `crates/abyss-wasm/src/bindings.rs` holds the `#[wasm_bindgen]` JS
+# entry points. Their bodies touch `JsValue` which is effectively a stub
+# under native `cargo test`, so they are intrinsically unreachable from
+# our coverage runs. The testable surface (`run`, `PlaygroundBridge`,
+# `EvalOutcome`) lives in `lib.rs` and stays under coverage.
+ignore:
+  - "crates/abyss-wasm/src/bindings.rs"

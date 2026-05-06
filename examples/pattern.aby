@@ -1,0 +1,62 @@
+// Pattern matching enhancements landed in v0.5.0:
+//   - `ward` guards on match arms
+//   - bare-identifier bindings
+//   - scroll head/tail destructuring
+//   - artifact field destructuring (with type-dispatch fall-through)
+//   - lexicon key destructuring
+
+// 1. ward guards an arm with an extra condition.
+forge n: arcana = 7;
+oracle (n) {
+    (x) ward x > 0 => unveil("positive: " + x.trans(rune));
+    (x) ward x < 0 => unveil("negative: " + x.trans(rune));
+    _ => unveil("zero");
+};
+
+// 2. Bare-identifier bindings capture the scrutinee for the arm scope.
+forge name: rune = "Ardyn";
+oracle (name) {
+    (s) ward s == "Ardyn" => unveil("hello, " + s);
+    (s) => unveil("stranger: " + s);
+};
+
+// 3. Scroll head/tail destructuring with a named rest binding.
+forge xs: scroll = [10, 20, 30, 40];
+oracle (xs) {
+    [] => unveil("empty");
+    [only] => unveil("just " + only.trans(rune));
+    [head, ..rest] => unveil("head=" + head.trans(rune) + ", " + rest.tally().trans(rune) + " more");
+};
+
+// 4. Artifact field destructuring with type-dispatch.
+artifact Player { name: rune; health: arcana; };
+artifact Enemy { name: rune; damage: arcana; };
+
+forge hero: Player = Player { name: "Ardyn", health: 100 };
+forge foe: Enemy = Enemy { name: "Goblin", damage: 7 };
+
+oracle (hero) {
+    Player { name, health } ward health < 50 => unveil(name + " is low!");
+    Player { name } => unveil(name + " is fine");
+    Enemy { name } => unveil("foe: " + name);
+};
+
+oracle (foe) {
+    Player { name } => unveil("hero " + name);
+    Enemy { name, damage } => unveil("foe " + name + " (" + damage.trans(rune) + ")");
+};
+
+// 5. Lexicon key destructuring with a partial pattern.
+forge config: lexicon = { "name": "Ardyn", "port": 8080, "active": boon };
+oracle (config) {
+    { "name": "Ardyn", "active": boon } => unveil("the chosen one is online");
+    { "name": who, "port": p } => unveil(who + "@" + p.trans(rune));
+    {} => unveil("any other lexicon");
+};
+
+// 6. Patterns can nest: a lexicon entry whose value is a scroll, etc.
+forge bag: lexicon = { "name": "satchel", "items": ["sword", "shield", "rune"] };
+oracle (bag) {
+    { "name": label, "items": [first, ..tail] } =>
+        unveil(label + " holds " + first + " plus " + tail.tally().trans(rune) + " more");
+};

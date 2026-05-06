@@ -30,6 +30,12 @@ None at the moment. Please report any issues via GitHub.
 
 ## Release Notes
 
+### 0.5.0
+
+- Version bumped to track `abyss-lang` 0.5.0, the Pattern Matching Enhancements milestone (`ward` guards, bare-identifier bindings, and scroll / artifact / lexicon destructuring on `oracle` match arms).
+- TextMate grammar gains the `ward` keyword in the same highlight group as `forge` / `oracle` / `engrave`. The destructuring patterns reuse existing tokens (`[ ]`, `{ }`, `:`, `,`) so no further grammar work was needed.
+- Static keyword-completion provider offers `ward` alongside the existing keywords.
+
 ### 0.4.1
 
 - Version bumped to track `abyss-lang` 0.4.1, a diagnostics-polish release ("did you mean?" hints for undefined identifiers, available-alternatives hints for missing artifact fields and methods, and ariadne-rendered runtime errors). No grammar changes since 0.4.0 — existing snippets and completions continue to cover the current language surface.

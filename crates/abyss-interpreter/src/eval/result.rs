@@ -106,13 +106,19 @@ pub fn display_error_with_source(script: &str, error: &EvalError) {
 /// `"<script>"`, `"<repl>"`, `"<test>"`, or a file path) so runtime reports
 /// stay consistent with the parser diagnostics produced for the same input.
 ///
-/// Output goes to stderr. Any I/O failure from ariadne is swallowed (matching
-/// the pre-migration `eprintln!`-based behaviour). Use
-/// [`render_error_with_source_id`] when you want the rendered output as a
-/// string instead — for example, in a Wasm playground or a future LSP.
+/// Output is streamed directly to a locked stderr handle — no intermediate
+/// `String` allocation, and any I/O failure (broken pipe, etc.) is silently
+/// dropped to preserve the non-panicking behaviour the pre-migration
+/// `eprintln!`-based path had. Use [`render_error_with_source_id`] when
+/// you want the rendered output as a string instead — for example, in a
+/// Wasm playground or a future LSP.
 pub fn display_error_with_source_id(source_id: &str, script: &str, error: &EvalError) {
-    let rendered = render_error_with_source_id(source_id, script, error);
-    eprint!("{}", rendered);
+    let stderr = std::io::stderr();
+    let mut handle = stderr.lock();
+    // The CLI path explicitly drops I/O errors so a closed pipe doesn't
+    // panic the interpreter — matching the original `report.eprint(...)`
+    // semantics that this refactor replaced.
+    let _ = write_error_with_source_id(source_id, script, error, &mut handle);
 }
 
 /// Same default-source-id rendering as [`display_error_with_source`], but
@@ -130,6 +136,33 @@ pub fn render_error_with_source(script: &str, error: &EvalError) -> String {
 /// surface — Wasm playground, future LSP, embedded REPL — can capture the
 /// bytes and post-process them (strip ANSI, translate to HTML, etc.).
 pub fn render_error_with_source_id(source_id: &str, script: &str, error: &EvalError) -> String {
+    let mut buffer: Vec<u8> = Vec::new();
+    // Writing into a `Vec<u8>` is infallible in practice; on the (impossible)
+    // I/O failure path we still want a string back rather than a `Result`,
+    // so fall back to the bare `Error: …` form so the caller has something
+    // useful to display.
+    if write_error_with_source_id(source_id, script, error, &mut buffer).is_err() {
+        return format!("Error: {}\n", error);
+    }
+    String::from_utf8(buffer).unwrap_or_else(|err| {
+        format!(
+            "Error: {} (rendering produced invalid UTF-8: {})",
+            error, err
+        )
+    })
+}
+
+/// Shared implementation for both [`display_error_with_source_id`] (stderr)
+/// and [`render_error_with_source_id`] (`Vec<u8>`). Streams an `ariadne`
+/// report directly into the supplied writer — the CLI path streams to a
+/// locked stderr handle without buffering, while the string-returning
+/// path streams into a `Vec<u8>` and converts.
+fn write_error_with_source_id<W: std::io::Write>(
+    source_id: &str,
+    script: &str,
+    error: &EvalError,
+    writer: &mut W,
+) -> std::io::Result<()> {
     let message = error.to_string();
     if let Some(info) = error.line_info()
         && let Some(start) = line_col_to_byte_offset(script, info.line, info.column)
@@ -148,17 +181,9 @@ pub fn render_error_with_source_id(source_id: &str, script: &str, error: &EvalEr
                     .with_color(Color::Red),
             )
             .finish();
-        let mut buffer: Vec<u8> = Vec::new();
-        // ariadne writes valid UTF-8. Any I/O failure from a `Vec<u8>`
-        // writer is unreachable in practice; treat the (impossible) error
-        // the same way the previous `eprint`-based path did — drop it —
-        // so callers do not have to thread a `Result` through every
-        // diagnostic-rendering path.
-        let _ = report.write((source_id, Source::from(script)), &mut buffer);
-        String::from_utf8(buffer)
-            .unwrap_or_else(|err| format!("Error: {} (rendering failed: {})", message, err))
+        report.write((source_id, Source::from(script)), writer)
     } else {
-        format!("Error: {}\n", message)
+        writeln!(writer, "Error: {}", message)
     }
 }
 

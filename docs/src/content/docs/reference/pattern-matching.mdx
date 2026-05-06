@@ -1,0 +1,118 @@
+---
+title: Pattern Matching
+description: Guards, bindings, and destructuring patterns for `oracle` match-mode arms.
+---
+
+`oracle` match mode (introduced in v0.3.0) compares its scrutinee against literal patterns and wildcards. The v0.5.0 cycle layered five additional powers on top — guard clauses with `ward`, fresh bindings, and three destructuring shapes (`scroll`, `artifact`, `lexicon`) — so arms can pull values out of structured data without follow-up index access.
+
+This page focuses on those additions. See [Conditionals](/reference/conditionals/) for `oracle`'s if-else mode and the bare match-mode basics.
+
+## Guards: `ward`
+
+Add a condition that must hold for the arm to fire. The `ward` keyword sits between the pattern and the `=>` and accepts any expression that evaluates to an `omen`. If the pattern matches but the ward yields `hex`, the arm is skipped and the next arm gets a chance.
+
+```abyss
+forge n: arcana = 7;
+oracle (n) {
+    (x) ward x > 0 => unveil("positive: " + x.trans(rune));
+    (x) ward x < 0 => unveil("negative: " + x.trans(rune));
+    _ => unveil("zero");
+};
+```
+
+A non-omen ward expression surfaces a runtime error (`Oracle ward must evaluate to an omen, found …`).
+
+## Bindings
+
+A bare identifier in match-mode pattern position introduces a fresh binding to the scrutinee value, scoped to that arm. The bound name is visible to the ward and to the body, and disappears when the arm finishes.
+
+```abyss
+forge name: rune = "Ardyn";
+oracle (name) {
+    (s) ward s == "Ardyn" => unveil("hello, " + s);
+    (s) => unveil("stranger: " + s);
+};
+```
+
+Each arm has its own per-branch scope, so a binding in the first arm is not visible to the second arm. Wildcards (`_`) and literal patterns are unaffected.
+
+## Scroll patterns
+
+Destructure a `scroll` scrutinee into its elements. Each element is one of:
+
+- `_` — wildcard, matches and discards a single element.
+- `..` / `..ident` — rest segment (anonymous or named); only one allowed, and only at the end. The named form binds the trailing slice as a fresh sub-scroll.
+- bare identifier — binding for the element at this position.
+- any expression — literal compare against the element value.
+
+```abyss
+forge xs: scroll = [10, 20, 30, 40];
+oracle (xs) {
+    [] => unveil("empty");
+    [only] => unveil("just " + only.trans(rune));
+    [head, ..rest] => unveil("head=" + head.trans(rune) + ", " + rest.tally().trans(rune) + " more");
+};
+```
+
+The lengths must agree: a `[a, b]` pattern matches only a 2-element scroll, and `[head, ..rest]` matches any scroll of length ≥ 1. A scroll-pattern arm against a non-scroll scrutinee surfaces a runtime error.
+
+## Artifact patterns
+
+Destructure an `artifact` scrutinee by listing the fields you care about. Four field forms compose:
+
+- `field_name` — shorthand binding (the field value is bound under the field's name).
+- `field_name: ident` — explicit binding to a different name.
+- `field_name: _` — explicit wildcard; the field is matched but its value is discarded.
+- `field_name: <expr>` — literal compare against the field value.
+
+Fields **not** listed are not matched against — patterns are non-exhaustive by default, so you can pick out only the parts you need without explicit `..`.
+
+```abyss
+artifact Player { name: rune; health: arcana; };
+artifact Enemy { name: rune; damage: arcana; };
+
+forge hero: Player = Player { name: "Ardyn", health: 100 };
+
+oracle (hero) {
+    Player { name, health } ward health < 50 => unveil(name + " is low!");
+    Player { name } => unveil(name + " is fine");
+    Enemy { name } => unveil("foe: " + name);
+};
+```
+
+When the scrutinee is an artifact whose type does **not** match the pattern's name, the arm falls through so a sibling arm with a matching type can fire. Errors are reserved for genuine mistakes: a non-artifact scrutinee, a pattern that names an undefined artifact type, or a listed field that does not exist on the schema. The unknown-field error reuses the existing did-you-mean diagnostic, so a typo surfaces a hint:
+
+```
+Field 'helt' (did you mean: health?) does not exist on artifact Player (available: [name, health])
+```
+
+Empty `Type {}` matches any artifact of that type, regardless of field values — useful for type-only dispatch.
+
+## Lexicon patterns
+
+Destructure a `lexicon` scrutinee by listing the keys you care about. The shape mirrors the lexicon literal — keys are rune literals, values are sub-patterns:
+
+```abyss
+forge config: lexicon = { "name": "Ardyn", "port": 8080, "active": boon };
+oracle (config) {
+    { "name": "Ardyn", "active": boon } => unveil("the chosen one is online");
+    { "name": who, "port": p } => unveil(who + "@" + p.trans(rune));
+    {} => unveil("any other lexicon");
+};
+```
+
+Keys not listed are not matched against. A pattern whose key set is **not a subset** of the scrutinee's keys (i.e. a listed key is missing) falls through, so chained arms with progressively smaller key sets compose naturally. Empty `{}` matches any lexicon — the catch-all form, parallel to `Type {}` for artifacts. A lexicon-pattern arm against a non-lexicon scrutinee surfaces a runtime error.
+
+## Nesting
+
+The three destructuring forms (scroll, artifact, lexicon) recurse, and they also compose with the multi-scrutinee tuple form from match mode. Any sub-pattern position accepts another destructuring pattern, a binding, a wildcard, or a literal. Bindings collected anywhere in the structure flow into the same arm scope.
+
+```abyss
+forge bag: lexicon = { "name": "satchel", "items": ["sword", "shield", "rune"] };
+oracle (bag) {
+    { "name": label, "items": [first, ..tail] } =>
+        unveil(label + " holds " + first + " plus " + tail.tally().trans(rune) + " more");
+};
+```
+
+The arm prints `satchel holds sword plus 2 more`. The page's snippets are sliced from `examples/pattern.aby`; running `abyss invoke examples/pattern.aby` produces all of them in one go.

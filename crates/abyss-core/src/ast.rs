@@ -92,6 +92,16 @@ pub enum AST {
         fields: Vec<(String, AST)>,
         line_info: Option<LineInfo>,
     },
+    /// Lexicon-shape pattern that matches a `{ "key": value, … }`
+    /// scrutinee. Each `(key, sub_pattern)` entry pulls the named entry
+    /// out of the lexicon and matches it against `sub_pattern`. Keys not
+    /// listed here are not matched against — the pattern is
+    /// non-exhaustive by default, mirroring the artifact pattern's
+    /// "pick what you need" ergonomics.
+    OracleLexiconPattern {
+        entries: Vec<(String, AST)>,
+        line_info: Option<LineInfo>,
+    },
     Block(Vec<AST>, Option<LineInfo>),
     Comment(String, Option<LineInfo>),
     Orbit {

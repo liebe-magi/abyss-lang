@@ -228,7 +228,8 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
                     let pattern_text = match pattern.as_slice() {
                         [] => "_".to_string(),
                         [only @ AST::OracleScrollPattern { .. }]
-                        | [only @ AST::OracleArtifactPattern { .. }] => {
+                        | [only @ AST::OracleArtifactPattern { .. }]
+                        | [only @ AST::OracleLexiconPattern { .. }] => {
                             format_ast(only, indent_level + 1)
                         }
                         elems => {
@@ -291,6 +292,19 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
                     .collect::<Vec<_>>()
                     .join(", ");
                 format!("{} {{ {} }}", type_name, inner)
+            }
+        }
+        AST::OracleLexiconPattern { entries, .. } => {
+            if entries.is_empty() {
+                // `{}` matches any lexicon (the "by shape" catch-all).
+                "{}".to_string()
+            } else {
+                let inner = entries
+                    .iter()
+                    .map(|(key, sub)| format!("\"{}\": {}", key, format_ast(sub, indent_level)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{{ {} }}", inner)
             }
         }
         AST::Orbit { params, body, .. } => {

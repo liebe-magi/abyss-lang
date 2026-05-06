@@ -353,6 +353,51 @@ fn format_control_flow_and_functions() {
         oracle_with_artifact_pattern_expected
     );
 
+    let oracle_with_lexicon_pattern = AST::Oracle {
+        is_match: true,
+        conditionals: vec![abyss_core::ast::ConditionalAssignment {
+            variable: "__match_0".into(),
+            expression: var("config"),
+            line_info: None,
+        }],
+        branches: vec![
+            // Empty `{}` — matches any lexicon.
+            AST::OracleBranch {
+                pattern: vec![AST::OracleLexiconPattern {
+                    entries: vec![],
+                    line_info: None,
+                }],
+                guard: None,
+                body: Box::new(AST::Reveal(rune("a lexicon"), None)),
+                line_info: None,
+            },
+            // Two-key shape with a binding and a literal compare.
+            AST::OracleBranch {
+                pattern: vec![AST::OracleLexiconPattern {
+                    entries: vec![
+                        ("name".into(), AST::Var("n".into(), None)),
+                        ("port".into(), AST::Arcana(8080, None)),
+                    ],
+                    line_info: None,
+                }],
+                guard: None,
+                body: Box::new(AST::Reveal(var("n"), None)),
+                line_info: None,
+            },
+        ],
+        line_info: None,
+    };
+    let oracle_with_lexicon_pattern_expected = concat!(
+        "oracle (config) {\n",
+        "    {} => reveal \"a lexicon\"\n",
+        "    { \"name\": n, \"port\": 8080 } => reveal n\n",
+        "}"
+    );
+    assert_eq!(
+        format_ast(&oracle_with_lexicon_pattern, 0),
+        oracle_with_lexicon_pattern_expected
+    );
+
     let orbit = AST::Orbit {
         params: vec![AST::OrbitParam {
             name: "i".into(),

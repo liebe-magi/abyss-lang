@@ -612,6 +612,11 @@ fn evaluate_oracle(
             // through the dedicated artifact result.
             EvalResult::Data(Value::Artifact(handle)) => Value::Artifact(handle.clone()),
             EvalResult::Artifact(handle) => Value::Artifact(handle.clone()),
+            // Lexicons flow through as their shared handle so a lexicon
+            // pattern arm sees the same entries the user passed in. Mutating
+            // the lexicon inside the arm body therefore visibly mutates the
+            // outer value, matching the existing aliasing semantics.
+            EvalResult::Data(Value::Lexicon(handle)) => Value::Lexicon(handle.clone()),
             other => {
                 return Err(EvalError::InvalidOperation(
                     format!("Unsupported type in oracle scrutinee: {:?}", other),
@@ -748,6 +753,22 @@ fn evaluate_oracle_branch(
             {
                 if !match_artifact_pattern(type_name, fields, scrutinee_value, artifact_line, env)?
                 {
+                    matched = false;
+                    break;
+                }
+                continue;
+            }
+
+            // Lexicon-shape pattern destructures the scrutinee — which must
+            // be a `lexicon` — by pulling out the listed keys. Keys not
+            // listed are not matched against, so partial patterns like
+            // `{ "name": n }` are valid; an absent key falls through.
+            if let AST::OracleLexiconPattern {
+                entries,
+                line_info: lexicon_line,
+            } = pattern_elem
+            {
+                if !match_lexicon_pattern(entries, scrutinee_value, lexicon_line, env)? {
                     matched = false;
                     break;
                 }
@@ -956,6 +977,14 @@ fn match_scroll_pattern(
                     return Ok(false);
                 }
             }
+            AST::OracleLexiconPattern {
+                entries,
+                line_info: lexicon_line,
+            } => {
+                if !match_lexicon_pattern(entries, elem_value, lexicon_line, env)? {
+                    return Ok(false);
+                }
+            }
             other => {
                 let pattern_result = evaluate(other, env)?;
                 if !values_match_for_pattern(elem_value, &pattern_result, line_info)? {
@@ -1099,6 +1128,14 @@ fn match_artifact_pattern(
                     return Ok(false);
                 }
             }
+            AST::OracleLexiconPattern {
+                entries: nested_entries,
+                line_info: nested_line,
+            } => {
+                if !match_lexicon_pattern(nested_entries, &field_value, nested_line, env)? {
+                    return Ok(false);
+                }
+            }
             other => {
                 // For literal-compare on an artifact field we want a deep,
                 // type-aware equality so nested scrolls / lexicons / artifacts
@@ -1119,6 +1156,120 @@ fn match_artifact_pattern(
                     }
                 };
                 if !values_equal(env, &field_value, &pattern_value, line_info)? {
+                    return Ok(false);
+                }
+            }
+        }
+    }
+
+    Ok(true)
+}
+
+/// Match a lexicon-shape pattern against a scrutinee `Value`, performing
+/// any entry-level bindings into the caller's scope as side-effects.
+///
+/// Returns `Ok(true)` when the scrutinee is a lexicon whose listed entries
+/// satisfy their sub-patterns (and any bindings have been applied).
+/// Returns `Ok(false)` in two no-match cases:
+///
+/// - the scrutinee is a lexicon that lacks one of the listed keys —
+///   missing keys are not an error, they just disqualify this arm so
+///   sibling arms with different shapes can match;
+/// - the scrutinee is a lexicon with all listed keys present but a
+///   sub-pattern (literal compare, nested scroll/artifact/lexicon
+///   pattern, etc.) does not match.
+///
+/// Returns `Err` when the scrutinee is not a lexicon at all. Empty
+/// `{}` matches any lexicon (a "match by shape" catch-all), the same way
+/// `Tag {}` matches any artifact of type `Tag`. Keys not mentioned in the
+/// pattern are intentionally unrestricted.
+fn match_lexicon_pattern(
+    entries: &[(String, AST)],
+    scrutinee_value: &Value,
+    line_info: &Option<LineInfo>,
+    env: &mut RuntimeEnv,
+) -> Result<bool, EvalError> {
+    let lexicon_handle = match scrutinee_value {
+        Value::Lexicon(handle) => handle.clone(),
+        _ => {
+            return Err(EvalError::InvalidOperation(
+                format!(
+                    "Lexicon pattern requires a lexicon scrutinee, found {:?}",
+                    scrutinee_value
+                ),
+                line_info.clone(),
+            ));
+        }
+    };
+
+    for (key, sub_pattern) in entries {
+        // Snapshot the value out of the lexicon so we are not holding a
+        // borrow across the recursive `match_*` calls (which themselves
+        // may borrow the same handle, e.g. for nested lexicon patterns).
+        let entry_value = match lexicon_handle.borrow().get(key).cloned() {
+            Some(value) => value,
+            None => return Ok(false),
+        };
+
+        match sub_pattern {
+            AST::OracleDontCareItem(_) => continue,
+            AST::Var(name, var_line) => {
+                let bound_type = type_of_scrutinee(&entry_value);
+                env.set_var(
+                    name.clone(),
+                    entry_value,
+                    bound_type,
+                    false,
+                    var_line.clone(),
+                );
+            }
+            AST::OracleScrollPattern {
+                elements,
+                line_info: scroll_line,
+            } => {
+                if !match_scroll_pattern(elements, &entry_value, scroll_line, env)? {
+                    return Ok(false);
+                }
+            }
+            AST::OracleArtifactPattern {
+                type_name: nested_type,
+                fields: nested_fields,
+                line_info: nested_line,
+            } => {
+                if !match_artifact_pattern(
+                    nested_type,
+                    nested_fields,
+                    &entry_value,
+                    nested_line,
+                    env,
+                )? {
+                    return Ok(false);
+                }
+            }
+            AST::OracleLexiconPattern {
+                entries: nested_entries,
+                line_info: nested_line,
+            } => {
+                if !match_lexicon_pattern(nested_entries, &entry_value, nested_line, env)? {
+                    return Ok(false);
+                }
+            }
+            other => {
+                // Same deep-equality strategy as `match_artifact_pattern`'s
+                // literal-compare path so non-scalar entry values compare
+                // structurally and match the runtime `==` semantics.
+                let pattern_result = evaluate(other, env)?;
+                let pattern_value = match pattern_result {
+                    EvalResult::Data(value) => value,
+                    EvalResult::Artifact(handle) => Value::Artifact(handle),
+                    EvalResult::Revealed(_) | EvalResult::Resume(_) | EvalResult::Eject(_) => {
+                        return Err(EvalError::InvalidOperation(
+                            "Lexicon entry pattern compare must yield a value".to_string(),
+                            line_info.clone(),
+                        ));
+                    }
+                };
+                if !values_equal(env, &entry_value, &pattern_value, line_info)? {
                     return Ok(false);
                 }
             }

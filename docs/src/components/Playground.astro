@@ -138,11 +138,13 @@
     </div>
 </div>
 
-<script lang="ts">
-    // Minimal shape of the wasm-pack ESM output we depend on. The
-    // module is loaded at runtime from `/wasm/abyss_wasm.js`, so we
-    // annotate the parts we use rather than rely on TypeScript
-    // resolving an absolute-URL module specifier at type-check time.
+<script>
+    // Astro's default `<script>` (no `lang` attribute) is processed by
+    // Vite/esbuild, which transparently handles TypeScript syntax and
+    // bundles the output. Adding `lang="ts"` flipped Astro into inline
+    // mode and shipped the raw `interface` keyword to the browser, so
+    // we keep the plain `<script>` form. Type annotations below stay
+    // for editor support during development; the bundler strips them.
     interface AbyssWasmModule {
         default: () => Promise<unknown>;
         evaluate: (source: string) => EvalOutcome;

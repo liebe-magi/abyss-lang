@@ -6,13 +6,40 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-06
+
+A pattern-matching milestone. The `oracle` match-mode arms grew five new powers — guard clauses with `ward`, fresh bindings, and three destructuring shapes (`scroll`, `artifact`, `lexicon`) — composing freely so a single arm can pull values out of nested structured data without follow-up index access. The cycle is intentionally additive: every script that compiled on 0.4.1 keeps compiling.
+
+### Added
+
+- **`ward` keyword for guard clauses** ([#414](https://github.com/liebe-magi/abyss-lang/pull/414)) — `(x) ward x > 0 => …` lets a match arm carry an extra condition that must hold for the arm to fire. The arm's pattern is evaluated as before, and the ward expression is only evaluated if the pattern matched. A non-omen ward expression surfaces a runtime error (`Oracle ward must evaluate to an omen, found …`).
+- **Bare-identifier bindings in match-mode patterns** ([#417](https://github.com/liebe-magi/abyss-lang/pull/417)) — a bare identifier in a match-mode pattern position introduces a fresh binding to the scrutinee value, scoped to that arm. Visible in the ward expression and the body, gone when the arm finishes. Wildcards (`_`) and literal patterns are unaffected; if-else mode still treats bare identifiers as boolean expressions.
+- **Scroll head/tail destructuring** ([#420](https://github.com/liebe-magi/abyss-lang/pull/420)) — `[head, ..rest]`, `[a, b]`, `[]`, `[..]`, `[..rest]` shapes against scroll scrutinees, with element-level bindings, wildcards, literal compares, and a named or anonymous trailing rest segment that captures the unmatched tail as a fresh sub-scroll.
+- **Artifact field destructuring** ([#421](https://github.com/liebe-magi/abyss-lang/pull/421)) — `Player { name, health }` (shorthand binding), `Player { name: "Ardyn", health }` (literal compare + binding), `Player { name: _ }` (explicit wildcard), and the empty `Type {}` for type-only dispatch. Pattern types fall through when the scrutinee is the wrong artifact type so sibling arms can dispatch by type. Unknown field names raise the existing "did you mean?" hint via `missing_field_error`.
+- **Lexicon key destructuring** ([#423](https://github.com/liebe-magi/abyss-lang/pull/423)) — `{ "name": n, "port": p }`, partial key sets, literal compares, and the empty `{}` for "any lexicon". Listed keys not present in the scrutinee fall through so chained arms with progressively smaller key sets compose naturally.
+- **Pattern Matching reference page + `examples/pattern.aby`** ([#424](https://github.com/liebe-magi/abyss-lang/pull/424)) — dedicated [Pattern Matching](https://abyss-lang.dev/reference/pattern-matching/) page covering all five features in one place, plus a single example file exercising every match-arm shape end-to-end. The example is locked down by `tests/test_examples.rs::pattern_example_executes`.
+- **Roadmap published with v0.5–v0.8 plan** ([#412](https://github.com/liebe-magi/abyss-lang/pull/412)) — the [Roadmap](https://abyss-lang.dev/roadmap/) replaces the previous topic-grouped wishlist with an ordered Release Plan: v0.5 Pattern Matching, v0.6 Web Playground & Wasm, v0.6.x Standard Library Growth, v0.7 First-class Error Handling (Option / Result + `?` operator), v0.8 Span-tracking Refactor, v0.8.1+ LSP MVP. Generics + user-defined enums sit in *Later*, tied together because their canonical motivating examples need both.
+
+### Changed
+
+- **Oracle evaluator refactored for scope cleanup** ([#415](https://github.com/liebe-magi/abyss-lang/pull/415)) — the `AST::Oracle` arm now pushes its scope, delegates to a `evaluate_oracle` helper that uses `?` freely, and pops on every exit (including error paths). Previously five hand-written `env.pop_scope(); return Err(...)` branches were prone to drift; consolidating them removes a real scope-leak class observable in the REPL after a runtime error inside an oracle.
+- **`AST::Var` in match-mode pattern position now binds rather than looks up** ([#417](https://github.com/liebe-magi/abyss-lang/pull/417)) — semantically additive on the example surface (no existing script in the repository used a bare identifier as a match-mode pattern), but worth noting because users wanting to compare against an existing variable's value should now use a ward, e.g. `(any) ward any == existing_var =>`.
+- **VS Code TextMate grammar and keyword completion gain `ward`** ([#424](https://github.com/liebe-magi/abyss-lang/pull/424)) — highlighted in the same `keyword.control` group as `forge` / `oracle` / `engrave` and offered by the static keyword-completion provider.
+- **`reference/conditionals.mdx`** ([#412](https://github.com/liebe-magi/abyss-lang/pull/412), [#424](https://github.com/liebe-magi/abyss-lang/pull/424)) — the bare match-mode summary now points readers at the dedicated Pattern Matching page for the richer arm shapes; the stale "future enums" reference was dropped because v0.5.0's artifact-pattern type-dispatch already covers the original use case.
+
+### Fixed
+
+- **CHANGELOG forge example was syntactically invalid AbySS** ([#411](https://github.com/liebe-magi/abyss-lang/pull/411)) — the v0.4.1 entry illustrated the new "did you mean?" hint with `forge x = 1;`, which actually fails at parse time because `forge` requires an explicit type annotation. Corrected to `forge x: arcana = 1;` and added an `AGENTS.md` rule mandating that every AbySS snippet in user-facing text be executed against the local interpreter before publishing.
+
+For the full diff including Renovate-driven dependency-lock-file updates, see the [GitHub compare v0.4.1...v0.5.0](https://github.com/liebe-magi/abyss-lang/compare/v0.4.1...v0.5.0).
+
 ## [0.4.1] - 2026-05-03
 
 A diagnostics-polish release. Runtime errors now render through the same `ariadne` reporter the parser already uses, and three new "did you mean?" / "available alternatives" hint paths fire when AbySS programs reference identifiers, artifact fields, or methods that nearly match a known name. **Language semantics are unchanged from 0.4.0**; existing scripts continue to work without modification.
 
 ### Added
 
-- **"Did you mean?" hints for undefined identifiers** ([#397](https://github.com/liebe-magi/abyss-lang/pull/397)) — `forge x = 1; reveal y;` now reports `Variable y (did you mean: x?) is not defined!` when a close lexical match exists in scope. Suggestions are deterministic, capped at three, and ordered by Levenshtein distance.
+- **"Did you mean?" hints for undefined identifiers** ([#397](https://github.com/liebe-magi/abyss-lang/pull/397)) — `forge x: arcana = 1; reveal y;` now reports `Variable y (did you mean: x?) is not defined!` when a close lexical match exists in scope. Suggestions are deterministic, capped at three, and ordered by Levenshtein distance.
 - **"Did you mean?" + available-alternatives hints for methods and artifact fields** ([#401](https://github.com/liebe-magi/abyss-lang/pull/401)) — three new error sites enrich their messages: missing artifact field, missing artifact method, and missing builtin method on a value type. The artifact-field error additionally lists every defined field name so the schema is obvious without re-reading the declaration.
 - **Runtime errors render through `ariadne`** ([#404](https://github.com/liebe-magi/abyss-lang/pull/404)) — when an `EvalError` carries a source position, the offending column is underlined in the same labelled, coloured report style the parser uses, so the visual treatment is consistent across parser and runtime diagnostics. A plain `Error: …` line is still printed when no position is attached.
 

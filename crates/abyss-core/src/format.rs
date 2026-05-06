@@ -213,20 +213,45 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
                     continue;
                 }
 
-                if let AST::OracleBranch { pattern, body, .. } = branch {
-                    let pattern = pattern
-                        .iter()
-                        .map(|pat| format_ast(pat, indent_level + 1))
-                        .collect::<Vec<_>>()
-                        .join(", ");
+                if let AST::OracleBranch {
+                    pattern,
+                    guard,
+                    body,
+                    ..
+                } = branch
+                {
+                    // Top-level scroll / artifact patterns keep their natural
+                    // form (`[…] =>`, `Player { name } =>`) rather than
+                    // getting re-wrapped in `(…)`. The single-element AST
+                    // already self-formats in the right shape, so the outer
+                    // parens would be redundant noise on round-trip.
+                    let pattern_text = match pattern.as_slice() {
+                        [] => "_".to_string(),
+                        [only @ AST::OracleScrollPattern { .. }]
+                        | [only @ AST::OracleArtifactPattern { .. }]
+                        | [only @ AST::OracleLexiconPattern { .. }] => {
+                            format_ast(only, indent_level + 1)
+                        }
+                        elems => {
+                            let inner = elems
+                                .iter()
+                                .map(|pat| format_ast(pat, indent_level + 1))
+                                .collect::<Vec<_>>()
+                                .join(", ");
+                            format!("({})", inner)
+                        }
+                    };
+                    let guard_text = guard
+                        .as_ref()
+                        .map(|expr| {
+                            format!(" ward {}", format_ast(expr.as_ref(), indent_level + 1))
+                        })
+                        .unwrap_or_default();
                     result.push_str(&format!(
-                        "{}{} => {}\n",
+                        "{}{}{} => {}\n",
                         "    ".repeat(indent_level + 1),
-                        if pattern.is_empty() {
-                            "_".to_string()
-                        } else {
-                            format!("({})", pattern)
-                        },
+                        pattern_text,
+                        guard_text,
                         format_ast(body.as_ref(), indent_level + 1).trim()
                     ));
                 }
@@ -235,6 +260,53 @@ pub fn format_ast(ast: &AST, indent_level: usize) -> String {
             result
         }
         AST::OracleDontCareItem(_) => "_".to_string(),
+        AST::OracleScrollPattern { elements, .. } => {
+            let inner = elements
+                .iter()
+                .map(|elem| format_ast(elem, indent_level))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("[{}]", inner)
+        }
+        AST::OracleScrollRest { name, .. } => match name {
+            Some(name) => format!("..{}", name),
+            None => "..".to_string(),
+        },
+        AST::OracleArtifactPattern {
+            type_name, fields, ..
+        } => {
+            if fields.is_empty() {
+                // `Type {}` matches by type alone (any artifact of this
+                // type). Mirror `ArtifactLiteral`'s empty-fields formatting
+                // rather than emitting `Type {  }` with double spaces.
+                format!("{} {{}}", type_name)
+            } else {
+                let inner = fields
+                    .iter()
+                    .map(|(name, sub)| match sub {
+                        // Shorthand `{ name }` keeps its compact form when the
+                        // sub-pattern is just `Var(name)` with the same name.
+                        AST::Var(var_name, _) if var_name == name => name.clone(),
+                        other => format!("{}: {}", name, format_ast(other, indent_level)),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{} {{ {} }}", type_name, inner)
+            }
+        }
+        AST::OracleLexiconPattern { entries, .. } => {
+            if entries.is_empty() {
+                // `{}` matches any lexicon (the "by shape" catch-all).
+                "{}".to_string()
+            } else {
+                let inner = entries
+                    .iter()
+                    .map(|(key, sub)| format!("\"{}\": {}", key, format_ast(sub, indent_level)))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("{{ {} }}", inner)
+            }
+        }
         AST::Orbit { params, body, .. } => {
             let mut result = "orbit".to_string();
             if !params.is_empty() {

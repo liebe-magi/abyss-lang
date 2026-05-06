@@ -60,10 +60,48 @@ pub enum AST {
     },
     OracleBranch {
         pattern: Vec<AST>,
+        guard: Option<Box<AST>>,
         body: Box<AST>,
         line_info: Option<LineInfo>,
     },
     OracleDontCareItem(Option<LineInfo>),
+    /// Scroll-shape pattern that destructures a `scroll` scrutinee into
+    /// its elements. Each element is one of: `OracleDontCareItem`,
+    /// `OracleScrollRest`, `Var(name)` (binding), or any other AST node
+    /// (treated as a literal expression to compare against).
+    OracleScrollPattern {
+        elements: Vec<AST>,
+        line_info: Option<LineInfo>,
+    },
+    /// Rest segment inside an `OracleScrollPattern`. `name = Some("rest")`
+    /// for `..rest` (binds the unmatched tail to a fresh sub-scroll);
+    /// `name = None` for `..` (anonymous, drops the tail).
+    OracleScrollRest {
+        name: Option<String>,
+        line_info: Option<LineInfo>,
+    },
+    /// Artifact-shape pattern that matches a `TypeName { field, … }`
+    /// scrutinee. Each `(field_name, sub_pattern)` entry pulls the named
+    /// field out of the artifact and matches it against `sub_pattern`
+    /// (typically `Var` for binding, a literal for compare, or
+    /// `OracleDontCareItem` to ignore). Fields not listed here are not
+    /// matched against — the pattern is non-exhaustive by default, so
+    /// users can pick out only the fields they care about.
+    OracleArtifactPattern {
+        type_name: String,
+        fields: Vec<(String, AST)>,
+        line_info: Option<LineInfo>,
+    },
+    /// Lexicon-shape pattern that matches a `{ "key": value, … }`
+    /// scrutinee. Each `(key, sub_pattern)` entry pulls the named entry
+    /// out of the lexicon and matches it against `sub_pattern`. Keys not
+    /// listed here are not matched against — the pattern is
+    /// non-exhaustive by default, mirroring the artifact pattern's
+    /// "pick what you need" ergonomics.
+    OracleLexiconPattern {
+        entries: Vec<(String, AST)>,
+        line_info: Option<LineInfo>,
+    },
     Block(Vec<AST>, Option<LineInfo>),
     Comment(String, Option<LineInfo>),
     Orbit {

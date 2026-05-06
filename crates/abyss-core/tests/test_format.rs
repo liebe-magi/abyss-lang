@@ -198,17 +198,20 @@ fn format_control_flow_and_functions() {
         branches: vec![
             AST::OracleBranch {
                 pattern: vec![AST::Arcana(1, None)],
+                guard: None,
                 body: Box::new(AST::Reveal(var("spark"), None)),
                 line_info: None,
             },
             AST::Comment("// fallback".into(), None),
             AST::OracleBranch {
                 pattern: vec![AST::OracleDontCareItem(None)],
+                guard: None,
                 body: Box::new(AST::Reveal(Box::new(AST::Rune("wild".into(), None)), None)),
                 line_info: None,
             },
             AST::OracleBranch {
                 pattern: vec![],
+                guard: None,
                 body: Box::new(AST::Reveal(abyss(), None)),
                 line_info: None,
             },
@@ -224,6 +227,176 @@ fn format_control_flow_and_functions() {
         "}"
     );
     assert_eq!(format_ast(&oracle, 0), oracle_expected);
+
+    let oracle_with_ward = AST::Oracle {
+        is_match: true,
+        conditionals: vec![abyss_core::ast::ConditionalAssignment {
+            variable: "__match_0".into(),
+            expression: var("count"),
+            line_info: None,
+        }],
+        branches: vec![
+            AST::OracleBranch {
+                pattern: vec![AST::Arcana(1, None)],
+                guard: Some(Box::new(AST::GreaterThan(var("count"), arcana(0), None))),
+                body: Box::new(AST::Reveal(Box::new(AST::Rune("ready".into(), None)), None)),
+                line_info: None,
+            },
+            AST::OracleBranch {
+                pattern: vec![AST::OracleDontCareItem(None)],
+                guard: None,
+                body: Box::new(AST::Reveal(Box::new(AST::Rune("idle".into(), None)), None)),
+                line_info: None,
+            },
+        ],
+        line_info: None,
+    };
+    let oracle_with_ward_expected = concat!(
+        "oracle (count) {\n",
+        "    (1) ward count > 0 => reveal \"ready\"\n",
+        "    (_) => reveal \"idle\"\n",
+        "}"
+    );
+    assert_eq!(format_ast(&oracle_with_ward, 0), oracle_with_ward_expected);
+
+    let oracle_with_scroll_pattern = AST::Oracle {
+        is_match: true,
+        conditionals: vec![abyss_core::ast::ConditionalAssignment {
+            variable: "__match_0".into(),
+            expression: var("xs"),
+            line_info: None,
+        }],
+        branches: vec![
+            AST::OracleBranch {
+                pattern: vec![AST::OracleScrollPattern {
+                    elements: vec![],
+                    line_info: None,
+                }],
+                guard: None,
+                body: Box::new(AST::Reveal(Box::new(AST::Rune("empty".into(), None)), None)),
+                line_info: None,
+            },
+            AST::OracleBranch {
+                pattern: vec![AST::OracleScrollPattern {
+                    elements: vec![
+                        AST::Var("head".into(), None),
+                        AST::OracleScrollRest {
+                            name: Some("rest".into()),
+                            line_info: None,
+                        },
+                    ],
+                    line_info: None,
+                }],
+                guard: None,
+                body: Box::new(AST::Reveal(var("head"), None)),
+                line_info: None,
+            },
+        ],
+        line_info: None,
+    };
+    let oracle_with_scroll_pattern_expected = concat!(
+        "oracle (xs) {\n",
+        "    [] => reveal \"empty\"\n",
+        "    [head, ..rest] => reveal head\n",
+        "}"
+    );
+    assert_eq!(
+        format_ast(&oracle_with_scroll_pattern, 0),
+        oracle_with_scroll_pattern_expected
+    );
+
+    let oracle_with_artifact_pattern = AST::Oracle {
+        is_match: true,
+        conditionals: vec![abyss_core::ast::ConditionalAssignment {
+            variable: "__match_0".into(),
+            expression: var("hero"),
+            line_info: None,
+        }],
+        branches: vec![
+            // Shorthand `Player { name }` (one binding, sub-pattern is
+            // `Var(name)` matching the field name).
+            AST::OracleBranch {
+                pattern: vec![AST::OracleArtifactPattern {
+                    type_name: "Player".into(),
+                    fields: vec![("name".into(), AST::Var("name".into(), None))],
+                    line_info: None,
+                }],
+                guard: None,
+                body: Box::new(AST::Reveal(var("name"), None)),
+                line_info: None,
+            },
+            // Explicit field with literal compare and a trailing binding.
+            AST::OracleBranch {
+                pattern: vec![AST::OracleArtifactPattern {
+                    type_name: "Player".into(),
+                    fields: vec![
+                        ("name".into(), AST::Rune("Ardyn".into(), None)),
+                        ("health".into(), AST::Var("health".into(), None)),
+                    ],
+                    line_info: None,
+                }],
+                guard: None,
+                body: Box::new(AST::Reveal(var("health"), None)),
+                line_info: None,
+            },
+        ],
+        line_info: None,
+    };
+    let oracle_with_artifact_pattern_expected = concat!(
+        "oracle (hero) {\n",
+        "    Player { name } => reveal name\n",
+        "    Player { name: \"Ardyn\", health } => reveal health\n",
+        "}"
+    );
+    assert_eq!(
+        format_ast(&oracle_with_artifact_pattern, 0),
+        oracle_with_artifact_pattern_expected
+    );
+
+    let oracle_with_lexicon_pattern = AST::Oracle {
+        is_match: true,
+        conditionals: vec![abyss_core::ast::ConditionalAssignment {
+            variable: "__match_0".into(),
+            expression: var("config"),
+            line_info: None,
+        }],
+        branches: vec![
+            // Empty `{}` — matches any lexicon.
+            AST::OracleBranch {
+                pattern: vec![AST::OracleLexiconPattern {
+                    entries: vec![],
+                    line_info: None,
+                }],
+                guard: None,
+                body: Box::new(AST::Reveal(rune("a lexicon"), None)),
+                line_info: None,
+            },
+            // Two-key shape with a binding and a literal compare.
+            AST::OracleBranch {
+                pattern: vec![AST::OracleLexiconPattern {
+                    entries: vec![
+                        ("name".into(), AST::Var("n".into(), None)),
+                        ("port".into(), AST::Arcana(8080, None)),
+                    ],
+                    line_info: None,
+                }],
+                guard: None,
+                body: Box::new(AST::Reveal(var("n"), None)),
+                line_info: None,
+            },
+        ],
+        line_info: None,
+    };
+    let oracle_with_lexicon_pattern_expected = concat!(
+        "oracle (config) {\n",
+        "    {} => reveal \"a lexicon\"\n",
+        "    { \"name\": n, \"port\": 8080 } => reveal n\n",
+        "}"
+    );
+    assert_eq!(
+        format_ast(&oracle_with_lexicon_pattern, 0),
+        oracle_with_lexicon_pattern_expected
+    );
 
     let orbit = AST::Orbit {
         params: vec![AST::OrbitParam {

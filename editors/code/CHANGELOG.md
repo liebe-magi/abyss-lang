@@ -6,6 +6,16 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+## [v0.5.0] - 2026-05-06
+
+### Added
+
+- New `ward` keyword in the `keyword.control` highlight group, matching the syntax landed in the `abyss-lang` crate's pattern-matching cycle. The static keyword-completion provider also offers `ward` so it auto-completes alongside `forge`, `oracle`, `engrave`, etc.
+
+### Changed
+
+- Bumped the extension version to 0.5.0 to stay in lockstep with the `abyss-lang` crate. The 0.5.0 cycle introduces guard clauses (`ward`), bare-identifier bindings, and scroll / artifact / lexicon destructuring patterns; these are all expressed with existing tokens (parentheses, brackets, braces, commas, colons, the new `ward` keyword) so the TextMate grammar additions stay minimal.
+
 ## [v0.4.1] - 2026-05-03
 
 ### Changed

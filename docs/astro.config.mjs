@@ -37,6 +37,7 @@ export default defineConfig({
                         { label: 'Type Casting', slug: 'reference/type-casting' },
                         { label: 'Input & Output', slug: 'reference/input-output' },
                         { label: 'Control Flow: Conditionals', slug: 'reference/conditionals' },
+                        { label: 'Control Flow: Pattern Matching', slug: 'reference/pattern-matching' },
                         { label: 'Control Flow: Loops', slug: 'reference/loops' },
                         { label: 'Functions', slug: 'reference/functions' },
                         { label: 'Collections', slug: 'reference/collections' },

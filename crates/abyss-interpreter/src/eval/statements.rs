@@ -968,6 +968,14 @@ fn match_scroll_pattern(
                     var_line.clone(),
                 );
             }
+            AST::OracleScrollPattern {
+                elements: nested_elements,
+                line_info: nested_line,
+            } => {
+                if !match_scroll_pattern(nested_elements, elem_value, nested_line, env)? {
+                    return Ok(false);
+                }
+            }
             AST::OracleArtifactPattern {
                 type_name,
                 fields,

@@ -14,7 +14,7 @@ use std::io;
 use std::rc::Rc;
 
 use abyss_core::parser::{parse, render_diagnostics};
-use abyss_interpreter::eval::{evaluate, render_error_with_source_id};
+use abyss_interpreter::eval::{evaluate as evaluate_ast, render_error_with_source_id};
 use abyss_interpreter::io_bridge::IoBridge;
 use abyss_interpreter::stdlib::create_global_environment;
 use serde::Serialize;
@@ -72,8 +72,13 @@ pub fn start() {
 /// diagnostic (if any), and an `error` string when evaluation could not
 /// complete. The function is exposed to JavaScript as a plain function
 /// taking a string and returning an `EvalOutcome` JSON object.
+///
+/// Named `evaluate` rather than `eval` because `eval` is reserved in
+/// strict-mode ES modules and `wasm-bindgen` renames it to `_eval` on
+/// the JS side, which is awkward for hand-written callers. `evaluate`
+/// reaches the browser unmangled.
 #[wasm_bindgen]
-pub fn eval(source: String) -> Result<JsValue, JsValue> {
+pub fn evaluate(source: String) -> Result<JsValue, JsValue> {
     let outcome = run(&source);
     serde_wasm_bindgen::to_value(&outcome).map_err(|err| JsValue::from_str(&err.to_string()))
 }
@@ -113,7 +118,7 @@ fn run(source: &str) -> EvalOutcome {
     env.set_io_bridge(Box::new(bridge));
 
     for ast in parsed.ast {
-        if let Err(error) = evaluate(&ast, &mut env) {
+        if let Err(error) = evaluate_ast(&ast, &mut env) {
             // Use the same `<playground>` source id the parser
             // diagnostics carry so the labels stay consistent across
             // both rendering paths.

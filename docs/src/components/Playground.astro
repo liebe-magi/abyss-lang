@@ -97,10 +97,6 @@
         border-color: var(--sl-color-red);
         color: var(--sl-color-red);
     }
-
-    .playground__hidden {
-        display: none;
-    }
 </style>
 
 <div class="playground">
@@ -142,14 +138,14 @@
     </div>
 </div>
 
-<script>
+<script lang="ts">
     // Minimal shape of the wasm-pack ESM output we depend on. The
     // module is loaded at runtime from `/wasm/abyss_wasm.js`, so we
     // annotate the parts we use rather than rely on TypeScript
     // resolving an absolute-URL module specifier at type-check time.
     interface AbyssWasmModule {
         default: () => Promise<unknown>;
-        eval: (source: string) => EvalOutcome;
+        evaluate: (source: string) => EvalOutcome;
     }
 
     type EvalOutcome = {
@@ -220,7 +216,7 @@
 
         try {
             const mod = await loadWasm();
-            const outcome = mod.eval(editor.value) as EvalOutcome;
+            const outcome = mod.evaluate(editor.value);
             output.textContent = outcome.stdout;
             if (outcome.stderr) {
                 errorPre.textContent = stripAnsi(outcome.stderr);

@@ -31,7 +31,7 @@ oracle {
 
 ## Match Mode: `oracle (expr) { ... }`
 
-Match mode evaluates its scrutinee once, then compares it with each pattern. Perfect for booleans, strings, tuples, and future enums.
+Match mode evaluates its scrutinee once, then compares it with each pattern. Perfect for booleans, strings, and tuples; for tagged-record dispatch and richer destructuring see [Pattern Matching](/reference/pattern-matching/).
 
 ```abyss
 oracle (x > 0) {

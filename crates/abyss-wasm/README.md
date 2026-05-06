@@ -22,9 +22,13 @@ type EvalOutcome = {
   error: string | null;
 };
 
+// Throws if the EvalOutcome cannot be serialised to a JS value (very
+// rare — only on a serde-wasm-bindgen internal failure). Successful
+// runs and ordinary user errors (parser diagnostics, runtime errors)
+// resolve normally with `error` populated.
 function eval(source: string): EvalOutcome;
 ```
 
 `stdout` captures everything `unveil` would print on the CLI. `stderr` carries the parser / runtime diagnostic, ANSI-coloured the same way the CLI prints it (so the playground UI can either render the ANSI codes via xterm.js or strip them for a plain inline message). `error` is non-null when evaluation could not complete; `stdout` may still contain partial output up to the failure point.
 
-`summon` (interactive input) is **not supported** in the playground build — calling it raises a runtime error with a clear message.
+`summon` (interactive input) is **not supported** in the playground build — calling it raises a runtime error with a clear message ("summon (interactive input) is not available in the Playground").

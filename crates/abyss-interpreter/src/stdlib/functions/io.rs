@@ -79,8 +79,12 @@ pub(crate) fn native_summon_with_io(
         .map_err(|_| map_io_error("Failed to flush stdout", &line))?;
 
     let mut input = String::new();
+    // Preserve the underlying `io::Error` message so a bridge that
+    // refuses reads (e.g. the Wasm Playground bridge, which has no
+    // interactive stdin) can surface its specific reason to the user
+    // instead of being collapsed into a generic "Failed to read input".
     io.read_line(&mut input)
-        .map_err(|_| map_io_error("Failed to read input", &line))?;
+        .map_err(|err| map_io_error(&format!("Failed to read input: {}", err), &line))?;
 
     Ok(EvalResult::data(Value::Rune(Rc::new(
         input.trim().to_string(),

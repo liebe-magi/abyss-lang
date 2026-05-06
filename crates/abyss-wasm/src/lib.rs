@@ -14,7 +14,7 @@ use std::io;
 use std::rc::Rc;
 
 use abyss_core::parser::{parse, render_diagnostics};
-use abyss_interpreter::eval::{evaluate, render_error_with_source};
+use abyss_interpreter::eval::{evaluate, render_error_with_source_id};
 use abyss_interpreter::io_bridge::IoBridge;
 use abyss_interpreter::stdlib::create_global_environment;
 use serde::Serialize;
@@ -114,7 +114,10 @@ fn run(source: &str) -> EvalOutcome {
 
     for ast in parsed.ast {
         if let Err(error) = evaluate(&ast, &mut env) {
-            outcome.stderr = render_error_with_source(source, &error);
+            // Use the same `<playground>` source id the parser
+            // diagnostics carry so the labels stay consistent across
+            // both rendering paths.
+            outcome.stderr = render_error_with_source_id(PLAYGROUND_SOURCE_ID, source, &error);
             outcome.error = Some(format!("{}", error));
             // Drop borrow before assigning into the outcome.
             outcome.stdout = std::mem::take(&mut *stdout_buf.borrow_mut());
@@ -177,15 +180,17 @@ mod tests {
     fn run_rejects_summon_with_unsupported_message() {
         // Interactive input is intentionally unsupported in the
         // Playground bridge — `summon` raises a runtime error rather
-        // than blocking forever or panicking.
+        // than blocking forever or panicking. The interpreter side
+        // preserves the bridge's `io::Error` message
+        // (`stdlib::functions::io::native_summon`), so the
+        // playground-specific text reaches the user.
         let source = r#"forge name: rune = summon("name?");"#;
         let outcome = run(source);
         assert!(outcome.error.is_some());
         let combined = format!("{}\n{}", outcome.stderr, outcome.error.unwrap());
         assert!(
-            combined.contains("not available in the Playground")
-                || combined.contains("Failed to read input"),
-            "expected summon-not-supported error; got: {combined}"
+            combined.contains("not available in the Playground"),
+            "expected playground-specific summon error to reach the user; got: {combined}"
         );
     }
 }

@@ -7,7 +7,7 @@ mod helpers;
 mod span;
 mod tokens;
 
-pub use diagnostics::{ParserDiagnostic, emit_diagnostics};
+pub use diagnostics::{ParserDiagnostic, emit_diagnostics, render_diagnostics};
 
 use std::sync::Arc;
 

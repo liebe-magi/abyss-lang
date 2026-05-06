@@ -106,9 +106,63 @@ pub fn display_error_with_source(script: &str, error: &EvalError) {
 /// `"<script>"`, `"<repl>"`, `"<test>"`, or a file path) so runtime reports
 /// stay consistent with the parser diagnostics produced for the same input.
 ///
-/// Output goes to stderr. Any I/O failure from ariadne is swallowed (matching
-/// the pre-migration `eprintln!`-based behaviour).
+/// Output is streamed directly to a locked stderr handle — no intermediate
+/// `String` allocation, and any I/O failure (broken pipe, etc.) is silently
+/// dropped to preserve the non-panicking behaviour the pre-migration
+/// `eprintln!`-based path had. Use [`render_error_with_source_id`] when
+/// you want the rendered output as a string instead — for example, in a
+/// Wasm playground or a future LSP.
 pub fn display_error_with_source_id(source_id: &str, script: &str, error: &EvalError) {
+    let stderr = std::io::stderr();
+    let mut handle = stderr.lock();
+    // The CLI path explicitly drops I/O errors so a closed pipe doesn't
+    // panic the interpreter — matching the original `report.eprint(...)`
+    // semantics that this refactor replaced.
+    let _ = write_error_with_source_id(source_id, script, error, &mut handle);
+}
+
+/// Same default-source-id rendering as [`display_error_with_source`], but
+/// returns the formatted output as a string instead of writing to stderr.
+/// Useful for non-CLI consumers (Wasm playground, LSP, embedded REPL).
+pub fn render_error_with_source(script: &str, error: &EvalError) -> String {
+    render_error_with_source_id(RUNTIME_SOURCE_ID, script, error)
+}
+
+/// Render a runtime error to a `String` using the same `ariadne` formatting
+/// (ANSI colour codes and all) that [`display_error_with_source_id`] would
+/// print to stderr. The trailing newline is included where ariadne emits
+/// one; the positionless fallback path appends `"Error: …\n"` to stay
+/// byte-identical with the stderr behaviour. Consumers running on a non-CLI
+/// surface — Wasm playground, future LSP, embedded REPL — can capture the
+/// bytes and post-process them (strip ANSI, translate to HTML, etc.).
+pub fn render_error_with_source_id(source_id: &str, script: &str, error: &EvalError) -> String {
+    let mut buffer: Vec<u8> = Vec::new();
+    // Writing into a `Vec<u8>` is infallible in practice; on the (impossible)
+    // I/O failure path we still want a string back rather than a `Result`,
+    // so fall back to the bare `Error: …` form so the caller has something
+    // useful to display.
+    if write_error_with_source_id(source_id, script, error, &mut buffer).is_err() {
+        return format!("Error: {}\n", error);
+    }
+    String::from_utf8(buffer).unwrap_or_else(|err| {
+        format!(
+            "Error: {} (rendering produced invalid UTF-8: {})",
+            error, err
+        )
+    })
+}
+
+/// Shared implementation for both [`display_error_with_source_id`] (stderr)
+/// and [`render_error_with_source_id`] (`Vec<u8>`). Streams an `ariadne`
+/// report directly into the supplied writer — the CLI path streams to a
+/// locked stderr handle without buffering, while the string-returning
+/// path streams into a `Vec<u8>` and converts.
+fn write_error_with_source_id<W: std::io::Write>(
+    source_id: &str,
+    script: &str,
+    error: &EvalError,
+    writer: &mut W,
+) -> std::io::Result<()> {
     let message = error.to_string();
     if let Some(info) = error.line_info()
         && let Some(start) = line_col_to_byte_offset(script, info.line, info.column)
@@ -127,9 +181,9 @@ pub fn display_error_with_source_id(source_id: &str, script: &str, error: &EvalE
                     .with_color(Color::Red),
             )
             .finish();
-        let _ = report.eprint((source_id, Source::from(script)));
+        report.write((source_id, Source::from(script)), writer)
     } else {
-        eprintln!("Error: {}", message);
+        writeln!(writer, "Error: {}", message)
     }
 }
 
@@ -271,6 +325,33 @@ mod tests {
     fn display_error_without_line_info_still_prints_message() {
         let err = EvalError::NegativeExponent(None);
         display_error_with_source("sigil = 1", &err);
+    }
+
+    #[test]
+    fn render_error_with_resolvable_position_returns_ariadne_report() {
+        // The string-returning renderer is the surface the future Wasm
+        // playground / LSP capture, so this locks down two things: it
+        // returns a non-empty `String`, and the rendered output mentions
+        // the underlying message rather than swallowing it.
+        let script = "sigil: arcana = 1\nhex = sigil + 2";
+        let err = EvalError::InvalidOperation("invalid op".into(), Some(LineInfo::new(2, 5)));
+        let rendered = render_error_with_source(script, &err);
+        assert!(!rendered.is_empty(), "ariadne rendering produced no output");
+        assert!(
+            rendered.contains("invalid op"),
+            "rendered output should mention the message; got {rendered}"
+        );
+    }
+
+    #[test]
+    fn render_error_without_position_falls_back_to_plain_line() {
+        // With no `LineInfo` the renderer drops down to the
+        // `Error: …\n` fallback (matching what `display_error_with_source`
+        // would print).
+        let err = EvalError::NegativeExponent(None);
+        let rendered = render_error_with_source("sigil = 1", &err);
+        assert!(rendered.starts_with("Error: "), "got: {rendered}");
+        assert!(rendered.ends_with('\n'));
     }
 
     #[test]

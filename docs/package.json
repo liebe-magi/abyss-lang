@@ -3,9 +3,10 @@
   "type": "module",
   "version": "0.0.1",
   "scripts": {
-    "dev": "astro dev",
-    "start": "astro dev",
-    "build": "astro build",
+    "build:wasm": "wasm-pack build ../crates/abyss-wasm --target web --out-dir ../../docs/public/wasm --no-pack",
+    "dev": "bun run build:wasm && astro dev",
+    "start": "bun run build:wasm && astro dev",
+    "build": "bun run build:wasm && astro build",
     "preview": "astro preview",
     "astro": "astro"
   },

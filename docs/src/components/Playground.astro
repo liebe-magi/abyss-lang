@@ -213,10 +213,7 @@
             // literal import of them, and its `?import` dev query breaks
             // wasm-bindgen's sibling `.wasm` URL resolution.
             const wasmModuleUrl = new URL('/wasm/abyss_wasm.js', window.location.origin).href;
-            const importWasm = new Function('url', 'return import(url)') as (
-                url: string,
-            ) => Promise<AbyssWasmModule>;
-            wasmReady = importWasm(wasmModuleUrl)
+            wasmReady = import(/* @vite-ignore */ wasmModuleUrl)
                 .then(async (mod: AbyssWasmModule) => {
                     await mod.default();
                     status.textContent = '';

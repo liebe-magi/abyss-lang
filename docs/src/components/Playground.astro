@@ -67,6 +67,10 @@
         gap: 0.25rem;
     }
 
+    .playground__panel[hidden] {
+        display: none;
+    }
+
     .playground__panel-label {
         font-size: 0.85rem;
         font-weight: 600;
@@ -127,7 +131,7 @@
         <pre id="playground-summary" class="playground__summary"></pre>
     </div>
 
-    <div class="playground__panel">
+    <div class="playground__panel" id="playground-output-panel" hidden>
         <div class="playground__panel-label">Output</div>
         <pre id="playground-output" class="playground__output"></pre>
     </div>
@@ -166,6 +170,7 @@
     const sample = document.getElementById('playground-sample') as HTMLSelectElement;
     const runBtn = document.getElementById('playground-run') as HTMLButtonElement;
     const status = document.getElementById('playground-status') as HTMLSpanElement;
+    const outputPanel = document.getElementById('playground-output-panel') as HTMLElement;
     const output = document.getElementById('playground-output') as HTMLPreElement;
     const errorPanel = document.getElementById('playground-error-panel') as HTMLElement;
     const errorPre = document.getElementById('playground-error') as HTMLPreElement;
@@ -180,9 +185,19 @@
         return input.replace(/\x1b\[[0-9;]*m/g, '');
     }
 
+    function clearResultPanels(): void {
+        summaryPanel.hidden = true;
+        outputPanel.hidden = true;
+        errorPanel.hidden = true;
+        summaryPre.textContent = '';
+        output.textContent = '';
+        errorPre.textContent = '';
+    }
+
     editor.value = SAMPLES[sample.value] ?? '';
     sample.addEventListener('change', () => {
         editor.value = SAMPLES[sample.value] ?? '';
+        clearResultPanels();
     });
 
     let wasmReady: Promise<AbyssWasmModule> | null = null;
@@ -192,10 +207,13 @@
             // The wasm-pack output is served from /wasm/ as a static
             // asset; the .wasm sibling is fetched relative to the
             // bundle URL by wasm-bindgen's generated initialiser.
-            // The `// @ts-ignore` skips type resolution for this
-            // absolute-URL specifier.
-            // @ts-ignore - dynamic import of wasm-pack ESM bundle
-            wasmReady = import(/* @vite-ignore */ '/wasm/abyss_wasm.js')
+            //
+            // Keep this import out of Vite's analysis and query injection:
+            // JS files under public/ are served as-is. Vite rejects a
+            // literal import of them, and its `?import` dev query breaks
+            // wasm-bindgen's sibling `.wasm` URL resolution.
+            const wasmModuleUrl = new URL('/wasm/abyss_wasm.js', window.location.origin).href;
+            wasmReady = import(/* @vite-ignore */ wasmModuleUrl)
                 .then(async (mod: AbyssWasmModule) => {
                     await mod.default();
                     status.textContent = '';
@@ -212,14 +230,15 @@
 
     runBtn.addEventListener('click', async () => {
         runBtn.disabled = true;
-        output.textContent = '';
-        errorPanel.hidden = true;
-        summaryPanel.hidden = true;
+        clearResultPanels();
 
         try {
             const mod = await loadWasm();
             const outcome = mod.evaluate(editor.value);
-            output.textContent = outcome.stdout;
+            if (outcome.stdout) {
+                output.textContent = outcome.stdout;
+                outputPanel.hidden = false;
+            }
             if (outcome.stderr) {
                 errorPre.textContent = stripAnsi(outcome.stderr);
                 errorPanel.hidden = false;

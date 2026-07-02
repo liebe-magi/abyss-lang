@@ -3,6 +3,8 @@ mod collections;
 mod expressions;
 mod result;
 mod statements;
+#[cfg(test)]
+pub(crate) mod test_support;
 pub(crate) mod values;
 
 pub use result::{

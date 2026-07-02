@@ -1,8 +1,8 @@
-mod test_base;
+mod common;
 
+use common::test_base;
 use std::fs;
 use std::path::PathBuf;
-use test_base::test_base;
 
 fn load_example(name: &str) -> String {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

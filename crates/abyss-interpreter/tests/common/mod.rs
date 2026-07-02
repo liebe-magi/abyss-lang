@@ -1,11 +1,13 @@
+//! Shared driver for the integration suites: parses a source string and
+//! evaluates every statement against a fresh global environment. Lives in
+//! `tests/common/` (a directory, not a top-level file) so Cargo does not
+//! compile it as a test target of its own.
+
 use abyss_core::parser::{emit_diagnostics, parse};
 use abyss_interpreter::{
     eval::{EvalResult, display_error_with_source_id, evaluate},
     stdlib,
 };
-
-#[allow(unused_imports)]
-pub use abyss_interpreter::env::Value;
 
 const TEST_SOURCE_ID: &str = "<test>";
 

@@ -1,9 +1,15 @@
 use crate::diagnostics::{did_you_mean, label_with_suggestions};
 use crate::eval::{EvalError, EvalResult};
 use abyss_core::ast::{AST, LineInfo, Type};
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
+
+// Value and artifact types moved to dedicated modules; re-exported here so
+// pre-split paths (`crate::env::Value`, `abyss_interpreter::env::Value`, …)
+// keep working.
+pub use crate::artifact::{
+    ArtifactFieldSchema, ArtifactHandle, ArtifactMethod, ArtifactSchema, ArtifactValue,
+};
+pub use crate::value::Value;
 
 pub type BuiltinFunc =
     fn(&mut RuntimeEnv, Vec<CallArg>, Option<LineInfo>) -> Result<EvalResult, EvalError>;
@@ -44,12 +50,6 @@ pub struct EngravedFunction {
 pub struct BuiltinFunction {
     pub name: String,
     pub func: BuiltinFunc,
-}
-
-#[derive(Debug, Clone)]
-pub struct ArtifactMethod {
-    pub function: EngravedFunction,
-    pub requires_mutable_receiver: bool,
 }
 
 /// Stores information about a variable, including its value, type, and mutability.
@@ -355,65 +355,10 @@ impl Default for RuntimeEnv {
     }
 }
 
-/// Represents the value stored in a variable, including primitive scalars, collections,
-/// glyphs (type handles), and artifact instances.
-#[derive(Debug, Clone)]
-pub enum Value {
-    Omen(bool),
-    Arcana(i64),
-    Aether(f64),
-    Rune(Rc<String>),
-    Abyss,
-    Scroll(Rc<RefCell<Vec<Value>>>),
-    Lexicon(Rc<RefCell<HashMap<String, Value>>>),
-    Glyph(Type),
-    Artifact(ArtifactHandle),
-}
-
-#[derive(Debug, Clone)]
-pub struct ArtifactSchema {
-    pub name: String,
-    pub fields: Vec<ArtifactFieldSchema>,
-    pub methods: HashMap<String, ArtifactMethod>,
-    pub line_info: Option<LineInfo>,
-}
-
-impl ArtifactSchema {
-    pub fn field(&self, name: &str) -> Option<&ArtifactFieldSchema> {
-        self.fields.iter().find(|field| field.name == name)
-    }
-
-    pub fn field_names(&self) -> Vec<String> {
-        self.fields.iter().map(|field| field.name.clone()).collect()
-    }
-
-    pub fn method(&self, name: &str) -> Option<&ArtifactMethod> {
-        self.methods.get(name)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ArtifactFieldSchema {
-    pub name: String,
-    pub field_type: Type,
-}
-
-#[derive(Debug, Clone)]
-pub struct ArtifactValue {
-    pub type_name: String,
-    pub fields: HashMap<String, Value>,
-    pub field_order: Vec<String>,
-}
-
-pub type ArtifactHandle = Rc<RefCell<ArtifactValue>>;
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn rune(text: &str) -> Value {
-        Value::Rune(Rc::new(text.to_string()))
-    }
+    use crate::eval::test_support::rune;
 
     fn artifact_schema(name: &str) -> ArtifactSchema {
         ArtifactSchema {

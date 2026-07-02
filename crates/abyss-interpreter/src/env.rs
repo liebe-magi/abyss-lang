@@ -214,10 +214,7 @@ impl RuntimeEnv {
         for scope in self.scopes.iter_mut().rev() {
             if let Some(var_info) = scope.get_mut(name) {
                 if !var_info.is_morph {
-                    return Err(EvalError::InvalidOperation(
-                        format!("Cannot reassign to immutable variable {}", name),
-                        line_info,
-                    ));
+                    return Err(EvalError::ImmutableAssignment(name.to_string(), line_info));
                 }
 
                 if var_info.var_type != var_type
@@ -414,7 +411,9 @@ mod tests {
         let immutable_err = env
             .update_var("sigil", Value::Arcana(2), Type::Arcana, None)
             .unwrap_err();
-        assert!(matches!(immutable_err, EvalError::InvalidOperation(_, _)));
+        assert!(
+            matches!(immutable_err, EvalError::ImmutableAssignment(name, _) if name == "sigil")
+        );
 
         env.set_var("hex".into(), Value::Arcana(0), Type::Arcana, true, None);
         let type_err = env
@@ -525,7 +524,7 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("Cannot reassign to immutable variable")
+            Err(EvalError::ImmutableAssignment(name, _)) if name == "x"
         ));
     }
 

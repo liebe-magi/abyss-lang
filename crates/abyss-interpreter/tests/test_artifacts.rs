@@ -31,14 +31,10 @@ hero.health = 75;
     match test_base(input) {
         Ok(_) => panic!("expected immutability error"),
         Err(err) => match err.downcast_ref::<EvalError>() {
-            Some(EvalError::InvalidOperation(message, _)) => {
-                assert!(
-                    message.contains("immutable"),
-                    "unexpected message: {}",
-                    message
-                );
+            Some(EvalError::ImmutableAssignment(name, _)) => {
+                assert_eq!(name, "hero");
             }
-            other => panic!("expected invalid operation error, found {:?}", other),
+            other => panic!("expected immutable-assignment error, found {:?}", other),
         },
     }
 }
@@ -93,12 +89,11 @@ forge hero: Player = Enemy { name: "Goblin", damage: 7 };
     match test_base(input) {
         Ok(_) => panic!("expected type mismatch error"),
         Err(err) => match err.downcast_ref::<EvalError>() {
-            Some(EvalError::TypeError(message, _)) => {
-                assert!(
-                    message.contains("Expected artifact of type"),
-                    "unexpected message: {}",
-                    message
-                );
+            Some(EvalError::ArtifactTypeMismatch {
+                expected, found, ..
+            }) => {
+                assert_eq!(expected, "Player");
+                assert_eq!(found, "Enemy");
             }
             other => panic!("expected type error, found {:?}", other),
         },
@@ -137,12 +132,11 @@ describe(foe);
     match test_base(input) {
         Ok(_) => panic!("expected parameter type error"),
         Err(err) => match err.downcast_ref::<EvalError>() {
-            Some(EvalError::TypeError(message, _)) => {
-                assert!(
-                    message.contains("Expected artifact of type Player"),
-                    "unexpected message: {}",
-                    message
-                );
+            Some(EvalError::ArtifactTypeMismatch {
+                expected, found, ..
+            }) => {
+                assert_eq!(expected, "Player");
+                assert_eq!(found, "Enemy");
             }
             other => panic!("expected type error, found {:?}", other),
         },

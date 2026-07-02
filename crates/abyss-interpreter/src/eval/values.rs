@@ -55,59 +55,35 @@ pub(crate) fn convert_to_typed_value(
         }),
         Type::Arcana => match value {
             Value::Arcana(_) => Ok(value),
-            _ => Err(EvalError::TypeError(
-                "Expected arcana value".to_string(),
-                line_info.clone(),
-            )),
+            _ => Err(EvalError::ExpectedType(Type::Arcana, line_info.clone())),
         },
         Type::Aether => match value {
             Value::Aether(_) => Ok(value),
-            _ => Err(EvalError::TypeError(
-                "Expected aether value".to_string(),
-                line_info.clone(),
-            )),
+            _ => Err(EvalError::ExpectedType(Type::Aether, line_info.clone())),
         },
         Type::Rune => match value {
             Value::Rune(_) => Ok(value),
-            _ => Err(EvalError::TypeError(
-                "Expected rune value".to_string(),
-                line_info.clone(),
-            )),
+            _ => Err(EvalError::ExpectedType(Type::Rune, line_info.clone())),
         },
         Type::Omen => match value {
             Value::Omen(_) => Ok(value),
-            _ => Err(EvalError::TypeError(
-                "Expected omen value".to_string(),
-                line_info.clone(),
-            )),
+            _ => Err(EvalError::ExpectedType(Type::Omen, line_info.clone())),
         },
         Type::Abyss => match value {
             Value::Abyss => Ok(value),
-            _ => Err(EvalError::TypeError(
-                "Expected abyss value".to_string(),
-                line_info.clone(),
-            )),
+            _ => Err(EvalError::ExpectedType(Type::Abyss, line_info.clone())),
         },
         Type::Scroll => match value {
             Value::Scroll(_) => Ok(value),
-            _ => Err(EvalError::TypeError(
-                "Expected scroll value".to_string(),
-                line_info.clone(),
-            )),
+            _ => Err(EvalError::ExpectedType(Type::Scroll, line_info.clone())),
         },
         Type::Lexicon => match value {
             Value::Lexicon(_) => Ok(value),
-            _ => Err(EvalError::TypeError(
-                "Expected lexicon value".to_string(),
-                line_info.clone(),
-            )),
+            _ => Err(EvalError::ExpectedType(Type::Lexicon, line_info.clone())),
         },
         Type::Glyph => match value {
             Value::Glyph(_) => Ok(value),
-            _ => Err(EvalError::TypeError(
-                "Expected glyph value".to_string(),
-                line_info.clone(),
-            )),
+            _ => Err(EvalError::ExpectedType(Type::Glyph, line_info.clone())),
         },
         Type::Artifact(expected) => match value {
             Value::Artifact(handle) => {
@@ -115,17 +91,15 @@ pub(crate) fn convert_to_typed_value(
                 if &borrowed.type_name == expected {
                     Ok(Value::Artifact(clone_artifact_handle(&handle)))
                 } else {
-                    Err(EvalError::TypeError(
-                        format!(
-                            "Expected artifact of type {} but received {}",
-                            expected, borrowed.type_name
-                        ),
-                        line_info.clone(),
-                    ))
+                    Err(EvalError::ArtifactTypeMismatch {
+                        expected: expected.clone(),
+                        found: borrowed.type_name.clone(),
+                        line_info: line_info.clone(),
+                    })
                 }
             }
-            _ => Err(EvalError::TypeError(
-                format!("Expected artifact of type {}", expected),
+            _ => Err(EvalError::ExpectedType(
+                Type::Artifact(expected.clone()),
                 line_info.clone(),
             )),
         },
@@ -138,10 +112,7 @@ pub(crate) fn extract_arcana(
 ) -> Result<i64, EvalError> {
     match result {
         EvalResult::Data(Value::Arcana(v)) => Ok(*v),
-        _ => Err(EvalError::TypeError(
-            "Expected arcana value".to_string(),
-            line_info.clone(),
-        )),
+        _ => Err(EvalError::ExpectedType(Type::Arcana, line_info.clone())),
     }
 }
 
@@ -151,10 +122,7 @@ pub(crate) fn extract_aether(
 ) -> Result<f64, EvalError> {
     match result {
         EvalResult::Data(Value::Aether(v)) => Ok(*v),
-        _ => Err(EvalError::TypeError(
-            "Expected aether value".to_string(),
-            line_info.clone(),
-        )),
+        _ => Err(EvalError::ExpectedType(Type::Aether, line_info.clone())),
     }
 }
 
@@ -164,10 +132,7 @@ pub(crate) fn extract_rune(
 ) -> Result<String, EvalError> {
     match result {
         EvalResult::Data(Value::Rune(rc)) => Ok(rc.as_ref().clone()),
-        _ => Err(EvalError::TypeError(
-            "Expected rune value".to_string(),
-            line_info.clone(),
-        )),
+        _ => Err(EvalError::ExpectedType(Type::Rune, line_info.clone())),
     }
 }
 
@@ -177,10 +142,7 @@ pub(crate) fn extract_omen(
 ) -> Result<bool, EvalError> {
     match result {
         EvalResult::Data(Value::Omen(v)) => Ok(*v),
-        _ => Err(EvalError::TypeError(
-            "Expected omen value".to_string(),
-            line_info.clone(),
-        )),
+        _ => Err(EvalError::ExpectedType(Type::Omen, line_info.clone())),
     }
 }
 
@@ -301,7 +263,7 @@ mod tests {
         )
         .expect_err("type mismatch should error");
         match rune_err {
-            EvalError::TypeError(_, info) => assert!(info.is_some()),
+            EvalError::ExpectedType(Type::Arcana, info) => assert!(info.is_some()),
             other => panic!("expected type error, got {:?}", other),
         }
 
@@ -334,7 +296,12 @@ mod tests {
         )
         .expect_err("mismatched artifact type should fail");
         match wrong_artifact {
-            EvalError::TypeError(msg, _) => assert!(msg.contains("Glyph")),
+            EvalError::ArtifactTypeMismatch {
+                expected, found, ..
+            } => {
+                assert_eq!(expected, "Glyph");
+                assert_eq!(found, "Sigil");
+            }
             other => panic!("expected type error, got {:?}", other),
         }
 
@@ -374,19 +341,61 @@ mod tests {
     }
 
     #[test]
+    fn convert_to_typed_value_rejects_each_scalar_mismatch() {
+        let info = line();
+        let cases: Vec<(Type, Value)> = vec![
+            (Type::Arcana, Value::Abyss),
+            (Type::Aether, Value::Arcana(1)),
+            (Type::Rune, Value::Arcana(1)),
+            (Type::Omen, Value::Arcana(1)),
+            (Type::Abyss, Value::Arcana(1)),
+            (Type::Scroll, Value::Arcana(1)),
+            (Type::Lexicon, Value::Arcana(1)),
+            (Type::Glyph, Value::Arcana(1)),
+        ];
+        for (expected, value) in cases {
+            let err = convert_to_typed_value(EvalResult::data(value), &expected, &info)
+                .expect_err("mismatched value should fail");
+            match err {
+                EvalError::ExpectedType(ty, returned) => {
+                    assert_eq!(ty, expected);
+                    assert!(returned.is_some());
+                }
+                other => panic!("expected ExpectedType for {:?}, got {:?}", expected, other),
+            }
+        }
+
+        let err = convert_to_typed_value(
+            EvalResult::data(Value::Arcana(1)),
+            &Type::Artifact("Player".into()),
+            &info,
+        )
+        .expect_err("non-artifact should fail artifact conversion");
+        match err {
+            EvalError::ExpectedType(Type::Artifact(name), _) => assert_eq!(name, "Player"),
+            other => panic!("expected artifact ExpectedType, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn extractors_error_on_wrong_type() {
         let info = line();
         let err = extract_rune(&EvalResult::data(Value::Arcana(1)), &info).unwrap_err();
         match err {
-            EvalError::TypeError(_, info) => assert!(info.is_some()),
+            EvalError::ExpectedType(Type::Rune, info) => assert!(info.is_some()),
             other => panic!("expected type error, got {:?}", other),
         }
+
+        let err = extract_arcana(&EvalResult::data(Value::Abyss), &info).unwrap_err();
+        assert!(matches!(err, EvalError::ExpectedType(Type::Arcana, _)));
+        let err = extract_omen(&EvalResult::data(Value::Abyss), &info).unwrap_err();
+        assert!(matches!(err, EvalError::ExpectedType(Type::Omen, _)));
 
         let resume = EvalResult::Resume(None);
         let info = line();
         let err = extract_aether(&resume, &info).unwrap_err();
         match err {
-            EvalError::TypeError(_, info) => assert!(info.is_some()),
+            EvalError::ExpectedType(Type::Aether, info) => assert!(info.is_some()),
             other => panic!("expected type error from control value, got {:?}", other),
         }
     }

@@ -87,8 +87,8 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
             let evaluated_value = evaluate(value, env)?;
             if let Some(var_info) = env.get_var_mut(name) {
                 if !var_info.is_morph {
-                    return Err(EvalError::InvalidOperation(
-                        format!("Cannot reassign to immutable variable {}", name),
+                    return Err(EvalError::ImmutableAssignment(
+                        name.clone(),
                         line_info.clone(),
                     ));
                 }
@@ -182,10 +182,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                             ));
                         }
                         if !matches!(evaluated_value, EvalResult::Data(Value::Abyss)) {
-                            return Err(EvalError::TypeError(
-                                "Expected abyss value".to_string(),
-                                line_info.clone(),
-                            ));
+                            return Err(EvalError::ExpectedType(Type::Abyss, line_info.clone()));
                         }
                     }
                     (value_slot, Type::Scroll) => {
@@ -263,8 +260,8 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
             };
 
             if !var_info.is_morph {
-                return Err(EvalError::InvalidOperation(
-                    format!("Cannot reassign to immutable variable {}", base_name),
+                return Err(EvalError::ImmutableAssignment(
+                    base_name.clone(),
                     line_info.clone(),
                 ));
             }
@@ -279,10 +276,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                     let idx = expect_arcana_index(&final_index_value, line_info)?;
                     let mut items = handle.borrow_mut();
                     if idx >= items.len() {
-                        return Err(EvalError::InvalidOperation(
-                            format!("Index {} is out of bounds for scroll", idx),
-                            line_info.clone(),
-                        ));
+                        return Err(EvalError::ScrollIndexOutOfBounds(idx, line_info.clone()));
                     }
                     items[idx] = new_value;
                 }
@@ -324,8 +318,8 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
             };
 
             if !var_info.is_morph {
-                return Err(EvalError::InvalidOperation(
-                    format!("Cannot reassign to immutable variable {}", base_name),
+                return Err(EvalError::ImmutableAssignment(
+                    base_name.clone(),
                     line_info.clone(),
                 ));
             }
@@ -583,22 +577,18 @@ fn clone_indexed_child(
         Value::Scroll(handle) => {
             let idx = expect_arcana_index(index, line_info)?;
             let borrowed = handle.borrow();
-            borrowed.get(idx).cloned().ok_or_else(|| {
-                EvalError::InvalidOperation(
-                    format!("Index {} is out of bounds for scroll", idx),
-                    line_info.clone(),
-                )
-            })
+            borrowed
+                .get(idx)
+                .cloned()
+                .ok_or_else(|| EvalError::ScrollIndexOutOfBounds(idx, line_info.clone()))
         }
         Value::Lexicon(handle) => {
             let key = expect_rune_key(index, line_info)?;
             let borrowed = handle.borrow();
-            borrowed.get(&key).cloned().ok_or_else(|| {
-                EvalError::InvalidOperation(
-                    format!("Lexicon key '{}' does not exist", key),
-                    line_info.clone(),
-                )
-            })
+            borrowed
+                .get(&key)
+                .cloned()
+                .ok_or_else(|| EvalError::MissingLexiconKey(key.clone(), line_info.clone()))
         }
         _ => Err(EvalError::InvalidOperation(
             "Cannot index into non-collection value".to_string(),
@@ -656,9 +646,54 @@ mod tests {
 
         let err = evaluate(&assignment, &mut env).expect_err("immutable reassign should fail");
         match err {
-            EvalError::InvalidOperation(..) => {}
+            EvalError::ImmutableAssignment(name, _) => assert_eq!(name, "sigil"),
             other => panic!("unexpected error variant {:?}", other),
         }
+    }
+
+    #[test]
+    fn index_assignment_rejects_immutable_variables() {
+        let mut env = RuntimeEnv::new();
+        env.set_var(
+            "scroll".into(),
+            scroll(vec![Value::Arcana(0)]),
+            Type::Scroll,
+            false,
+            line(),
+        );
+
+        let index_assignment = AST::IndexAssignment {
+            target: Box::new(AST::Var("scroll".into(), line())),
+            index: Box::new(AST::Arcana(0, line())),
+            value: Box::new(AST::Arcana(99, line())),
+            line_info: line(),
+        };
+
+        let err = evaluate(&index_assignment, &mut env).expect_err("immutable index assignment");
+        assert!(matches!(err, EvalError::ImmutableAssignment(name, _) if name == "scroll"));
+    }
+
+    #[test]
+    fn field_assignment_rejects_immutable_variables() {
+        let mut env = RuntimeEnv::new();
+        register_artifact(&mut env, "Relic", vec![("power", Type::Arcana)]);
+        env.set_var(
+            "relic".into(),
+            Value::Artifact(artifact_handle("Relic", vec![("power", Value::Arcana(1))])),
+            Type::Artifact("Relic".into()),
+            false,
+            line(),
+        );
+
+        let field_assignment = AST::FieldAssignment {
+            target: Box::new(AST::Var("relic".into(), line())),
+            field: "power".into(),
+            value: Box::new(AST::Arcana(2, line())),
+            line_info: line(),
+        };
+
+        let err = evaluate(&field_assignment, &mut env).expect_err("immutable field assignment");
+        assert!(matches!(err, EvalError::ImmutableAssignment(name, _) if name == "relic"));
     }
 
     #[test]
@@ -833,9 +868,7 @@ mod tests {
         let err = clone_indexed_child(&value, &EvalResult::data(Value::Arcana(5)), &line())
             .expect_err("out of bounds should fail");
         match err {
-            EvalError::InvalidOperation(message, _) => {
-                assert!(message.contains("out of bounds"), "{}", message)
-            }
+            EvalError::ScrollIndexOutOfBounds(index, _) => assert_eq!(index, 5),
             other => panic!("unexpected error variant {:?}", other),
         }
     }
@@ -846,9 +879,7 @@ mod tests {
         let err = clone_indexed_child(&value, &EvalResult::data(rune("missing")), &line())
             .expect_err("missing key should fail");
         match err {
-            EvalError::InvalidOperation(message, _) => {
-                assert!(message.contains("does not exist"), "{}", message)
-            }
+            EvalError::MissingLexiconKey(key, _) => assert_eq!(key, "missing"),
             other => panic!("unexpected error variant {:?}", other),
         }
     }

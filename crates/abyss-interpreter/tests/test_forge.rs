@@ -1,5 +1,7 @@
 mod common;
 
+use abyss_core::ast::Type;
+
 use abyss_interpreter::env::Value;
 use abyss_interpreter::eval::{EvalError, EvalResult};
 use common::test_base;
@@ -73,7 +75,7 @@ fn test_forge_morph_type_mismatch() {
     ";
     match test_base(input) {
         Err(e) => match e.downcast_ref::<EvalError>() {
-            Some(EvalError::TypeError(_, _)) => {}
+            Some(EvalError::ExpectedType(Type::Arcana, _)) => {}
             _ => panic!("Expected a type error for mismatched assignment"),
         },
         Ok(_) => panic!("Expected an error for type mismatch with morph variable"),
@@ -150,8 +152,8 @@ fn test_forge_reassign_immutable() {
     ";
     match test_base(input) {
         Err(e) => match e.downcast_ref::<EvalError>() {
-            Some(EvalError::InvalidOperation(_, _)) => {}
-            _ => panic!("Expected an invalid operation error for reassigning immutable variable"),
+            Some(EvalError::ImmutableAssignment(name, _)) if name == "x" => {}
+            _ => panic!("Expected an immutable-assignment error"),
         },
         Ok(_) => panic!("Expected an error for reassigning immutable variable"),
     }
@@ -165,8 +167,8 @@ fn test_forge_reassign_different_type() {
     ";
     match test_base(input) {
         Err(e) => match e.downcast_ref::<EvalError>() {
-            Some(EvalError::InvalidOperation(_, _)) => {}
-            _ => panic!("Expected an invalid operation error for type mismatch"),
+            Some(EvalError::ImmutableAssignment(name, _)) if name == "x" => {}
+            _ => panic!("Expected an immutable-assignment error for reassigning x"),
         },
         Ok(_) => panic!("Expected an error for type mismatch"),
     }

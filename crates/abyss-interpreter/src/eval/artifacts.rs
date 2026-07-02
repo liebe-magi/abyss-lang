@@ -1,7 +1,7 @@
 use crate::env::{
     ArtifactFieldSchema, ArtifactHandle, ArtifactSchema, ArtifactValue, RuntimeEnv, Value,
 };
-use abyss_core::ast::{AST, ArtifactField, Span, Type};
+use abyss_core::ast::{ArtifactField, Expr, Span, Type};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -42,7 +42,7 @@ pub(crate) fn ensure_field_type_known(
                         "Artifact field {} references undefined type {}",
                         field.name, name
                     ),
-                    field.line_info,
+                    field.span,
                 ))
             }
         }
@@ -63,7 +63,7 @@ pub(crate) fn build_artifact_schema(
         if !seen.insert(field.name.clone()) {
             return Err(EvalError::InvalidOperation(
                 format!("Field '{}' is defined multiple times", field.name),
-                field.line_info.or(*line_info),
+                field.span.or(*line_info),
             ));
         }
         ensure_field_type_known(field, env, name)?;
@@ -225,12 +225,12 @@ pub(crate) fn compare_artifacts(
     Ok(true)
 }
 
-/// Extracts the base variable name and field access chain from an AST expression.
+/// Extracts the base variable name and field access chain from an Expr expression.
 ///
-/// This function only handles direct variable access (`AST::Var`) and field access chains
-/// (`AST::FieldAccess`). It returns `None` for all other AST node types, including:
-/// - Method calls (`AST::MethodCall`)
-/// - Index access (`AST::IndexAccess`)
+/// This function only handles direct variable access (`Expr::Var`) and field access chains
+/// (`Expr::FieldAccess`). It returns `None` for all other Expr node types, including:
+/// - Method calls (`Expr::MethodCall`)
+/// - Index access (`Expr::IndexAccess`)
 /// - Other complex expressions
 ///
 /// This means that mutable method calls are only supported on direct variable/field access
@@ -239,10 +239,10 @@ pub(crate) fn compare_artifacts(
 ///
 /// Returns `Some((base_var_name, field_chain))` if the expression can be traced to a variable,
 /// or `None` if the expression type is not supported for mutability tracking.
-pub(crate) fn collect_field_chain(ast: &AST) -> Option<(String, Vec<String>)> {
+pub(crate) fn collect_field_chain(ast: &Expr) -> Option<(String, Vec<String>)> {
     match ast {
-        AST::Var(name, _) => Some((name.clone(), Vec::new())),
-        AST::FieldAccess { target, field, .. } => {
+        Expr::Var(name, _) => Some((name.clone(), Vec::new())),
+        Expr::FieldAccess { target, field, .. } => {
             let (base, mut chain) = collect_field_chain(target)?;
             chain.push(field.clone());
             Some((base, chain))
@@ -369,14 +369,14 @@ mod tests {
         let valid = ArtifactField {
             name: "ally".into(),
             field_type: Type::Artifact("Glyph".into()),
-            line_info: None,
+            span: None,
         };
         ensure_field_type_known(&valid, &env, "Sigil").unwrap();
 
         let invalid = ArtifactField {
             name: "unknown".into(),
             field_type: Type::Artifact("Missing".into()),
-            line_info: None,
+            span: None,
         };
         let err = ensure_field_type_known(&invalid, &env, "Sigil").unwrap_err();
         match err {
@@ -392,12 +392,12 @@ mod tests {
             ArtifactField {
                 name: "power".into(),
                 field_type: Type::Arcana,
-                line_info: None,
+                span: None,
             },
             ArtifactField {
                 name: "power".into(),
                 field_type: Type::Arcana,
-                line_info: None,
+                span: None,
             },
         ];
 
@@ -480,21 +480,21 @@ mod tests {
 
     #[test]
     fn collect_field_chain_tracks_nested_field_access() {
-        let chain = AST::FieldAccess {
-            target: Box::new(AST::FieldAccess {
-                target: Box::new(AST::Var("sigil".into(), None)),
+        let chain = Expr::FieldAccess {
+            target: Box::new(Expr::FieldAccess {
+                target: Box::new(Expr::Var("sigil".into(), None)),
                 field: "inner".into(),
-                line_info: None,
+                span: None,
             }),
             field: "deep".into(),
-            line_info: None,
+            span: None,
         };
 
         let (base, fields) = collect_field_chain(&chain).expect("chain should resolve");
         assert_eq!(base, "sigil");
         assert_eq!(fields, vec!["inner".to_string(), "deep".to_string()]);
 
-        assert!(collect_field_chain(&AST::Abyss(None)).is_none());
+        assert!(collect_field_chain(&Expr::Abyss(None)).is_none());
     }
 
     #[test]

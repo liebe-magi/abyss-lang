@@ -3,7 +3,7 @@
 //! the REPL.
 
 use abyss_core::{
-    format::format_ast,
+    format::format_stmt,
     parser::{ParserDiagnostic, emit_diagnostics, parse},
 };
 use abyss_interpreter::{
@@ -55,6 +55,6 @@ pub fn execute_format(script: &str) {
     }
 
     for ast in outcome.ast {
-        println!("{}", format_ast(&ast, 0));
+        println!("{}", format_stmt(&ast, 0));
     }
 }

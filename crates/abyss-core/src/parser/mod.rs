@@ -11,12 +11,12 @@ pub use diagnostics::{ParserDiagnostic, emit_diagnostics, render_diagnostics};
 use chumsky::{Parser, input::IterInput};
 use ordered_float::OrderedFloat;
 
-use crate::ast::AST;
+use crate::ast::Stmt;
 
 use diagnostics::convert_rich_error;
 use grammar::build_parser;
 pub struct ParseOutcome {
-    pub ast: Vec<AST>,
+    pub ast: Vec<Stmt>,
     pub diagnostics: Vec<ParserDiagnostic>,
 }
 

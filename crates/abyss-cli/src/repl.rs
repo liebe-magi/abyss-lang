@@ -5,7 +5,7 @@
 //! this must stay in sync with the language's block syntax). History is
 //! persisted under `~/.abyss/`.
 
-use abyss_core::{format::format_ast, parser::parse};
+use abyss_core::{format::format_stmt, parser::parse};
 use abyss_interpreter::{
     env::Value,
     eval::{EvalResult, evaluate},
@@ -119,7 +119,7 @@ pub fn start_interpreter(debug: bool) {
 
                         match evaluate(&ast, &mut env) {
                             Ok(result) => {
-                                current_session_code.push_str(&format_ast(&ast, 0));
+                                current_session_code.push_str(&format_stmt(&ast, 0));
                                 current_session_code.push('\n');
                                 match result {
                                     EvalResult::Data(Value::Omen(true)) => {

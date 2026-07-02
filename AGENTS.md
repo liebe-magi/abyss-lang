@@ -6,7 +6,7 @@ Guidance for AI coding assistants (and humans) working in this repository.
 
 AbySS is a magic-themed scripting language with its own interpreter, formatter, and CLI tooling. The repo is a single Cargo workspace that also hosts the Starlight documentation site and the VS Code extension.
 
-- **`crates/abyss-core`** — AST (`ast.rs`), `chumsky`-based parser (`parser/`), and formatter (`format.rs`). Designed to stay lightweight so a future LSP or Wasm playground can depend on it without pulling in runtime code.
+- **`crates/abyss-core`** — the `Expr` / `Stmt` / `Pattern` AST (`ast.rs`, span-carrying), `chumsky`-based parser (`parser/`), and formatter (`format.rs`). Designed to stay lightweight so a future LSP or Wasm playground can depend on it without pulling in runtime code.
 - **`crates/abyss-interpreter`** — `RuntimeEnv` (`env.rs`), the `Value` enum (`value.rs`), artifact schemas/instances (`artifact.rs`), the evaluator (`eval/`), and the standard library (`stdlib/`, including the per-type method tables).
 - **`crates/abyss-cli`** — the user-facing binary `abyss` (crate name `abyss-lang`, published to crates.io). `main.rs` is `clap` wiring only; the REPL driver (`start_interpreter`) lives in `repl.rs` and the one-shot `invoke` / `align` implementations in `commands.rs`.
 - **`docs/`** — Starlight (Astro + bun) source for <https://abyss-lang.dev>.

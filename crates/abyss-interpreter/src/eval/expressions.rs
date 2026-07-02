@@ -5,7 +5,7 @@ use std::rc::Rc;
 use crate::diagnostics::did_you_mean_hint;
 use crate::env::{CallArg, Callable, EngravedFunction, RuntimeEnv, Value};
 use crate::stdlib::methods;
-use abyss_core::ast::{AST, Span, Type};
+use abyss_core::ast::{Expr, Span, Type};
 
 use super::artifacts::{
     collect_field_chain, compare_artifacts, ensure_field_exists, expect_artifact_from_eval,
@@ -19,56 +19,60 @@ use super::values::{
     convert_to_typed_value, describe_value, eval_result_to_value_checked, value_to_eval_result,
 };
 
-pub(crate) fn try_evaluate_expression(
-    ast: &AST,
-    env: &mut RuntimeEnv,
-) -> Result<Option<EvalResult>, EvalError> {
-    let result = match ast {
-        AST::Omen(value, _) => return Ok(Some(EvalResult::data(Value::Omen(*value)))),
-        AST::Arcana(value, _) => return Ok(Some(EvalResult::data(Value::Arcana(*value)))),
-        AST::Aether(value, _) => return Ok(Some(EvalResult::data(Value::Aether(*value)))),
-        AST::Rune(value, _) => {
-            return Ok(Some(EvalResult::data(Value::Rune(Rc::new(value.clone())))));
+/// Evaluates an expression in the given environment.
+///
+/// Returns an [`EvalResult`] rather than a bare [`Value`] because an
+/// expression may contain an `oracle` whose arm body triggers control
+/// flow (`reveal` / `resume` / `eject`) that must propagate outward.
+pub(crate) fn evaluate_expr(expr: &Expr, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError> {
+    let result = match expr {
+        Expr::Omen(value, _) => return Ok(EvalResult::data(Value::Omen(*value))),
+        Expr::Arcana(value, _) => return Ok(EvalResult::data(Value::Arcana(*value))),
+        Expr::Aether(value, _) => return Ok(EvalResult::data(Value::Aether(*value))),
+        Expr::Rune(value, _) => {
+            return Ok(EvalResult::data(Value::Rune(Rc::new(value.clone()))));
         }
-        AST::Abyss(_) => return Ok(Some(EvalResult::abyss())),
-        AST::ListLiteral {
+        Expr::Abyss(_) => return Ok(EvalResult::abyss()),
+        Expr::ListLiteral {
             elements,
-            line_info,
+            span: line_info,
         } => {
             let mut evaluated = Vec::with_capacity(elements.len());
             for element in elements {
                 evaluated.push(eval_result_to_value_checked(
-                    statements::evaluate(element, env)?,
+                    evaluate_expr(element, env)?,
                     *line_info,
                 )?);
             }
             EvalResult::data(Value::Scroll(Rc::new(RefCell::new(evaluated))))
         }
-        AST::MapLiteral { entries, line_info } => {
+        Expr::MapLiteral {
+            entries,
+            span: line_info,
+        } => {
             let mut map = HashMap::new();
             for (key, expr) in entries {
-                let value =
-                    eval_result_to_value_checked(statements::evaluate(expr, env)?, *line_info)?;
+                let value = eval_result_to_value_checked(evaluate_expr(expr, env)?, *line_info)?;
                 map.insert(key.clone(), value);
             }
             EvalResult::data(Value::Lexicon(Rc::new(RefCell::new(map))))
         }
-        AST::ArtifactLiteral {
+        Expr::ArtifactLiteral {
             type_name,
             fields,
-            line_info,
+            span: line_info,
         } => instantiate_artifact_literal(env, type_name, fields, line_info)?,
-        AST::FieldAccess {
+        Expr::FieldAccess {
             target,
             field,
-            line_info,
+            span: line_info,
         } => {
-            let value = statements::evaluate(target, env)?;
+            let value = evaluate_expr(target, env)?;
             let handle = expect_artifact_from_eval(value, line_info)?;
             let field_value = read_artifact_field(env, &handle, field, line_info)?;
             EvalResult::data(field_value)
         }
-        AST::Add(left, right, line_info) => binary_numeric_op(
+        Expr::Add(left, right, line_info) => binary_numeric_op(
             env,
             left,
             right,
@@ -77,7 +81,7 @@ pub(crate) fn try_evaluate_expression(
             |l, r| l + r,
             Some(|l: String, r: String| format!("{}{}", l, r)),
         )?,
-        AST::Sub(left, right, line_info) => binary_numeric_op(
+        Expr::Sub(left, right, line_info) => binary_numeric_op(
             env,
             left,
             right,
@@ -86,7 +90,7 @@ pub(crate) fn try_evaluate_expression(
             |l, r| l - r,
             None,
         )?,
-        AST::Mul(left, right, line_info) => binary_numeric_op(
+        Expr::Mul(left, right, line_info) => binary_numeric_op(
             env,
             left,
             right,
@@ -95,7 +99,7 @@ pub(crate) fn try_evaluate_expression(
             |l, r| l * r,
             None,
         )?,
-        AST::Div(left, right, line_info) => binary_numeric_op(
+        Expr::Div(left, right, line_info) => binary_numeric_op(
             env,
             left,
             right,
@@ -104,7 +108,7 @@ pub(crate) fn try_evaluate_expression(
             |l, r| l / r,
             None,
         )?,
-        AST::Mod(left, right, line_info) => binary_numeric_op(
+        Expr::Mod(left, right, line_info) => binary_numeric_op(
             env,
             left,
             right,
@@ -113,61 +117,59 @@ pub(crate) fn try_evaluate_expression(
             |l, r| l % r,
             None,
         )?,
-        AST::PowArcana(left, right, line_info) => match (
-            statements::evaluate(left, env)?,
-            statements::evaluate(right, env)?,
-        ) {
-            (EvalResult::Data(Value::Arcana(l)), EvalResult::Data(Value::Arcana(r))) => {
-                if r < 0 {
-                    return Err(EvalError::NegativeExponent(*line_info));
+        Expr::PowArcana(left, right, line_info) => {
+            match (evaluate_expr(left, env)?, evaluate_expr(right, env)?) {
+                (EvalResult::Data(Value::Arcana(l)), EvalResult::Data(Value::Arcana(r))) => {
+                    if r < 0 {
+                        return Err(EvalError::NegativeExponent(*line_info));
+                    }
+                    EvalResult::data(Value::Arcana(l.pow(r as u32)))
                 }
-                EvalResult::data(Value::Arcana(l.pow(r as u32)))
+                _ => {
+                    return Err(EvalError::InvalidOperation(
+                        "PowArcana operation requires two Arcana!".to_string(),
+                        *line_info,
+                    ));
+                }
             }
-            _ => {
-                return Err(EvalError::InvalidOperation(
-                    "PowArcana operation requires two Arcana!".to_string(),
-                    *line_info,
-                ));
+        }
+        Expr::PowAether(left, right, line_info) => {
+            match (evaluate_expr(left, env)?, evaluate_expr(right, env)?) {
+                (EvalResult::Data(Value::Aether(l)), EvalResult::Data(Value::Aether(r))) => {
+                    EvalResult::data(Value::Aether(l.powf(r)))
+                }
+                _ => {
+                    return Err(EvalError::InvalidOperation(
+                        "PowAether operation requires two Aether!".to_string(),
+                        *line_info,
+                    ));
+                }
             }
-        },
-        AST::PowAether(left, right, line_info) => match (
-            statements::evaluate(left, env)?,
-            statements::evaluate(right, env)?,
-        ) {
-            (EvalResult::Data(Value::Aether(l)), EvalResult::Data(Value::Aether(r))) => {
-                EvalResult::data(Value::Aether(l.powf(r)))
-            }
-            _ => {
-                return Err(EvalError::InvalidOperation(
-                    "PowAether operation requires two Aether!".to_string(),
-                    *line_info,
-                ));
-            }
-        },
-        AST::Equal(left, right, line_info) => compare_values(env, left, right, line_info, true)?,
-        AST::NotEqual(left, right, line_info) => {
+        }
+        Expr::Equal(left, right, line_info) => compare_values(env, left, right, line_info, true)?,
+        Expr::NotEqual(left, right, line_info) => {
             compare_values(env, left, right, line_info, false)?
         }
-        AST::LessThan(left, right, line_info) => {
+        Expr::LessThan(left, right, line_info) => {
             order_values(env, left, right, line_info, |l, r| l < r)?
         }
-        AST::LessThanOrEqual(left, right, line_info) => {
+        Expr::LessThanOrEqual(left, right, line_info) => {
             order_values(env, left, right, line_info, |l, r| l <= r)?
         }
-        AST::GreaterThan(left, right, line_info) => {
+        Expr::GreaterThan(left, right, line_info) => {
             order_values(env, left, right, line_info, |l, r| l > r)?
         }
-        AST::GreaterThanOrEqual(left, right, line_info) => {
+        Expr::GreaterThanOrEqual(left, right, line_info) => {
             order_values(env, left, right, line_info, |l, r| l >= r)?
         }
-        AST::LogicalAnd(left, right, line_info) => {
+        Expr::LogicalAnd(left, right, line_info) => {
             logical_op(env, left, right, line_info, |l, r| l && r)?
         }
-        AST::LogicalOr(left, right, line_info) => {
+        Expr::LogicalOr(left, right, line_info) => {
             logical_op(env, left, right, line_info, |l, r| l || r)?
         }
-        AST::LogicalNot(expr, line_info) => {
-            let result = statements::evaluate(expr, env)?;
+        Expr::LogicalNot(expr, line_info) => {
+            let result = evaluate_expr(expr, env)?;
             match result {
                 EvalResult::Data(Value::Omen(value)) => EvalResult::data(Value::Omen(!value)),
                 _ => {
@@ -178,19 +180,19 @@ pub(crate) fn try_evaluate_expression(
                 }
             }
         }
-        AST::Var(name, line_info) => match env.get_var(name) {
+        Expr::Var(name, line_info) => match env.get_var(name) {
             Some(var_info) => value_to_eval_result(&var_info.value),
             None => {
                 return Err(env.undefined_variable_error(name, *line_info));
             }
         },
-        AST::IndexAccess {
+        Expr::IndexAccess {
             target,
             index,
-            line_info,
+            span: line_info,
         } => {
-            let collection = statements::evaluate(target, env)?;
-            let idx_value = statements::evaluate(index, env)?;
+            let collection = evaluate_expr(target, env)?;
+            let idx_value = evaluate_expr(index, env)?;
             match collection {
                 EvalResult::Data(Value::Scroll(items)) => {
                     let idx = expect_arcana_index(&idx_value, line_info)?;
@@ -218,28 +220,42 @@ pub(crate) fn try_evaluate_expression(
                 }
             }
         }
-        AST::FuncCall {
+        Expr::FuncCall {
             name,
             args,
-            line_info,
+            span: line_info,
         } => evaluate_function_call(env, name, args, line_info)?,
-        AST::MethodCall {
+        Expr::MethodCall {
             receiver,
             method,
             args,
-            line_info,
+            span: line_info,
         } => evaluate_method_call(env, receiver, method, args, line_info)?,
-        AST::OracleDontCareItem(_) => EvalResult::data(Value::Omen(true)),
-        _ => return Ok(None),
+        Expr::Oracle {
+            is_match,
+            conditionals,
+            branches,
+            span: line_info,
+        } => {
+            // Push the oracle's local scope, run the body, and unconditionally
+            // pop on the way out — including error paths — so a failing
+            // scrutinee, pattern, ward, or body cannot leak a scope back into
+            // the REPL. The helper itself uses `?` freely.
+            env.push_scope();
+            let result =
+                super::patterns::evaluate_oracle(*is_match, conditionals, branches, line_info, env);
+            env.pop_scope();
+            result?
+        }
     };
 
-    Ok(Some(result))
+    Ok(result)
 }
 
 fn binary_numeric_op<TArc, TAether>(
     env: &mut RuntimeEnv,
-    left: &AST,
-    right: &AST,
+    left: &Expr,
+    right: &Expr,
     line_info: &Option<Span>,
     arcana_op: TArc,
     aether_op: TAether,
@@ -249,8 +265,8 @@ where
     TArc: FnOnce(i64, i64) -> i64,
     TAether: FnOnce(f64, f64) -> f64,
 {
-    let left_result = statements::evaluate(left, env)?;
-    let right_result = statements::evaluate(right, env)?;
+    let left_result = evaluate_expr(left, env)?;
+    let right_result = evaluate_expr(right, env)?;
 
     match (left_result, right_result) {
         (EvalResult::Data(Value::Arcana(l)), EvalResult::Data(Value::Arcana(r))) => {
@@ -278,7 +294,7 @@ where
 fn instantiate_artifact_literal(
     env: &mut RuntimeEnv,
     type_name: &str,
-    fields: &[(String, AST)],
+    fields: &[(String, Expr)],
     line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let schema = lookup_schema_by_name(env, type_name, line_info)?.clone();
@@ -294,7 +310,7 @@ fn instantiate_artifact_literal(
         }
 
         let field_schema = ensure_field_exists(&schema, field_name, line_info)?;
-        let evaluated = statements::evaluate(expr, env)?;
+        let evaluated = evaluate_expr(expr, env)?;
         let typed_value = convert_to_typed_value(evaluated, &field_schema.field_type, line_info)?;
         values.insert(field_name.clone(), typed_value);
     }
@@ -325,13 +341,13 @@ fn instantiate_artifact_literal(
 
 fn compare_values(
     env: &mut RuntimeEnv,
-    left: &AST,
-    right: &AST,
+    left: &Expr,
+    right: &Expr,
     line_info: &Option<Span>,
     equality: bool,
 ) -> Result<EvalResult, EvalError> {
-    let left_result = statements::evaluate(left, env)?;
-    let right_result = statements::evaluate(right, env)?;
+    let left_result = evaluate_expr(left, env)?;
+    let right_result = evaluate_expr(right, env)?;
 
     let comparison = match (left_result, right_result) {
         (EvalResult::Data(Value::Arcana(l)), EvalResult::Data(Value::Arcana(r))) => l == r,
@@ -356,16 +372,16 @@ fn compare_values(
 
 fn order_values<F>(
     env: &mut RuntimeEnv,
-    left: &AST,
-    right: &AST,
+    left: &Expr,
+    right: &Expr,
     line_info: &Option<Span>,
     comparator: F,
 ) -> Result<EvalResult, EvalError>
 where
     F: FnOnce(f64, f64) -> bool,
 {
-    let left_result = statements::evaluate(left, env)?;
-    let right_result = statements::evaluate(right, env)?;
+    let left_result = evaluate_expr(left, env)?;
+    let right_result = evaluate_expr(right, env)?;
 
     match (left_result, right_result) {
         (EvalResult::Data(Value::Arcana(l)), EvalResult::Data(Value::Arcana(r))) => Ok(
@@ -383,16 +399,16 @@ where
 
 fn logical_op<F>(
     env: &mut RuntimeEnv,
-    left: &AST,
-    right: &AST,
+    left: &Expr,
+    right: &Expr,
     line_info: &Option<Span>,
     op: F,
 ) -> Result<EvalResult, EvalError>
 where
     F: FnOnce(bool, bool) -> bool,
 {
-    let left_result = statements::evaluate(left, env)?;
-    let right_result = statements::evaluate(right, env)?;
+    let left_result = evaluate_expr(left, env)?;
+    let right_result = evaluate_expr(right, env)?;
 
     match (left_result, right_result) {
         (EvalResult::Data(Value::Omen(l)), EvalResult::Data(Value::Omen(r))) => {
@@ -407,13 +423,13 @@ where
 
 fn evaluate_method_call(
     env: &mut RuntimeEnv,
-    receiver: &AST,
+    receiver: &Expr,
     method_name: &str,
-    args: &[AST],
+    args: &[Expr],
     line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
-    let receiver_result = statements::evaluate(receiver, env)?;
-    let receiver_var_name = if let AST::Var(var_name, _) = receiver {
+    let receiver_result = evaluate_expr(receiver, env)?;
+    let receiver_var_name = if let Expr::Var(var_name, _) = receiver {
         Some(var_name.clone())
     } else {
         None
@@ -421,8 +437,8 @@ fn evaluate_method_call(
 
     let mut evaluated_args = Vec::with_capacity(args.len());
     for arg in args {
-        let evaluated_arg = statements::evaluate(arg, env)?;
-        let var_name = if let AST::Var(var_name, _) = arg {
+        let evaluated_arg = evaluate_expr(arg, env)?;
+        let var_name = if let Expr::Var(var_name, _) = arg {
             Some(var_name.clone())
         } else {
             None
@@ -464,7 +480,7 @@ fn evaluate_method_call(
 
 fn ensure_method_receiver_mutability(
     env: &RuntimeEnv,
-    receiver: &AST,
+    receiver: &Expr,
     artifact_name: &str,
     method_name: &str,
     line_info: &Option<Span>,
@@ -497,7 +513,7 @@ fn ensure_method_receiver_mutability(
 
 fn evaluate_artifact_method_call(
     env: &mut RuntimeEnv,
-    receiver_ast: &AST,
+    receiver_ast: &Expr,
     receiver_var_name: Option<String>,
     receiver_handle: crate::env::ArtifactHandle,
     method_name: &str,
@@ -551,7 +567,7 @@ fn evaluate_artifact_method_call(
 fn evaluate_function_call(
     env: &mut RuntimeEnv,
     name: &str,
-    args: &[AST],
+    args: &[Expr],
     line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let callable = match env.get_function(name) {
@@ -563,8 +579,8 @@ fn evaluate_function_call(
 
     let mut evaluated_args = Vec::new();
     for arg in args {
-        let evaluated_arg = statements::evaluate(arg, env)?;
-        let var_name = if let AST::Var(var_name, _) = arg {
+        let evaluated_arg = evaluate_expr(arg, env)?;
+        let var_name = if let Expr::Var(var_name, _) = arg {
             Some(var_name.clone())
         } else {
             None
@@ -606,23 +622,8 @@ fn evaluate_engraved_function(
     }
 
     for (evaluated_arg, param) in eval_args.into_iter().zip(params.iter()) {
-        let (param_name, param_type, is_morph_param) = match param {
-            AST::EngraveParam {
-                name,
-                param_type,
-                is_morph,
-                ..
-            } => (name, param_type, *is_morph),
-            _ => {
-                return Err(EvalError::InvalidOperation(
-                    format!(
-                        "Expected EngraveParam in function definition: {}",
-                        function.name
-                    ),
-                    *line_info,
-                ));
-            }
-        };
+        let (param_name, param_type, is_morph_param) =
+            (&param.name, &param.param_type, param.is_morph);
         let value = if is_morph_param {
             convert_morph_param_value(evaluated_arg, param_type, line_info)?
         } else {
@@ -727,22 +728,22 @@ mod tests {
     #[test]
     fn test_pow_arcana_negative_exponent() {
         let mut env = RuntimeEnv::new();
-        let left = AST::Arcana(2, dummy_line_info());
-        let right = AST::Arcana(-1, dummy_line_info());
-        let expr = AST::PowArcana(Box::new(left), Box::new(right), dummy_line_info());
+        let left = Expr::Arcana(2, dummy_line_info());
+        let right = Expr::Arcana(-1, dummy_line_info());
+        let expr = Expr::PowArcana(Box::new(left), Box::new(right), dummy_line_info());
 
-        let result = try_evaluate_expression(&expr, &mut env);
+        let result = evaluate_expr(&expr, &mut env);
         assert!(matches!(result, Err(EvalError::NegativeExponent(_))));
     }
 
     #[test]
     fn test_pow_aether_invalid_types() {
         let mut env = RuntimeEnv::new();
-        let left = AST::Arcana(2, dummy_line_info()); // Should be Aether
-        let right = AST::Aether(2.0, dummy_line_info());
-        let expr = AST::PowAether(Box::new(left), Box::new(right), dummy_line_info());
+        let left = Expr::Arcana(2, dummy_line_info()); // Should be Aether
+        let right = Expr::Aether(2.0, dummy_line_info());
+        let expr = Expr::PowAether(Box::new(left), Box::new(right), dummy_line_info());
 
-        let result = try_evaluate_expression(&expr, &mut env);
+        let result = evaluate_expr(&expr, &mut env);
         assert!(matches!(
             result,
             Err(EvalError::InvalidOperation(msg, _)) if msg.contains("requires two Aether")
@@ -752,10 +753,10 @@ mod tests {
     #[test]
     fn test_logical_not_invalid_type() {
         let mut env = RuntimeEnv::new();
-        let operand = AST::Arcana(1, dummy_line_info()); // Should be Omen
-        let expr = AST::LogicalNot(Box::new(operand), dummy_line_info());
+        let operand = Expr::Arcana(1, dummy_line_info()); // Should be Omen
+        let expr = Expr::LogicalNot(Box::new(operand), dummy_line_info());
 
-        let result = try_evaluate_expression(&expr, &mut env);
+        let result = evaluate_expr(&expr, &mut env);
         assert!(matches!(
             result,
             Err(EvalError::InvalidOperation(msg, _)) if msg.contains("requires Omen")
@@ -765,18 +766,18 @@ mod tests {
     #[test]
     fn test_index_access_out_of_bounds() {
         let mut env = RuntimeEnv::new();
-        let scroll = AST::ListLiteral {
+        let scroll = Expr::ListLiteral {
             elements: vec![],
-            line_info: dummy_line_info(),
+            span: dummy_line_info(),
         };
-        let index = AST::Arcana(0, dummy_line_info());
-        let expr = AST::IndexAccess {
+        let index = Expr::Arcana(0, dummy_line_info());
+        let expr = Expr::IndexAccess {
             target: Box::new(scroll),
             index: Box::new(index),
-            line_info: dummy_line_info(),
+            span: dummy_line_info(),
         };
 
-        let result = try_evaluate_expression(&expr, &mut env);
+        let result = evaluate_expr(&expr, &mut env);
         assert!(matches!(
             result,
             Err(EvalError::ScrollIndexOutOfBounds(_, _))
@@ -796,13 +797,13 @@ mod tests {
             None,
         );
 
-        let expr = AST::IndexAccess {
-            target: Box::new(AST::Var("lex".to_string(), dummy_line_info())),
-            index: Box::new(AST::Rune("missing".to_string(), dummy_line_info())),
-            line_info: dummy_line_info(),
+        let expr = Expr::IndexAccess {
+            target: Box::new(Expr::Var("lex".to_string(), dummy_line_info())),
+            index: Box::new(Expr::Rune("missing".to_string(), dummy_line_info())),
+            span: dummy_line_info(),
         };
 
-        let result = try_evaluate_expression(&expr, &mut env);
+        let result = evaluate_expr(&expr, &mut env);
         assert!(matches!(
             result,
             Err(EvalError::MissingLexiconKey(key, _)) if key == "missing"
@@ -812,15 +813,15 @@ mod tests {
     #[test]
     fn test_index_access_invalid_target() {
         let mut env = RuntimeEnv::new();
-        let target = AST::Arcana(1, dummy_line_info()); // Not a collection
-        let index = AST::Arcana(0, dummy_line_info());
-        let expr = AST::IndexAccess {
+        let target = Expr::Arcana(1, dummy_line_info()); // Not a collection
+        let index = Expr::Arcana(0, dummy_line_info());
+        let expr = Expr::IndexAccess {
             target: Box::new(target),
             index: Box::new(index),
-            line_info: dummy_line_info(),
+            span: dummy_line_info(),
         };
 
-        let result = try_evaluate_expression(&expr, &mut env);
+        let result = evaluate_expr(&expr, &mut env);
         assert!(matches!(
             result,
             Err(EvalError::InvalidOperation(msg, _)) if msg.contains("only supported for scroll or lexicon")

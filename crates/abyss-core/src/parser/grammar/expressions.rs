@@ -4,7 +4,7 @@
 
 use chumsky::prelude::*;
 
-use crate::ast::AST;
+use crate::ast::Expr;
 
 use crate::parser::SimpleSpan;
 use crate::parser::tokens::Token;
@@ -13,8 +13,8 @@ use super::*;
 
 pub(super) fn range_expr_parser<'src>(
     _ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, (AST, AST, String, SimpleSpan<usize>)> {
+    expression: BoxedParser<'src, SpannedExpr>,
+) -> BoxedParser<'src, (Expr, Expr, String, SimpleSpan<usize>)> {
     let op = choice((
         just(Token::RangeInclusive).to(String::from("..=")),
         just(Token::RangeExclusive).to(String::from("..")),
@@ -33,8 +33,8 @@ pub(super) fn range_expr_parser<'src>(
 
 pub(super) fn or_expr_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
+    expression: BoxedParser<'src, SpannedExpr>,
+) -> BoxedParser<'src, SpannedExpr> {
     let ctx_for_map = ctx.clone();
     let and_expr = and_expr_parser(ctx, expression);
 
@@ -51,7 +51,7 @@ pub(super) fn or_expr_parser<'src>(
                 let span = merge_span(left.1, right.1);
                 let info = ctx_for_map.info(span);
                 (
-                    AST::LogicalOr(Box::new(left.0), Box::new(right.0), info),
+                    Expr::LogicalOr(Box::new(left.0), Box::new(right.0), info),
                     span,
                 )
             })
@@ -61,8 +61,8 @@ pub(super) fn or_expr_parser<'src>(
 
 pub(super) fn and_expr_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
+    expression: BoxedParser<'src, SpannedExpr>,
+) -> BoxedParser<'src, SpannedExpr> {
     let ctx_for_map = ctx.clone();
     let not_expr = not_expr_parser(ctx, expression);
 
@@ -79,7 +79,7 @@ pub(super) fn and_expr_parser<'src>(
                 let span = merge_span(left.1, right.1);
                 let info = ctx_for_map.info(span);
                 (
-                    AST::LogicalAnd(Box::new(left.0), Box::new(right.0), info),
+                    Expr::LogicalAnd(Box::new(left.0), Box::new(right.0), info),
                     span,
                 )
             })
@@ -89,8 +89,8 @@ pub(super) fn and_expr_parser<'src>(
 
 pub(super) fn not_expr_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
+    expression: BoxedParser<'src, SpannedExpr>,
+) -> BoxedParser<'src, SpannedExpr> {
     let ctx_for_map = ctx.clone();
     just(Token::Bang)
         .map_with(|_, extra| extra.span())
@@ -101,7 +101,7 @@ pub(super) fn not_expr_parser<'src>(
             for span in nots.into_iter().rev() {
                 let total_span = SimpleSpan::new(span.start(), current.1.end());
                 let info = ctx_for_map.info(total_span);
-                current = (AST::LogicalNot(Box::new(current.0), info), total_span);
+                current = (Expr::LogicalNot(Box::new(current.0), info), total_span);
             }
             current
         })
@@ -110,8 +110,8 @@ pub(super) fn not_expr_parser<'src>(
 
 pub(super) fn comp_expr_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
+    expression: BoxedParser<'src, SpannedExpr>,
+) -> BoxedParser<'src, SpannedExpr> {
     let ctx_for_map = ctx.clone();
     let add_expr = add_expr_parser(ctx, expression);
 
@@ -132,17 +132,17 @@ pub(super) fn comp_expr_parser<'src>(
                 let span = merge_span(left.1, right.1);
                 let info = ctx_for_map.info(span);
                 let ast = match op_token {
-                    Token::Equal => AST::Equal(Box::new(left.0), Box::new(right.0), info),
-                    Token::NotEqual => AST::NotEqual(Box::new(left.0), Box::new(right.0), info),
-                    Token::LessThan => AST::LessThan(Box::new(left.0), Box::new(right.0), info),
+                    Token::Equal => Expr::Equal(Box::new(left.0), Box::new(right.0), info),
+                    Token::NotEqual => Expr::NotEqual(Box::new(left.0), Box::new(right.0), info),
+                    Token::LessThan => Expr::LessThan(Box::new(left.0), Box::new(right.0), info),
                     Token::LessThanOrEqual => {
-                        AST::LessThanOrEqual(Box::new(left.0), Box::new(right.0), info)
+                        Expr::LessThanOrEqual(Box::new(left.0), Box::new(right.0), info)
                     }
                     Token::GreaterThan => {
-                        AST::GreaterThan(Box::new(left.0), Box::new(right.0), info)
+                        Expr::GreaterThan(Box::new(left.0), Box::new(right.0), info)
                     }
                     Token::GreaterThanOrEqual => {
-                        AST::GreaterThanOrEqual(Box::new(left.0), Box::new(right.0), info)
+                        Expr::GreaterThanOrEqual(Box::new(left.0), Box::new(right.0), info)
                     }
                     _ => unreachable!(),
                 };
@@ -156,8 +156,8 @@ pub(super) fn comp_expr_parser<'src>(
 
 pub(super) fn add_expr_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
+    expression: BoxedParser<'src, SpannedExpr>,
+) -> BoxedParser<'src, SpannedExpr> {
     let ctx_for_map = ctx.clone();
     let mul_expr = mul_expr_parser(ctx, expression);
 
@@ -174,8 +174,8 @@ pub(super) fn add_expr_parser<'src>(
                 let span = merge_span(left.1, right.1);
                 let info = ctx_for_map.info(span);
                 let ast = match op_token {
-                    Token::Plus => AST::Add(Box::new(left.0), Box::new(right.0), info),
-                    Token::Minus => AST::Sub(Box::new(left.0), Box::new(right.0), info),
+                    Token::Plus => Expr::Add(Box::new(left.0), Box::new(right.0), info),
+                    Token::Minus => Expr::Sub(Box::new(left.0), Box::new(right.0), info),
                     _ => unreachable!(),
                 };
                 (ast, span)
@@ -186,8 +186,8 @@ pub(super) fn add_expr_parser<'src>(
 
 pub(super) fn mul_expr_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
+    expression: BoxedParser<'src, SpannedExpr>,
+) -> BoxedParser<'src, SpannedExpr> {
     let ctx_for_map = ctx.clone();
     let pow_expr = pow_expr_parser(ctx, expression);
 
@@ -204,9 +204,9 @@ pub(super) fn mul_expr_parser<'src>(
                 let span = merge_span(left.1, right.1);
                 let info = ctx_for_map.info(span);
                 let ast = match op_token {
-                    Token::Star => AST::Mul(Box::new(left.0), Box::new(right.0), info),
-                    Token::Slash => AST::Div(Box::new(left.0), Box::new(right.0), info),
-                    Token::Percent => AST::Mod(Box::new(left.0), Box::new(right.0), info),
+                    Token::Star => Expr::Mul(Box::new(left.0), Box::new(right.0), info),
+                    Token::Slash => Expr::Div(Box::new(left.0), Box::new(right.0), info),
+                    Token::Percent => Expr::Mod(Box::new(left.0), Box::new(right.0), info),
                     _ => unreachable!(),
                 };
                 (ast, span)
@@ -217,8 +217,8 @@ pub(super) fn mul_expr_parser<'src>(
 
 pub(super) fn pow_expr_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
+    expression: BoxedParser<'src, SpannedExpr>,
+) -> BoxedParser<'src, SpannedExpr> {
     let ctx_for_map = ctx.clone();
     let factor = factor_parser(ctx, expression);
 
@@ -235,8 +235,8 @@ pub(super) fn pow_expr_parser<'src>(
                 let span = merge_span(left.1, right.1);
                 let info = ctx_for_map.info(span);
                 let ast = match op_token {
-                    Token::DoubleStar => AST::PowAether(Box::new(left.0), Box::new(right.0), info),
-                    Token::Caret => AST::PowArcana(Box::new(left.0), Box::new(right.0), info),
+                    Token::DoubleStar => Expr::PowAether(Box::new(left.0), Box::new(right.0), info),
+                    Token::Caret => Expr::PowArcana(Box::new(left.0), Box::new(right.0), info),
                     _ => unreachable!(),
                 };
                 (ast, span)
@@ -247,16 +247,16 @@ pub(super) fn pow_expr_parser<'src>(
 
 pub(super) fn factor_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
+    expression: BoxedParser<'src, SpannedExpr>,
+) -> BoxedParser<'src, SpannedExpr> {
     let primary = primary_expr_parser(ctx.clone(), expression.clone());
     apply_postfix_suffixes(ctx, expression, primary).boxed()
 }
 
 pub(super) fn primary_expr_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
+    expression: BoxedParser<'src, SpannedExpr>,
+) -> BoxedParser<'src, SpannedExpr> {
     choice((
         list_literal_parser(ctx.clone(), expression.clone()),
         map_literal_parser(ctx.clone(), expression.clone()),
@@ -270,22 +270,22 @@ pub(super) fn primary_expr_parser<'src>(
 }
 
 pub(super) enum PostfixSuffix {
-    Index((AST, SimpleSpan<usize>)),
+    Index((Expr, SimpleSpan<usize>)),
     Field((String, SimpleSpan<usize>)),
     Method(MethodSuffix),
 }
 
 pub(super) struct MethodSuffix {
     name: String,
-    args: Vec<AST>,
+    args: Vec<Expr>,
     span: SimpleSpan<usize>,
 }
 
 pub(super) fn apply_postfix_suffixes<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-    base: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
+    expression: BoxedParser<'src, SpannedExpr>,
+    base: BoxedParser<'src, SpannedExpr>,
+) -> BoxedParser<'src, SpannedExpr> {
     let ctx_for_map = ctx.clone();
 
     base.then(
@@ -313,7 +313,7 @@ pub(super) fn apply_postfix_suffixes<'src>(
 
 pub(super) fn postfix_suffix_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
+    expression: BoxedParser<'src, SpannedExpr>,
 ) -> BoxedParser<'src, PostfixSuffix> {
     let index = index_suffix_parser(ctx.clone(), expression.clone()).map(PostfixSuffix::Index);
 
@@ -361,8 +361,8 @@ pub(super) fn postfix_suffix_parser<'src>(
 
 pub(super) fn index_suffix_parser<'src>(
     _ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, (AST, SimpleSpan<usize>)> {
+    expression: BoxedParser<'src, SpannedExpr>,
+) -> BoxedParser<'src, (Expr, SimpleSpan<usize>)> {
     just(Token::OpenBracket)
         .map_with(|_, extra| extra.span())
         .then(expression)
@@ -376,16 +376,16 @@ pub(super) fn index_suffix_parser<'src>(
 
 pub(super) fn create_field_access(
     ctx: ParserContext,
-    current: SpannedAst,
+    current: SpannedExpr,
     field_suffix: (String, SimpleSpan<usize>),
-) -> SpannedAst {
+) -> SpannedExpr {
     let span = SimpleSpan::new(current.1.start(), field_suffix.1.end());
     let info = ctx.info(span);
     (
-        AST::FieldAccess {
+        Expr::FieldAccess {
             target: Box::new(current.0),
             field: field_suffix.0,
-            line_info: info,
+            span: info,
         },
         span,
     )
@@ -393,17 +393,17 @@ pub(super) fn create_field_access(
 
 pub(super) fn create_method_call(
     ctx: ParserContext,
-    current: SpannedAst,
+    current: SpannedExpr,
     method_suffix: MethodSuffix,
-) -> SpannedAst {
+) -> SpannedExpr {
     let span = SimpleSpan::new(current.1.start(), method_suffix.span.end());
     let info = ctx.info(span);
     (
-        AST::MethodCall {
+        Expr::MethodCall {
             receiver: Box::new(current.0),
             method: method_suffix.name,
             args: method_suffix.args,
-            line_info: info,
+            span: info,
         },
         span,
     )
@@ -411,16 +411,16 @@ pub(super) fn create_method_call(
 
 pub(super) fn create_index_access(
     ctx: ParserContext,
-    current: SpannedAst,
-    index_suffix: (AST, SimpleSpan<usize>),
-) -> SpannedAst {
+    current: SpannedExpr,
+    index_suffix: (Expr, SimpleSpan<usize>),
+) -> SpannedExpr {
     let span = SimpleSpan::new(current.1.start(), index_suffix.1.end());
     let info = ctx.info(span);
     (
-        AST::IndexAccess {
+        Expr::IndexAccess {
             target: Box::new(current.0),
             index: Box::new(index_suffix.0),
-            line_info: info,
+            span: info,
         },
         span,
     )
@@ -428,8 +428,8 @@ pub(super) fn create_index_access(
 
 pub(super) fn func_call_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
+    expression: BoxedParser<'src, SpannedExpr>,
+) -> BoxedParser<'src, SpannedExpr> {
     let ctx_for_map = ctx.clone();
     select! { Token::Identifier(name) => name }
         .map_with(|name, extra| (name, extra.span()))
@@ -451,10 +451,10 @@ pub(super) fn func_call_parser<'src>(
                     .map(|(ast, _)| ast)
                     .collect();
                 (
-                    AST::FuncCall {
+                    Expr::FuncCall {
                         name,
                         args,
-                        line_info: info,
+                        span: info,
                     },
                     span,
                 )
@@ -465,8 +465,8 @@ pub(super) fn func_call_parser<'src>(
 
 pub(super) fn list_literal_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
+    expression: BoxedParser<'src, SpannedExpr>,
+) -> BoxedParser<'src, SpannedExpr> {
     let ctx_for_map = ctx.clone();
     just(Token::OpenBracket)
         .map_with(|_, extra| extra.span())
@@ -487,9 +487,9 @@ pub(super) fn list_literal_parser<'src>(
                 .map(|(ast, _)| ast)
                 .collect();
             (
-                AST::ListLiteral {
+                Expr::ListLiteral {
                     elements,
-                    line_info: info,
+                    span: info,
                 },
                 span,
             )
@@ -499,8 +499,8 @@ pub(super) fn list_literal_parser<'src>(
 
 pub(super) fn map_literal_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
+    expression: BoxedParser<'src, SpannedExpr>,
+) -> BoxedParser<'src, SpannedExpr> {
     let ctx_for_map = ctx.clone();
     let entry = select! { Token::Rune(key) => key }
         .map_with(|key, extra| (key, extra.span()))
@@ -525,9 +525,9 @@ pub(super) fn map_literal_parser<'src>(
                 .map(|((key, _), (value_ast, _))| (key, value_ast))
                 .collect();
             (
-                AST::MapLiteral {
+                Expr::MapLiteral {
                     entries,
-                    line_info: info,
+                    span: info,
                 },
                 span,
             )
@@ -537,8 +537,8 @@ pub(super) fn map_literal_parser<'src>(
 
 pub(super) fn artifact_literal_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
+    expression: BoxedParser<'src, SpannedExpr>,
+) -> BoxedParser<'src, SpannedExpr> {
     let ctx_for_map = ctx.clone();
     let entry = select! { Token::Identifier(name) => name }
         .map_with(|name, extra| (name, extra.span()))
@@ -565,10 +565,10 @@ pub(super) fn artifact_literal_parser<'src>(
                     .map(|((field, _), (value_ast, _))| (field, value_ast))
                     .collect();
                 (
-                    AST::ArtifactLiteral {
+                    Expr::ArtifactLiteral {
                         type_name,
                         fields,
-                        line_info: info,
+                        span: info,
                     },
                     span,
                 )
@@ -577,45 +577,45 @@ pub(super) fn artifact_literal_parser<'src>(
         .boxed()
 }
 
-pub(super) fn literal_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedAst> {
+pub(super) fn literal_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedExpr> {
     let ctx_omen = ctx.clone();
     let omen = select! { Token::OmenLiteral(value) => value }.map_with(move |value, extra| {
         let span = extra.span();
         let info = ctx_omen.info(span);
-        (AST::Omen(value, info), span)
+        (Expr::Omen(value, info), span)
     });
 
     let ctx_arcana = ctx.clone();
     let arcana = select! { Token::Arcana(value) => value }.map_with(move |value, extra| {
         let span = extra.span();
         let info = ctx_arcana.info(span);
-        (AST::Arcana(value, info), span)
+        (Expr::Arcana(value, info), span)
     });
 
     let ctx_aether = ctx.clone();
     let aether = select! { Token::Aether(value) => value }.map_with(move |value, extra| {
         let span = extra.span();
         let info = ctx_aether.info(span);
-        (AST::Aether(value.into_inner(), info), span)
+        (Expr::Aether(value.into_inner(), info), span)
     });
 
     let ctx_rune = ctx;
     let rune = select! { Token::Rune(value) => value }.map_with(move |value, extra| {
         let span = extra.span();
         let info = ctx_rune.info(span);
-        (AST::Rune(value, info), span)
+        (Expr::Rune(value, info), span)
     });
 
     choice((omen, arcana, aether, rune)).boxed()
 }
 
-pub(super) fn identifier_node<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedAst> {
+pub(super) fn identifier_node<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedExpr> {
     let ctx_for_map = ctx.clone();
     select! { Token::Identifier(name) => name, Token::Core => "core".to_string(), Token::Type(ty) => type_keyword_name(&ty) }
         .map_with(move |name, extra| {
             let span = extra.span();
             let info = ctx_for_map.info(span);
-            (AST::Var(name, info), span)
+            (Expr::Var(name, info), span)
         })
         .boxed()
 }

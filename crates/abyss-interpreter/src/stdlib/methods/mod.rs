@@ -8,7 +8,7 @@ use crate::eval::artifacts::collect_field_chain;
 use crate::eval::values::describe_value;
 use crate::eval::values::eval_result_to_value_checked;
 use crate::eval::{EvalError, EvalResult};
-use abyss_core::ast::{AST, Span, Type};
+use abyss_core::ast::{Expr, Span, Type};
 use std::collections::HashMap;
 
 pub fn get_all_builtin_methods() -> BuiltinMethodRegistry {
@@ -21,7 +21,7 @@ pub fn get_all_builtin_methods() -> BuiltinMethodRegistry {
 
 pub fn dispatch_builtin_method(
     env: &mut RuntimeEnv,
-    receiver_ast: &AST,
+    receiver_ast: &Expr,
     receiver_var_name: Option<&str>,
     receiver_value: Value,
     method_name: &str,
@@ -102,7 +102,7 @@ pub(super) fn method_table_for(
 
 pub(super) fn ensure_mutable_receiver(
     env: &RuntimeEnv,
-    receiver_ast: &AST,
+    receiver_ast: &Expr,
     receiver_var_name: Option<&str>,
     collection_kind: &str,
     method_name: &str,
@@ -198,7 +198,7 @@ mod tests {
         let mut env = RuntimeEnv::new();
         let result = dispatch_builtin_method(
             &mut env,
-            &AST::Abyss(None),
+            &Expr::Abyss(None),
             None,
             Value::Abyss,
             "unknown_method",
@@ -220,7 +220,7 @@ mod tests {
         let scroll_value = Value::Scroll(std::rc::Rc::new(std::cell::RefCell::new(vec![])));
         let err = dispatch_builtin_method(
             &mut env,
-            &AST::Abyss(None),
+            &Expr::Abyss(None),
             None,
             scroll_value,
             "scrieb",
@@ -246,7 +246,7 @@ mod tests {
         let scroll_value = Value::Scroll(std::rc::Rc::new(std::cell::RefCell::new(vec![])));
         let err = dispatch_builtin_method(
             &mut env,
-            &AST::Abyss(None),
+            &Expr::Abyss(None),
             None,
             scroll_value,
             "tarns",
@@ -269,7 +269,7 @@ mod tests {
         let scroll_value = Value::Scroll(std::rc::Rc::new(std::cell::RefCell::new(vec![])));
         let err = dispatch_builtin_method(
             &mut env,
-            &AST::Abyss(None),
+            &Expr::Abyss(None),
             None,
             scroll_value,
             "completely_unrelated_method_name",

@@ -6,6 +6,10 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 
 ## [Unreleased]
 
+### Added
+
+- **`abyss align` preserves comments** ([#521](https://github.com/liebe-magi/abyss-lang/issues/521)) — the formatter re-emits line and block comments next to the statements they accompanied: full-line comments stay above their statement (including inside `engrave` / `orbit` blocks), a comment trailing a statement on the same line is re-attached to the formatted line, and end-of-file comments are kept. Previously every comment was silently dropped. Powered by the new byte spans: comments are collected with their spans (`parser::collect_comments`) and interleaved by position (`format::format_program`). Comments in positions the formatter cannot represent (inside an expression, between oracle arms) move to the nearest preceding statement boundary.
+
 ### Changed
 
 - **The single `AST` enum is split into `Expr` / `Stmt` / `Pattern`** ([#510](https://github.com/liebe-magi/abyss-lang/issues/510)) — expressions, statements, and oracle match-arm patterns are now distinct types, with `OracleBranch` / `OrbitParam` / `EngraveParam` as plain structs. The evaluator gains honest signatures (`evaluate(&Stmt)` / expression evaluation without the old `Option`-returning probe), the 27-arm `unreachable!()` guard is gone, and `parse` returns `Vec<Stmt>`. `format_ast` is replaced by `format_stmt` / `format_expr` / `format_pattern`. Breaking for `abyss-core` / `abyss-interpreter` consumers; no language-level change — every existing script parses and runs identically.

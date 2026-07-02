@@ -1,5 +1,7 @@
 pub use crate::span::SimpleSpan;
-pub use helpers::{abyss_whitespace, scrub_comments_preserve_layout};
+pub use helpers::{
+    SourceComment, abyss_whitespace, collect_comments, scrub_comments_preserve_layout,
+};
 pub use tokens::{SpannedToken, Token, lexer};
 mod diagnostics;
 mod grammar;

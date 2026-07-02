@@ -2,7 +2,8 @@ use abyss_core::ast::{
     ArtifactField, ArtifactMethodTarget, AssignmentOp, ConditionalAssignment, EngraveParam, Expr,
     OracleBranch, OrbitParam, Pattern, Stmt, Type,
 };
-use abyss_core::format::{format_expr, format_pattern, format_stmt};
+use abyss_core::format::{format_expr, format_pattern, format_program, format_stmt};
+use abyss_core::parser::{collect_comments, parse};
 
 fn arcana(value: i64) -> Box<Expr> {
     Box::new(Expr::Arcana(value, None))
@@ -532,4 +533,71 @@ fn format_type_keyword_variants() {
         let expected_text = format!("forge {}param{}: {} = 1;", prefix, index, expected);
         assert_eq!(format_stmt(&stmt, 0), expected_text);
     }
+}
+
+fn format_source(source: &str) -> String {
+    let outcome = parse(source);
+    assert!(
+        outcome.diagnostics.is_empty(),
+        "parser emitted diagnostics: {:?}",
+        outcome.diagnostics
+    );
+    format_program(source, &outcome.ast, &collect_comments(source))
+}
+
+#[test]
+fn format_program_preserves_comments() {
+    let source = concat!(
+        "// pick a sigil\n",
+        "forge x:arcana=1; // initial value\n",
+        "/* block comment\n   spanning lines */\n",
+        "engrave double(n:arcana)->arcana {\n",
+        "// twice the input\n",
+        "reveal n*2; // fast path\n",
+        "};\n",
+        "unveil(double(x));\n",
+        "// done\n",
+    );
+    let expected = concat!(
+        "// pick a sigil\n",
+        "forge x: arcana = 1; // initial value\n",
+        "/* block comment\n",
+        "   spanning lines */\n",
+        "engrave double(n: arcana) -> arcana {\n",
+        "    // twice the input\n",
+        "    reveal n * 2; // fast path\n",
+        "};\n",
+        "unveil(double(x));\n",
+        "// done\n",
+    );
+    assert_eq!(format_source(source), expected);
+}
+
+#[test]
+fn format_program_with_comments_is_idempotent() {
+    let source = concat!(
+        "// leading\n",
+        "forge x: arcana = 1; // trailing\n",
+        "orbit (i = 0..2){\n",
+        "    // loop body note\n",
+        "    unveil(i);\n",
+        "};\n",
+        "// end\n",
+    );
+    let once = format_source(source);
+    let twice = format_source(&once);
+    assert_eq!(once, twice, "formatting must be idempotent");
+}
+
+#[test]
+fn format_program_without_comments_matches_per_statement_output() {
+    let source = "forge x: arcana = 1;\nunveil(x);\n";
+    let outcome = parse(source);
+    assert!(outcome.diagnostics.is_empty());
+    let joined: String = outcome
+        .ast
+        .iter()
+        .map(|stmt| format!("{}\n", format_stmt(stmt, 0)))
+        .collect();
+    assert_eq!(format_program(source, &outcome.ast, &[]), joined);
 }

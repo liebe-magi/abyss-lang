@@ -146,7 +146,6 @@ pub(super) fn call_arg_to_value(
 ) -> Result<Value, EvalError> {
     match arg.value {
         EvalResult::Data(value) => Ok(value),
-        EvalResult::Artifact(handle) => Ok(Value::Artifact(handle)),
         EvalResult::Revealed(_) | EvalResult::Resume(_) | EvalResult::Eject(_) => {
             Err(EvalError::InvalidOperation(
                 format!("{} cannot accept control-flow results", context),

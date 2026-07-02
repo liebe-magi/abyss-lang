@@ -162,7 +162,7 @@ create_player("Nova");
     let results = test_base(input).expect("artifact return failed");
     assert_eq!(results.len(), 3);
     match &results[2] {
-        EvalResult::Artifact(handle) => {
+        EvalResult::Data(Value::Artifact(handle)) => {
             let borrowed = handle.borrow();
             assert_eq!(borrowed.type_name, "Player");
             match borrowed.fields.get("name") {

@@ -1,6 +1,6 @@
 [package]
 name = "abyss-core"
-description = "Core language primitives for the AbySS scripting language: AST, chumsky-based parser, static analysis, and formatter. Shared between the CLI interpreter and editor tooling."
+description = "Core language primitives for the AbySS scripting language: AST, chumsky-based parser, and formatter. Shared between the CLI interpreter and editor tooling."
 readme = "README.md"
 keywords = ["abyss", "parser", "ast", "language", "interpreter"]
 categories = ["parsing", "development-tools"]

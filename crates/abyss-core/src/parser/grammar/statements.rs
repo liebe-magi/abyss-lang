@@ -28,7 +28,7 @@ pub(super) fn artifact_def_parser<'src>(ctx: ParserContext) -> BoxedParser<'src,
                 AST::ArtifactDef {
                     name,
                     fields,
-                    line_info: info.clone(),
+                    line_info: info,
                 },
                 span,
             )
@@ -108,7 +108,7 @@ pub(super) fn forge_parser<'src>(
                         value: Box::new(value_ast),
                         var_type: ty,
                         is_morph,
-                        line_info: info.clone(),
+                        line_info: info,
                     },
                     span,
                 )
@@ -333,8 +333,8 @@ pub(super) fn reveal_parser<'src>(
             let info = ctx_for_map.info(span);
             let value = maybe_expr
                 .map(|(ast, _)| Box::new(ast))
-                .unwrap_or_else(|| Box::new(AST::Abyss(info.clone())));
-            (AST::Reveal(value, info.clone()), span)
+                .unwrap_or_else(|| Box::new(AST::Abyss(info)));
+            (AST::Reveal(value, info), span)
         })
         .boxed()
 }
@@ -363,7 +363,7 @@ pub(super) fn orbit_parser<'src>(
                 AST::Orbit {
                     params: params_opt.unwrap_or_default(),
                     body: Box::new(body_ast),
-                    line_info: info.clone(),
+                    line_info: info,
                 },
                 span,
             )
@@ -392,10 +392,7 @@ pub(super) fn orbit_flow_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, S
                     .map(|(_, id_span)| SimpleSpan::new(resume_span.start(), id_span.end()))
                     .unwrap_or(resume_span);
                 let info = ctx_resume.info(span);
-                (
-                    AST::Resume(maybe_ident.map(|(name, _)| name), info.clone()),
-                    span,
-                )
+                (AST::Resume(maybe_ident.map(|(name, _)| name), info), span)
             },
         );
 
@@ -413,10 +410,7 @@ pub(super) fn orbit_flow_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, S
                     .map(|(_, id_span)| SimpleSpan::new(eject_span.start(), id_span.end()))
                     .unwrap_or(eject_span);
                 let info = ctx_eject.info(span);
-                (
-                    AST::Eject(maybe_ident.map(|(name, _)| name), info.clone()),
-                    span,
-                )
+                (AST::Eject(maybe_ident.map(|(name, _)| name), info), span)
             },
         );
 
@@ -455,7 +449,7 @@ pub(super) fn assignment_parser<'src>(
                         name,
                         value: Box::new(value_ast),
                         op: assignment_op_from_token(token),
-                        line_info: info.clone(),
+                        line_info: info,
                     },
                     span,
                 )
@@ -483,7 +477,7 @@ pub(super) fn field_assignment_parser<'src>(
                             target,
                             field,
                             value: Box::new(value_ast),
-                            line_info: info.clone(),
+                            line_info: info,
                         },
                         span,
                     ))
@@ -533,7 +527,7 @@ pub(super) fn index_assignment_parser<'src>(
                         target: Box::new(target_ast),
                         index: Box::new(index_ast),
                         value: Box::new(value_ast),
-                        line_info: info.clone(),
+                        line_info: info,
                     },
                     span,
                 )

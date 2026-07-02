@@ -1,13 +1,13 @@
 use crate::env::{CallArg, RuntimeEnv, Value};
 use crate::eval::{EvalError, EvalResult};
 use crate::io_bridge::IoBridge;
-use abyss_core::ast::{LineInfo, Type};
+use abyss_core::ast::{Span, Type};
 use std::rc::Rc;
 
 pub fn native_unveil(
     env: &mut RuntimeEnv,
     args: Vec<CallArg>,
-    line: Option<LineInfo>,
+    line: Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     // Route writes through the bridge `RuntimeEnv` carries, so non-CLI
     // hosts (Wasm playground, future LSP) can capture output without
@@ -15,13 +15,13 @@ pub fn native_unveil(
     native_unveil_with_io(args, line, env.io_bridge_mut())
 }
 
-fn map_io_error(message: &str, line: &Option<LineInfo>) -> EvalError {
-    EvalError::InvalidOperation(message.to_string(), line.clone())
+fn map_io_error(message: &str, line: &Option<Span>) -> EvalError {
+    EvalError::InvalidOperation(message.to_string(), *line)
 }
 
 pub(crate) fn native_unveil_with_io(
     args: Vec<CallArg>,
-    line: Option<LineInfo>,
+    line: Option<Span>,
     io: &mut dyn IoBridge,
 ) -> Result<EvalResult, EvalError> {
     if args.is_empty() {
@@ -47,14 +47,14 @@ pub(crate) fn native_unveil_with_io(
 pub fn native_summon(
     env: &mut RuntimeEnv,
     args: Vec<CallArg>,
-    line: Option<LineInfo>,
+    line: Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     native_summon_with_io(args, line, env.io_bridge_mut())
 }
 
 pub(crate) fn native_summon_with_io(
     args: Vec<CallArg>,
-    line: Option<LineInfo>,
+    line: Option<Span>,
     io: &mut dyn IoBridge,
 ) -> Result<EvalResult, EvalError> {
     if args.len() != 1 {
@@ -93,22 +93,22 @@ pub(crate) fn native_summon_with_io(
 
 pub(crate) fn format_eval_result(
     value: &EvalResult,
-    line: &Option<LineInfo>,
+    line: &Option<Span>,
 ) -> Result<String, EvalError> {
     match value {
         EvalResult::Data(Value::Artifact(handle)) => format_artifact(handle, line),
         EvalResult::Data(inner) => format_value(inner, line),
         EvalResult::Revealed(_) => Err(EvalError::InvalidOperation(
             "Cannot unveil a Revealed value (control flow construct)".to_string(),
-            line.clone(),
+            *line,
         )),
         EvalResult::Resume(_) => Err(EvalError::InvalidOperation(
             "Cannot unveil a Resume value (control flow construct)".to_string(),
-            line.clone(),
+            *line,
         )),
         EvalResult::Eject(_) => Err(EvalError::InvalidOperation(
             "Cannot unveil an Eject value (control flow construct)".to_string(),
-            line.clone(),
+            *line,
         )),
     }
 }
@@ -128,7 +128,7 @@ fn glyph_label(var_type: &Type) -> String {
     }
 }
 
-pub(crate) fn format_value(value: &Value, line: &Option<LineInfo>) -> Result<String, EvalError> {
+pub(crate) fn format_value(value: &Value, line: &Option<Span>) -> Result<String, EvalError> {
     match value {
         Value::Omen(b) => Ok(if *b { "boon" } else { "hex" }.to_string()),
         Value::Arcana(n) => Ok(n.to_string()),
@@ -158,7 +158,7 @@ pub(crate) fn format_value(value: &Value, line: &Option<LineInfo>) -> Result<Str
 
 pub(crate) fn format_artifact(
     handle: &crate::env::ArtifactHandle,
-    line: &Option<LineInfo>,
+    line: &Option<Span>,
 ) -> Result<String, EvalError> {
     let borrowed = handle.borrow();
     let mut pieces = Vec::new();

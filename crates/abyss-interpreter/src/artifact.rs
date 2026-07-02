@@ -11,7 +11,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use abyss_core::ast::{LineInfo, Type};
+use abyss_core::ast::{Span, Type};
 
 use crate::env::EngravedFunction;
 use crate::value::Value;
@@ -30,7 +30,7 @@ pub struct ArtifactSchema {
     pub name: String,
     pub fields: Vec<ArtifactFieldSchema>,
     pub methods: HashMap<String, ArtifactMethod>,
-    pub line_info: Option<LineInfo>,
+    pub line_info: Option<Span>,
 }
 
 impl ArtifactSchema {

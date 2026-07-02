@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use crate::env::{BuiltinMethodRegistry, CallArg, RuntimeEnv, Value};
 use crate::eval::{EvalError, EvalResult};
-use abyss_core::ast::{AST, LineInfo, Type};
+use abyss_core::ast::{AST, Span, Type};
 
 use super::{expect_glyph_argument, method_table_for};
 
@@ -17,7 +17,7 @@ fn materia_trans_method(
     _receiver_var_name: Option<&str>,
     receiver_value: Value,
     args: Vec<CallArg>,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let target_type = expect_glyph_argument(args, "trans()", line_info)?;
     let converted = convert_value_via_trans(receiver_value, &target_type, line_info)?;
@@ -27,7 +27,7 @@ fn materia_trans_method(
 fn convert_value_via_trans(
     receiver: Value,
     target_type: &Type,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<Value, EvalError> {
     match target_type {
         Type::Arcana => match receiver {
@@ -39,12 +39,12 @@ fn convert_value_via_trans(
                 .map_err(|_| {
                     EvalError::InvalidOperation(
                         "failed to convert rune to arcana".to_string(),
-                        line_info.clone(),
+                        *line_info,
                     )
                 }),
             _ => Err(EvalError::InvalidOperation(
                 "cannot convert to arcana".to_string(),
-                line_info.clone(),
+                *line_info,
             )),
         },
         Type::Aether => match receiver {
@@ -56,12 +56,12 @@ fn convert_value_via_trans(
                 .map_err(|_| {
                     EvalError::InvalidOperation(
                         "failed to convert rune to aether".to_string(),
-                        line_info.clone(),
+                        *line_info,
                     )
                 }),
             _ => Err(EvalError::InvalidOperation(
                 "cannot convert to aether".to_string(),
-                line_info.clone(),
+                *line_info,
             )),
         },
         Type::Rune => match receiver {
@@ -69,24 +69,24 @@ fn convert_value_via_trans(
             Value::Aether(n) => Ok(Value::Rune(Rc::new(n.to_string()))),
             _ => Err(EvalError::InvalidOperation(
                 "cannot convert to rune".to_string(),
-                line_info.clone(),
+                *line_info,
             )),
         },
         Type::Omen => Err(EvalError::InvalidOperation(
             "cannot convert to omen".to_string(),
-            line_info.clone(),
+            *line_info,
         )),
         Type::Glyph => Err(EvalError::InvalidOperation(
             "cannot convert to glyph".to_string(),
-            line_info.clone(),
+            *line_info,
         )),
         Type::Artifact(name) => Err(EvalError::InvalidOperation(
             format!("cannot convert to artifact type {}", name),
-            line_info.clone(),
+            *line_info,
         )),
         _ => Err(EvalError::InvalidOperation(
             format!("cannot convert to type {:?}", target_type),
-            line_info.clone(),
+            *line_info,
         )),
     }
 }

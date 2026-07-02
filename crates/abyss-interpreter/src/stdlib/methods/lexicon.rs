@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use crate::env::{BuiltinMethodRegistry, CallArg, RuntimeEnv, Value};
 use crate::eval::{EvalError, EvalResult};
-use abyss_core::ast::{AST, LineInfo, Type};
+use abyss_core::ast::{AST, Span, Type};
 
 use super::{call_arg_to_value, ensure_mutable_receiver, method_table_for};
 
@@ -22,13 +22,13 @@ fn lexicon_tally(
     _receiver_var_name: Option<&str>,
     receiver_value: Value,
     args: Vec<CallArg>,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let entries = expect_lexicon(receiver_value);
     if !args.is_empty() {
         return Err(EvalError::InvalidOperation(
             "tally() does not take any arguments".to_string(),
-            line_info.clone(),
+            *line_info,
         ));
     }
     Ok(EvalResult::data(Value::Arcana(
@@ -42,7 +42,7 @@ fn lexicon_define(
     receiver_var_name: Option<&str>,
     receiver_value: Value,
     args: Vec<CallArg>,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let entries = expect_lexicon(receiver_value);
     ensure_mutable_receiver(
@@ -56,7 +56,7 @@ fn lexicon_define(
     if args.len() != 2 {
         return Err(EvalError::InvalidOperation(
             "define() expects a rune key and a value".to_string(),
-            line_info.clone(),
+            *line_info,
         ));
     }
 
@@ -67,7 +67,7 @@ fn lexicon_define(
         _ => {
             return Err(EvalError::TypeError(
                 "define() key must be a rune".to_string(),
-                line_info.clone(),
+                *line_info,
             ));
         }
     };
@@ -82,7 +82,7 @@ fn lexicon_expunge(
     receiver_var_name: Option<&str>,
     receiver_value: Value,
     args: Vec<CallArg>,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let entries = expect_lexicon(receiver_value);
     ensure_mutable_receiver(
@@ -96,7 +96,7 @@ fn lexicon_expunge(
     if args.len() != 1 {
         return Err(EvalError::InvalidOperation(
             "expunge() expects exactly one rune key".to_string(),
-            line_info.clone(),
+            *line_info,
         ));
     }
 
@@ -110,7 +110,7 @@ fn lexicon_expunge(
         _ => {
             return Err(EvalError::TypeError(
                 "expunge() key must be a rune".to_string(),
-                line_info.clone(),
+                *line_info,
             ));
         }
     };
@@ -124,13 +124,13 @@ fn lexicon_glossary(
     _receiver_var_name: Option<&str>,
     receiver_value: Value,
     args: Vec<CallArg>,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let entries = expect_lexicon(receiver_value);
     if !args.is_empty() {
         return Err(EvalError::InvalidOperation(
             "glossary() does not take any arguments".to_string(),
-            line_info.clone(),
+            *line_info,
         ));
     }
 

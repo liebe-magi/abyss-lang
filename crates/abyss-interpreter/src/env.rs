@@ -1,6 +1,6 @@
 use crate::diagnostics::{did_you_mean, label_with_suggestions};
 use crate::eval::{EvalError, EvalResult};
-use abyss_core::ast::{AST, LineInfo, Type};
+use abyss_core::ast::{AST, Span, Type};
 use std::collections::HashMap;
 
 // Value and artifact types moved to dedicated modules; re-exported here so
@@ -12,7 +12,7 @@ pub use crate::artifact::{
 pub use crate::value::Value;
 
 pub type BuiltinFunc =
-    fn(&mut RuntimeEnv, Vec<CallArg>, Option<LineInfo>) -> Result<EvalResult, EvalError>;
+    fn(&mut RuntimeEnv, Vec<CallArg>, Option<Span>) -> Result<EvalResult, EvalError>;
 
 pub type BuiltinMethodHandler = fn(
     &mut RuntimeEnv,
@@ -20,7 +20,7 @@ pub type BuiltinMethodHandler = fn(
     Option<&str>,
     Value,
     Vec<CallArg>,
-    &Option<LineInfo>,
+    &Option<Span>,
 ) -> Result<EvalResult, EvalError>;
 
 pub type BuiltinMethodRegistry = HashMap<Type, HashMap<String, BuiltinMethodHandler>>;
@@ -43,7 +43,7 @@ pub struct EngravedFunction {
     pub params: Vec<AST>,
     pub return_type: Type,
     pub body: Box<AST>,
-    pub line_info: Option<LineInfo>,
+    pub line_info: Option<Span>,
 }
 
 #[derive(Debug, Clone)]
@@ -58,7 +58,7 @@ pub struct VarInfo {
     pub value: Value,
     pub var_type: Type,
     pub is_morph: bool,
-    pub line_info: Option<LineInfo>,
+    pub line_info: Option<Span>,
 }
 
 /// Manages variable and function scopes in the execution environment, including
@@ -138,7 +138,7 @@ impl RuntimeEnv {
         value: Value,
         var_type: Type,
         is_morph: bool,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     ) {
         if let Some(current_scope) = self.scopes.last_mut() {
             current_scope.insert(
@@ -177,7 +177,7 @@ impl RuntimeEnv {
     /// Falls back to the bare name when no plausible suggestion is available,
     /// so the message shape remains identical to the pre-suggestion era for
     /// truly unknown identifiers.
-    pub fn undefined_variable_error(&self, name: &str, line_info: Option<LineInfo>) -> EvalError {
+    pub fn undefined_variable_error(&self, name: &str, line_info: Option<Span>) -> EvalError {
         let candidates: Vec<&str> = self
             .scopes
             .iter()
@@ -191,7 +191,7 @@ impl RuntimeEnv {
     /// Same shape as [`undefined_variable_error`] but suggestions are drawn
     /// from the function scopes — used when an identifier appearing in a call
     /// position cannot be resolved to a `Callable`.
-    pub fn undefined_function_error(&self, name: &str, line_info: Option<LineInfo>) -> EvalError {
+    pub fn undefined_function_error(&self, name: &str, line_info: Option<Span>) -> EvalError {
         let candidates: Vec<&str> = self
             .function_scopes
             .iter()
@@ -209,7 +209,7 @@ impl RuntimeEnv {
         name: &str,
         value: Value,
         var_type: Type,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     ) -> Result<(), EvalError> {
         for scope in self.scopes.iter_mut().rev() {
             if let Some(var_info) = scope.get_mut(name) {
@@ -274,7 +274,7 @@ impl RuntimeEnv {
             if scope.contains_key(&schema.name) {
                 return Err(EvalError::InvalidOperation(
                     format!("Artifact {} is already defined in this scope", schema.name),
-                    schema.line_info.clone(),
+                    schema.line_info,
                 ));
             }
             scope.insert(schema.name.clone(), schema);
@@ -312,13 +312,13 @@ impl RuntimeEnv {
         artifact: &str,
         method_name: &str,
         method: ArtifactMethod,
-        line_info: &Option<LineInfo>,
+        line_info: &Option<Span>,
     ) -> Result<(), EvalError> {
         if let Some(schema) = self.get_artifact_mut(artifact) {
             if schema.methods.contains_key(method_name) {
                 return Err(EvalError::InvalidOperation(
                     format!("Method {}::{} is already defined", artifact, method_name),
-                    line_info.clone(),
+                    *line_info,
                 ));
             }
             schema.methods.insert(method_name.to_string(), method);
@@ -326,7 +326,7 @@ impl RuntimeEnv {
         } else {
             Err(EvalError::InvalidOperation(
                 format!("Artifact {} is not defined", artifact),
-                line_info.clone(),
+                *line_info,
             ))
         }
     }
@@ -379,7 +379,7 @@ mod tests {
     fn builtin(
         _: &mut RuntimeEnv,
         _: Vec<CallArg>,
-        _: Option<LineInfo>,
+        _: Option<Span>,
     ) -> Result<EvalResult, EvalError> {
         Ok(EvalResult::abyss())
     }

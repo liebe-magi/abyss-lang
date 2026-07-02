@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use crate::env::{BuiltinMethodRegistry, CallArg, RuntimeEnv, Value};
 use crate::eval::{EvalError, EvalResult};
-use abyss_core::ast::{AST, LineInfo, Type};
+use abyss_core::ast::{AST, Span, Type};
 
 use super::{call_arg_to_value, ensure_mutable_receiver, method_table_for};
 
@@ -20,13 +20,13 @@ fn scroll_tally(
     _receiver_var_name: Option<&str>,
     receiver_value: Value,
     args: Vec<CallArg>,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let items = expect_scroll(receiver_value);
     if !args.is_empty() {
         return Err(EvalError::InvalidOperation(
             "tally() does not take any arguments".to_string(),
-            line_info.clone(),
+            *line_info,
         ));
     }
     Ok(EvalResult::data(Value::Arcana(items.borrow().len() as i64)))
@@ -38,7 +38,7 @@ fn scroll_scribe(
     receiver_var_name: Option<&str>,
     receiver_value: Value,
     args: Vec<CallArg>,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let items = expect_scroll(receiver_value);
     ensure_mutable_receiver(
@@ -53,7 +53,7 @@ fn scroll_scribe(
     if args.len() != 1 {
         return Err(EvalError::InvalidOperation(
             "scribe() expects exactly one argument".to_string(),
-            line_info.clone(),
+            *line_info,
         ));
     }
 
@@ -72,7 +72,7 @@ fn scroll_extract(
     receiver_var_name: Option<&str>,
     receiver_value: Value,
     args: Vec<CallArg>,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let items = expect_scroll(receiver_value);
     ensure_mutable_receiver(
@@ -87,14 +87,14 @@ fn scroll_extract(
     if !args.is_empty() {
         return Err(EvalError::InvalidOperation(
             "extract() does not take any arguments".to_string(),
-            line_info.clone(),
+            *line_info,
         ));
     }
 
     let value = items.borrow_mut().pop().ok_or_else(|| {
         EvalError::InvalidOperation(
             "extract() cannot pop from an empty scroll".to_string(),
-            line_info.clone(),
+            *line_info,
         )
     })?;
 

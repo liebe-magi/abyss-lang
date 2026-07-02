@@ -1,5 +1,5 @@
 use crate::env::{ArtifactHandle, Value};
-use abyss_core::ast::{LineInfo, Type};
+use abyss_core::ast::{Span, Type};
 use ariadne::{Color, Label, Report, ReportKind, Source};
 use std::fmt;
 
@@ -40,29 +40,29 @@ impl EvalResult {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum EvalError {
-    UndefinedVariable(String, Option<LineInfo>),
-    InvalidOperation(String, Option<LineInfo>),
-    NegativeExponent(Option<LineInfo>),
-    TypeError(String, Option<LineInfo>),
+    UndefinedVariable(String, Option<Span>),
+    InvalidOperation(String, Option<Span>),
+    NegativeExponent(Option<Span>),
+    TypeError(String, Option<Span>),
     /// A value of the given type was required but something else was
     /// produced (variable initialisation, argument conversion, builtin
     /// extraction). For `Type::Artifact` the message names the artifact
     /// type; use [`EvalError::ArtifactTypeMismatch`] when the *found*
     /// artifact type is also known.
-    ExpectedType(Type, Option<LineInfo>),
+    ExpectedType(Type, Option<Span>),
     /// An artifact of one type appeared where another artifact type was
     /// required.
     ArtifactTypeMismatch {
         expected: String,
         found: String,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
     /// Assignment to a variable that was not declared `morph`.
-    ImmutableAssignment(String, Option<LineInfo>),
+    ImmutableAssignment(String, Option<Span>),
     /// Scroll index outside the valid range.
-    ScrollIndexOutOfBounds(usize, Option<LineInfo>),
+    ScrollIndexOutOfBounds(usize, Option<Span>),
     /// Lexicon lookup with a key that has no entry.
-    MissingLexiconKey(String, Option<LineInfo>),
+    MissingLexiconKey(String, Option<Span>),
 }
 
 /// Lowercase keyword name for a type, as used in "Expected … value"
@@ -84,7 +84,7 @@ fn type_label(ty: &Type) -> &str {
 
 impl EvalError {
     /// Returns the source-position metadata attached to this error, if any.
-    pub fn line_info(&self) -> Option<&LineInfo> {
+    pub fn line_info(&self) -> Option<&Span> {
         match self {
             EvalError::UndefinedVariable(_, info)
             | EvalError::InvalidOperation(_, info)
@@ -180,9 +180,9 @@ pub fn display_error_with_source(script: &str, error: &EvalError) {
 
 /// Render a runtime error against the source script using
 /// [`ariadne`]'s annotated report style — matching the parser's diagnostic
-/// look. When the error carries a [`LineInfo`] that resolves into the source,
-/// the offending column is underlined; otherwise a plain "Error: …" line is
-/// printed to stderr as a fallback.
+/// look. When the error carries a [`Span`] that resolves into the source,
+/// the full offending range is underlined; otherwise a plain "Error: …" line
+/// is printed to stderr as a fallback.
 ///
 /// `source_id` controls the label shown by the diagnostic renderer (e.g.
 /// `"<script>"`, `"<repl>"`, `"<test>"`, or a file path) so runtime reports
@@ -247,13 +247,13 @@ fn write_error_with_source_id<W: std::io::Write>(
 ) -> std::io::Result<()> {
     let message = error.to_string();
     if let Some(info) = error.line_info()
-        && let Some(start) = line_col_to_byte_offset(script, info.line, info.column)
+        && info.start() <= script.len()
     {
-        // Single-byte highlight at the reported column, clamped so the span
-        // never extends past the source. `LineInfo` carries no end position
-        // today, so finer-grained highlighting requires the larger Span
-        // refactor planned for a later release.
-        let end = (start + 1).min(script.len()).max(start);
+        // Underline the full span the error carries, clamped so the range
+        // never extends past the source. A zero-width span is widened to
+        // one byte so ariadne still draws a caret at the position.
+        let start = info.start();
+        let end = info.end().clamp(start + 1, script.len().max(start + 1));
         let span = start..end;
         let report = Report::build(ReportKind::Error, (source_id, span.clone()))
             .with_message(error.kind_label())
@@ -267,36 +267,6 @@ fn write_error_with_source_id<W: std::io::Write>(
     } else {
         writeln!(writer, "Error: {}", message)
     }
-}
-
-/// Convert a 1-based `(line, column)` pair (where `column` is a byte offset
-/// within the line, matching the parser's `LineMap`) into a byte offset
-/// suitable for ariadne's range-based labels.
-///
-/// Returns `None` when the position cannot be resolved against `source` —
-/// this includes columns past the end of the named line, which would
-/// otherwise spill into the next line and underline an unrelated character.
-fn line_col_to_byte_offset(source: &str, line: usize, column: usize) -> Option<usize> {
-    if line == 0 || column == 0 {
-        return None;
-    }
-    let mut line_starts: Vec<usize> = vec![0];
-    for (i, ch) in source.char_indices() {
-        if ch == '\n' {
-            line_starts.push(i + ch.len_utf8());
-        }
-    }
-    let line_start = *line_starts.get(line - 1)?;
-    // Stop the column at the end of its own line. For non-last lines that's
-    // the offset of the next line's first byte (just past the newline); for
-    // the last line we allow a one-past-end (EOF) position so errors
-    // attached to the final character still resolve.
-    let line_end_exclusive = line_starts.get(line).copied().unwrap_or(source.len() + 1);
-    let offset = line_start + (column - 1);
-    if offset >= line_end_exclusive || offset > source.len() {
-        return None;
-    }
-    Some(offset)
 }
 
 #[cfg(test)]
@@ -347,56 +317,56 @@ mod tests {
     /// stay byte-identical to the legacy stringly-typed messages.
     #[test]
     fn structured_variants_render_legacy_messages() {
-        let info = Some(LineInfo::new(3, 7));
+        let info = Some(Span::new(3, 7));
 
         let cases: Vec<(EvalError, &str, &str)> = vec![
             (
-                EvalError::ExpectedType(Type::Arcana, info.clone()),
+                EvalError::ExpectedType(Type::Arcana, info),
                 "Type error: Expected arcana value",
                 "Type error",
             ),
             (
-                EvalError::ExpectedType(Type::Aether, info.clone()),
+                EvalError::ExpectedType(Type::Aether, info),
                 "Type error: Expected aether value",
                 "Type error",
             ),
             (
-                EvalError::ExpectedType(Type::Rune, info.clone()),
+                EvalError::ExpectedType(Type::Rune, info),
                 "Type error: Expected rune value",
                 "Type error",
             ),
             (
-                EvalError::ExpectedType(Type::Omen, info.clone()),
+                EvalError::ExpectedType(Type::Omen, info),
                 "Type error: Expected omen value",
                 "Type error",
             ),
             (
-                EvalError::ExpectedType(Type::Abyss, info.clone()),
+                EvalError::ExpectedType(Type::Abyss, info),
                 "Type error: Expected abyss value",
                 "Type error",
             ),
             (
-                EvalError::ExpectedType(Type::Scroll, info.clone()),
+                EvalError::ExpectedType(Type::Scroll, info),
                 "Type error: Expected scroll value",
                 "Type error",
             ),
             (
-                EvalError::ExpectedType(Type::Lexicon, info.clone()),
+                EvalError::ExpectedType(Type::Lexicon, info),
                 "Type error: Expected lexicon value",
                 "Type error",
             ),
             (
-                EvalError::ExpectedType(Type::Glyph, info.clone()),
+                EvalError::ExpectedType(Type::Glyph, info),
                 "Type error: Expected glyph value",
                 "Type error",
             ),
             (
-                EvalError::ExpectedType(Type::Materia, info.clone()),
+                EvalError::ExpectedType(Type::Materia, info),
                 "Type error: Expected materia value",
                 "Type error",
             ),
             (
-                EvalError::ExpectedType(Type::Artifact("Player".into()), info.clone()),
+                EvalError::ExpectedType(Type::Artifact("Player".into()), info),
                 "Type error: Expected artifact of type Player",
                 "Type error",
             ),
@@ -404,23 +374,23 @@ mod tests {
                 EvalError::ArtifactTypeMismatch {
                     expected: "Player".into(),
                     found: "Enemy".into(),
-                    line_info: info.clone(),
+                    line_info: info,
                 },
                 "Type error: Expected artifact of type Player but received Enemy",
                 "Type error",
             ),
             (
-                EvalError::ImmutableAssignment("sigil".into(), info.clone()),
+                EvalError::ImmutableAssignment("sigil".into(), info),
                 "Invalid operation: Cannot reassign to immutable variable sigil",
                 "Invalid operation",
             ),
             (
-                EvalError::ScrollIndexOutOfBounds(9, info.clone()),
+                EvalError::ScrollIndexOutOfBounds(9, info),
                 "Invalid operation: Index 9 is out of bounds for scroll",
                 "Invalid operation",
             ),
             (
-                EvalError::MissingLexiconKey("port".into(), info.clone()),
+                EvalError::MissingLexiconKey("port".into(), info),
                 "Invalid operation: Lexicon key 'port' does not exist",
                 "Invalid operation",
             ),
@@ -429,69 +399,31 @@ mod tests {
         for (err, expected_display, expected_kind) in cases {
             assert_eq!(err.to_string(), expected_display);
             assert_eq!(err.kind_label(), expected_kind);
-            let returned = err.line_info().expect("line info should be attached");
-            assert_eq!((returned.line, returned.column), (3, 7));
+            let returned = err.line_info().expect("span should be attached");
+            assert_eq!((returned.start(), returned.end()), (3, 7));
         }
     }
 
     #[test]
     fn line_info_returns_attached_position() {
-        let err = EvalError::TypeError("x".into(), Some(LineInfo::new(3, 4)));
-        let info = err.line_info().expect("line info attached");
-        assert_eq!(info.line, 3);
-        assert_eq!(info.column, 4);
+        let err = EvalError::TypeError("x".into(), Some(Span::new(3, 4)));
+        let info = err.line_info().expect("span attached");
+        assert_eq!((info.start(), info.end()), (3, 4));
 
         let plain = EvalError::NegativeExponent(None);
         assert!(plain.line_info().is_none());
     }
 
     #[test]
-    fn line_col_to_byte_offset_resolves_simple_positions() {
-        let source = "abc\ndef\nghi";
-        assert_eq!(line_col_to_byte_offset(source, 1, 1), Some(0));
-        assert_eq!(line_col_to_byte_offset(source, 2, 1), Some(4));
-        assert_eq!(line_col_to_byte_offset(source, 3, 2), Some(9));
-    }
-
-    #[test]
-    fn line_col_to_byte_offset_rejects_out_of_range() {
-        let source = "abc\ndef";
-        assert_eq!(line_col_to_byte_offset(source, 0, 1), None);
-        assert_eq!(line_col_to_byte_offset(source, 1, 0), None);
-        assert_eq!(line_col_to_byte_offset(source, 5, 1), None);
-        // Column past end of source returns None.
-        assert!(line_col_to_byte_offset(source, 2, 100).is_none());
-    }
-
-    #[test]
-    fn line_col_to_byte_offset_rejects_column_past_line_end() {
-        // Line 1 contains "abc" (3 bytes) followed by a newline; column 5
-        // would otherwise spill into "def" on the next line. Reject it so
-        // the highlight cannot point at an unrelated character.
-        let source = "abc\ndef";
-        assert_eq!(line_col_to_byte_offset(source, 1, 4), Some(3));
-        assert!(line_col_to_byte_offset(source, 1, 5).is_none());
-    }
-
-    #[test]
-    fn line_col_to_byte_offset_handles_multibyte_chars() {
-        // "あ" is 3 bytes in UTF-8; the second line starts after the newline
-        // following it.
-        let source = "あ\nb";
-        assert_eq!(line_col_to_byte_offset(source, 1, 1), Some(0));
-        assert_eq!(line_col_to_byte_offset(source, 2, 1), Some(4));
-    }
-
-    #[test]
     fn display_error_with_valid_line_does_not_panic() {
         let script = "sigil = 1\nhex = sigil + 2";
-        let err = EvalError::InvalidOperation("invalid op".into(), Some(LineInfo::new(2, 5)));
+        let err = EvalError::InvalidOperation("invalid op".into(), Some(Span::new(2, 5)));
         display_error_with_source(script, &err);
     }
 
     #[test]
     fn display_error_without_matching_line_falls_back_to_generic() {
-        let err = EvalError::TypeError("out of range".into(), Some(LineInfo::new(99, 1)));
+        let err = EvalError::TypeError("out of range".into(), Some(Span::new(99, 1)));
         display_error_with_source("sigil = 1", &err);
     }
 
@@ -508,7 +440,7 @@ mod tests {
         // returns a non-empty `String`, and the rendered output mentions
         // the underlying message rather than swallowing it.
         let script = "sigil: arcana = 1\nhex = sigil + 2";
-        let err = EvalError::InvalidOperation("invalid op".into(), Some(LineInfo::new(2, 5)));
+        let err = EvalError::InvalidOperation("invalid op".into(), Some(Span::new(2, 5)));
         let rendered = render_error_with_source(script, &err);
         assert!(!rendered.is_empty(), "ariadne rendering produced no output");
         assert!(
@@ -519,7 +451,7 @@ mod tests {
 
     #[test]
     fn render_error_without_position_falls_back_to_plain_line() {
-        // With no `LineInfo` the renderer drops down to the
+        // With no `Span` the renderer drops down to the
         // `Error: …\n` fallback (matching what `display_error_with_source`
         // would print).
         let err = EvalError::NegativeExponent(None);

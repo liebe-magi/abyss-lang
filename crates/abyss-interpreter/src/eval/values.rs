@@ -1,5 +1,5 @@
 use crate::env::{ArtifactHandle, ArtifactValue, Value};
-use abyss_core::ast::{LineInfo, Type};
+use abyss_core::ast::{Span, Type};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -24,11 +24,11 @@ pub(crate) fn eval_result_to_value_any(result: EvalResult) -> Result<Value, Eval
 
 pub(crate) fn eval_result_to_value_checked(
     result: EvalResult,
-    line_info: Option<LineInfo>,
+    line_info: Option<Span>,
 ) -> Result<Value, EvalError> {
     eval_result_to_value_any(result).map_err(|err| match err {
-        EvalError::InvalidOperation(msg, _) => EvalError::InvalidOperation(msg, line_info.clone()),
-        EvalError::TypeError(msg, _) => EvalError::TypeError(msg, line_info.clone()),
+        EvalError::InvalidOperation(msg, _) => EvalError::InvalidOperation(msg, line_info),
+        EvalError::TypeError(msg, _) => EvalError::TypeError(msg, line_info),
         other => other,
     })
 }
@@ -36,14 +36,14 @@ pub(crate) fn eval_result_to_value_checked(
 pub(crate) fn convert_to_typed_value(
     result: EvalResult,
     expected: &Type,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<Value, EvalError> {
     let value = match result {
         EvalResult::Data(value) => value,
         control => {
             return Err(EvalError::InvalidOperation(
                 format!("Expected data value but received {:?}", control),
-                line_info.clone(),
+                *line_info,
             ));
         }
     };
@@ -55,35 +55,35 @@ pub(crate) fn convert_to_typed_value(
         }),
         Type::Arcana => match value {
             Value::Arcana(_) => Ok(value),
-            _ => Err(EvalError::ExpectedType(Type::Arcana, line_info.clone())),
+            _ => Err(EvalError::ExpectedType(Type::Arcana, *line_info)),
         },
         Type::Aether => match value {
             Value::Aether(_) => Ok(value),
-            _ => Err(EvalError::ExpectedType(Type::Aether, line_info.clone())),
+            _ => Err(EvalError::ExpectedType(Type::Aether, *line_info)),
         },
         Type::Rune => match value {
             Value::Rune(_) => Ok(value),
-            _ => Err(EvalError::ExpectedType(Type::Rune, line_info.clone())),
+            _ => Err(EvalError::ExpectedType(Type::Rune, *line_info)),
         },
         Type::Omen => match value {
             Value::Omen(_) => Ok(value),
-            _ => Err(EvalError::ExpectedType(Type::Omen, line_info.clone())),
+            _ => Err(EvalError::ExpectedType(Type::Omen, *line_info)),
         },
         Type::Abyss => match value {
             Value::Abyss => Ok(value),
-            _ => Err(EvalError::ExpectedType(Type::Abyss, line_info.clone())),
+            _ => Err(EvalError::ExpectedType(Type::Abyss, *line_info)),
         },
         Type::Scroll => match value {
             Value::Scroll(_) => Ok(value),
-            _ => Err(EvalError::ExpectedType(Type::Scroll, line_info.clone())),
+            _ => Err(EvalError::ExpectedType(Type::Scroll, *line_info)),
         },
         Type::Lexicon => match value {
             Value::Lexicon(_) => Ok(value),
-            _ => Err(EvalError::ExpectedType(Type::Lexicon, line_info.clone())),
+            _ => Err(EvalError::ExpectedType(Type::Lexicon, *line_info)),
         },
         Type::Glyph => match value {
             Value::Glyph(_) => Ok(value),
-            _ => Err(EvalError::ExpectedType(Type::Glyph, line_info.clone())),
+            _ => Err(EvalError::ExpectedType(Type::Glyph, *line_info)),
         },
         Type::Artifact(expected) => match value {
             Value::Artifact(handle) => {
@@ -94,13 +94,13 @@ pub(crate) fn convert_to_typed_value(
                     Err(EvalError::ArtifactTypeMismatch {
                         expected: expected.clone(),
                         found: borrowed.type_name.clone(),
-                        line_info: line_info.clone(),
+                        line_info: *line_info,
                     })
                 }
             }
             _ => Err(EvalError::ExpectedType(
                 Type::Artifact(expected.clone()),
-                line_info.clone(),
+                *line_info,
             )),
         },
     }
@@ -108,41 +108,41 @@ pub(crate) fn convert_to_typed_value(
 
 pub(crate) fn extract_arcana(
     result: &EvalResult,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<i64, EvalError> {
     match result {
         EvalResult::Data(Value::Arcana(v)) => Ok(*v),
-        _ => Err(EvalError::ExpectedType(Type::Arcana, line_info.clone())),
+        _ => Err(EvalError::ExpectedType(Type::Arcana, *line_info)),
     }
 }
 
 pub(crate) fn extract_aether(
     result: &EvalResult,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<f64, EvalError> {
     match result {
         EvalResult::Data(Value::Aether(v)) => Ok(*v),
-        _ => Err(EvalError::ExpectedType(Type::Aether, line_info.clone())),
+        _ => Err(EvalError::ExpectedType(Type::Aether, *line_info)),
     }
 }
 
 pub(crate) fn extract_rune(
     result: &EvalResult,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<String, EvalError> {
     match result {
         EvalResult::Data(Value::Rune(rc)) => Ok(rc.as_ref().clone()),
-        _ => Err(EvalError::ExpectedType(Type::Rune, line_info.clone())),
+        _ => Err(EvalError::ExpectedType(Type::Rune, *line_info)),
     }
 }
 
 pub(crate) fn extract_omen(
     result: &EvalResult,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<bool, EvalError> {
     match result {
         EvalResult::Data(Value::Omen(v)) => Ok(*v),
-        _ => Err(EvalError::ExpectedType(Type::Omen, line_info.clone())),
+        _ => Err(EvalError::ExpectedType(Type::Omen, *line_info)),
     }
 }
 
@@ -213,8 +213,8 @@ mod tests {
     use crate::eval::test_support::artifact_handle;
     use std::{cell::RefCell, rc::Rc};
 
-    fn line() -> Option<LineInfo> {
-        Some(LineInfo::new(2, 3))
+    fn line() -> Option<Span> {
+        Some(Span::new(2, 3))
     }
 
     #[test]
@@ -237,12 +237,12 @@ mod tests {
     #[test]
     fn eval_result_to_value_checked_overrides_line_info() {
         let info = line();
-        let err = eval_result_to_value_checked(EvalResult::Resume(None), info.clone())
+        let err = eval_result_to_value_checked(EvalResult::Resume(None), info)
             .expect_err("control flow should error");
         match err {
             EvalError::InvalidOperation(_, returned) => {
-                let returned = returned.expect("line info should propagate");
-                assert_eq!((returned.line, returned.column), (2, 3));
+                let returned = returned.expect("span should propagate");
+                assert_eq!((returned.start(), returned.end()), (2, 3));
             }
             other => panic!("unexpected error {:?}", other),
         }

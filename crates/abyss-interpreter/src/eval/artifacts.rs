@@ -1,7 +1,7 @@
 use crate::env::{
     ArtifactFieldSchema, ArtifactHandle, ArtifactSchema, ArtifactValue, RuntimeEnv, Value,
 };
-use abyss_core::ast::{AST, ArtifactField, LineInfo, Type};
+use abyss_core::ast::{AST, ArtifactField, Span, Type};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -13,14 +13,14 @@ use crate::diagnostics::did_you_mean_hint;
 pub(crate) fn ensure_type_known(
     ty: &Type,
     env: &RuntimeEnv,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<(), EvalError> {
     if let Type::Artifact(name) = ty
         && env.get_artifact(name).is_none()
     {
         return Err(EvalError::TypeError(
             format!("Artifact type {} is not defined", name),
-            line_info.clone(),
+            *line_info,
         ));
     }
     Ok(())
@@ -42,7 +42,7 @@ pub(crate) fn ensure_field_type_known(
                         "Artifact field {} references undefined type {}",
                         field.name, name
                     ),
-                    field.line_info.clone(),
+                    field.line_info,
                 ))
             }
         }
@@ -54,7 +54,7 @@ pub(crate) fn build_artifact_schema(
     name: &str,
     fields: &[ArtifactField],
     env: &RuntimeEnv,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<ArtifactSchema, EvalError> {
     let mut seen = HashSet::new();
     let mut compiled_fields = Vec::with_capacity(fields.len());
@@ -63,7 +63,7 @@ pub(crate) fn build_artifact_schema(
         if !seen.insert(field.name.clone()) {
             return Err(EvalError::InvalidOperation(
                 format!("Field '{}' is defined multiple times", field.name),
-                field.line_info.clone().or_else(|| line_info.clone()),
+                field.line_info.or(*line_info),
             ));
         }
         ensure_field_type_known(field, env, name)?;
@@ -77,39 +77,39 @@ pub(crate) fn build_artifact_schema(
         name: name.to_string(),
         fields: compiled_fields,
         methods: HashMap::new(),
-        line_info: line_info.clone(),
+        line_info: *line_info,
     })
 }
 
 pub(crate) fn expect_artifact_handle(
     value: &Value,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<ArtifactHandle, EvalError> {
     match value {
         Value::Artifact(handle) => Ok(handle.clone()),
         other => Err(EvalError::InvalidOperation(
             format!("Expected artifact value, found {}", describe_value(other)),
-            line_info.clone(),
+            *line_info,
         )),
     }
 }
 
 pub(crate) fn expect_artifact_from_eval(
     result: EvalResult,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<ArtifactHandle, EvalError> {
     match result {
         EvalResult::Data(Value::Artifact(handle)) => Ok(handle),
         EvalResult::Data(other) => Err(EvalError::InvalidOperation(
             format!("Expected artifact value, found {}", describe_value(&other)),
-            line_info.clone(),
+            *line_info,
         )),
         control => Err(EvalError::InvalidOperation(
             format!(
                 "Expected artifact value but received control-flow result {:?}",
                 control
             ),
-            line_info.clone(),
+            *line_info,
         )),
     }
 }
@@ -117,12 +117,12 @@ pub(crate) fn expect_artifact_from_eval(
 pub(crate) fn lookup_schema_by_name<'a>(
     env: &'a RuntimeEnv,
     type_name: &str,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<&'a ArtifactSchema, EvalError> {
     env.get_artifact(type_name).ok_or_else(|| {
         EvalError::InvalidOperation(
             format!("Artifact type {} is not defined", type_name),
-            line_info.clone(),
+            *line_info,
         )
     })
 }
@@ -130,7 +130,7 @@ pub(crate) fn lookup_schema_by_name<'a>(
 pub(crate) fn lookup_schema_from_handle<'a>(
     env: &'a RuntimeEnv,
     handle: &ArtifactHandle,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<&'a ArtifactSchema, EvalError> {
     let type_name = handle.borrow().type_name.clone();
     lookup_schema_by_name(env, &type_name, line_info)
@@ -139,7 +139,7 @@ pub(crate) fn lookup_schema_from_handle<'a>(
 pub(crate) fn ensure_field_exists<'a>(
     schema: &'a ArtifactSchema,
     field: &str,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<&'a ArtifactFieldSchema, EvalError> {
     schema
         .field(field)
@@ -149,7 +149,7 @@ pub(crate) fn ensure_field_exists<'a>(
 pub(crate) fn missing_field_error(
     schema: &ArtifactSchema,
     field: &str,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> EvalError {
     let available_names = schema.field_names();
     let hint = did_you_mean_hint(field, available_names.iter().map(String::as_str), 3)
@@ -161,7 +161,7 @@ pub(crate) fn missing_field_error(
             "Field '{}'{} does not exist on artifact {} (available: [{}])",
             field, hint, schema.name, available
         ),
-        line_info.clone(),
+        *line_info,
     )
 }
 
@@ -169,7 +169,7 @@ pub(crate) fn read_artifact_field(
     env: &RuntimeEnv,
     handle: &ArtifactHandle,
     field: &str,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<Value, EvalError> {
     let schema = lookup_schema_from_handle(env, handle, line_info)?;
     ensure_field_exists(schema, field, line_info)?;
@@ -197,7 +197,7 @@ pub(crate) fn compare_artifacts(
     env: &RuntimeEnv,
     left: &ArtifactHandle,
     right: &ArtifactHandle,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<bool, EvalError> {
     let left_borrow = left.borrow();
     let right_borrow = right.borrow();
@@ -255,7 +255,7 @@ pub(crate) fn values_equal(
     env: &RuntimeEnv,
     left: &Value,
     right: &Value,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<bool, EvalError> {
     match (left, right) {
         (Value::Omen(l), Value::Omen(r)) => Ok(l == r),

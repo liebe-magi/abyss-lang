@@ -1,5 +1,5 @@
 use crate::env::{ArtifactMethod, Callable, EngravedFunction, RuntimeEnv, Value};
-use abyss_core::ast::{AST, AssignmentOp, LineInfo, Type};
+use abyss_core::ast::{AST, AssignmentOp, Span, Type};
 use std::rc::Rc;
 
 use super::artifacts::{
@@ -74,7 +74,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                 stored_value,
                 var_type.clone(),
                 *is_morph,
-                line_info.clone(),
+                *line_info,
             );
             Ok(EvalResult::abyss())
         }
@@ -87,10 +87,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
             let evaluated_value = evaluate(value, env)?;
             if let Some(var_info) = env.get_var_mut(name) {
                 if !var_info.is_morph {
-                    return Err(EvalError::ImmutableAssignment(
-                        name.clone(),
-                        line_info.clone(),
-                    ));
+                    return Err(EvalError::ImmutableAssignment(name.clone(), *line_info));
                 }
 
                 match (&mut var_info.value, &var_info.var_type) {
@@ -114,7 +111,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                             AssignmentOp::PowArcanaAssign => {
                                 let exponent = extract_arcana(&evaluated_value, line_info)?;
                                 if exponent < 0 {
-                                    return Err(EvalError::NegativeExponent(line_info.clone()));
+                                    return Err(EvalError::NegativeExponent(*line_info));
                                 }
                                 current.pow(exponent as u32)
                             }
@@ -122,7 +119,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                             _ => {
                                 return Err(EvalError::InvalidOperation(
                                     format!("Unsupported operation for variable {}", name),
-                                    line_info.clone(),
+                                    *line_info,
                                 ));
                             }
                         };
@@ -141,7 +138,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                             _ => {
                                 return Err(EvalError::InvalidOperation(
                                     format!("Unsupported operation for variable {}", name),
-                                    line_info.clone(),
+                                    *line_info,
                                 ));
                             }
                         };
@@ -161,7 +158,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                         _ => {
                             return Err(EvalError::InvalidOperation(
                                 format!("Unsupported operation for variable {}", name),
-                                line_info.clone(),
+                                *line_info,
                             ));
                         }
                     },
@@ -169,7 +166,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                         if !matches!(op, AssignmentOp::Assign) {
                             return Err(EvalError::InvalidOperation(
                                 format!("Unsupported operation for variable {}", name),
-                                line_info.clone(),
+                                *line_info,
                             ));
                         }
                         *current = extract_omen(&evaluated_value, line_info)?;
@@ -178,18 +175,18 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                         if !matches!(op, AssignmentOp::Assign) {
                             return Err(EvalError::InvalidOperation(
                                 format!("Unsupported operation for variable {}", name),
-                                line_info.clone(),
+                                *line_info,
                             ));
                         }
                         if !matches!(evaluated_value, EvalResult::Data(Value::Abyss)) {
-                            return Err(EvalError::ExpectedType(Type::Abyss, line_info.clone()));
+                            return Err(EvalError::ExpectedType(Type::Abyss, *line_info));
                         }
                     }
                     (value_slot, Type::Scroll) => {
                         if !matches!(op, AssignmentOp::Assign) {
                             return Err(EvalError::InvalidOperation(
                                 "Scroll reassignment only supports =".to_string(),
-                                line_info.clone(),
+                                *line_info,
                             ));
                         }
                         *value_slot =
@@ -199,7 +196,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                         if !matches!(op, AssignmentOp::Assign) {
                             return Err(EvalError::InvalidOperation(
                                 "Lexicon reassignment only supports =".to_string(),
-                                line_info.clone(),
+                                *line_info,
                             ));
                         }
                         *value_slot =
@@ -209,11 +206,10 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                         if !matches!(op, AssignmentOp::Assign) {
                             return Err(EvalError::InvalidOperation(
                                 "Materia variables only support =".to_string(),
-                                line_info.clone(),
+                                *line_info,
                             ));
                         }
-                        *value_slot =
-                            eval_result_to_value_checked(evaluated_value, line_info.clone())?;
+                        *value_slot = eval_result_to_value_checked(evaluated_value, *line_info)?;
                     }
                     _ => {
                         return Err(EvalError::InvalidOperation(
@@ -221,14 +217,14 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                                 "Type mismatch or unsupported operation for variable {}",
                                 name
                             ),
-                            line_info.clone(),
+                            *line_info,
                         ));
                     }
                 }
 
                 Ok(EvalResult::abyss())
             } else {
-                Err(env.undefined_variable_error(name, line_info.clone()))
+                Err(env.undefined_variable_error(name, *line_info))
             }
         }
         AST::IndexAssignment {
@@ -240,7 +236,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
             let (base_name, nested_indices) = collect_index_chain(target).ok_or_else(|| {
                 EvalError::InvalidOperation(
                     "Indexed assignment requires a mutable variable target".to_string(),
-                    line_info.clone(),
+                    *line_info,
                 )
             })?;
 
@@ -250,19 +246,19 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
             }
 
             let final_index_value = evaluate(index, env)?;
-            let new_value = eval_result_to_value_checked(evaluate(value, env)?, line_info.clone())?;
+            let new_value = eval_result_to_value_checked(evaluate(value, env)?, *line_info)?;
 
             let var_info = match env.get_var_mut(&base_name) {
                 Some(var_info) => var_info,
                 None => {
-                    return Err(env.undefined_variable_error(&base_name, line_info.clone()));
+                    return Err(env.undefined_variable_error(&base_name, *line_info));
                 }
             };
 
             if !var_info.is_morph {
                 return Err(EvalError::ImmutableAssignment(
                     base_name.clone(),
-                    line_info.clone(),
+                    *line_info,
                 ));
             }
 
@@ -276,7 +272,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                     let idx = expect_arcana_index(&final_index_value, line_info)?;
                     let mut items = handle.borrow_mut();
                     if idx >= items.len() {
-                        return Err(EvalError::ScrollIndexOutOfBounds(idx, line_info.clone()));
+                        return Err(EvalError::ScrollIndexOutOfBounds(idx, *line_info));
                     }
                     items[idx] = new_value;
                 }
@@ -288,7 +284,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                 _ => {
                     return Err(EvalError::InvalidOperation(
                         "Indexed assignment requires a scroll or lexicon".to_string(),
-                        line_info.clone(),
+                        *line_info,
                     ));
                 }
             }
@@ -304,7 +300,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
             let (base_name, access_chain) = collect_field_chain(target).ok_or_else(|| {
                 EvalError::InvalidOperation(
                     "Field assignment requires an artifact variable".to_string(),
-                    line_info.clone(),
+                    *line_info,
                 )
             })?;
 
@@ -313,14 +309,14 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
             let var_info = match env.get_var_mut(&base_name) {
                 Some(var_info) => var_info,
                 None => {
-                    return Err(env.undefined_variable_error(&base_name, line_info.clone()));
+                    return Err(env.undefined_variable_error(&base_name, *line_info));
                 }
             };
 
             if !var_info.is_morph {
                 return Err(EvalError::ImmutableAssignment(
                     base_name.clone(),
-                    line_info.clone(),
+                    *line_info,
                 ));
             }
 
@@ -345,7 +341,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                                 segment,
                                 describe_value(&other)
                             ),
-                            line_info.clone(),
+                            *line_info,
                         ));
                     }
                 };
@@ -441,7 +437,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                         Value::Arcana(value),
                         Type::Arcana,
                         true,
-                        line_info.clone(),
+                        *line_info,
                     );
 
                     let remaining_params = params[1..].to_vec();
@@ -452,7 +448,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                             &AST::Orbit {
                                 params: remaining_params,
                                 body: body.clone(),
-                                line_info: line_info.clone(),
+                                line_info: *line_info,
                             },
                             env,
                         )?
@@ -490,7 +486,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
             } else {
                 Err(EvalError::InvalidOperation(
                     "Expected OrbitParam in Orbit".to_string(),
-                    line_info.clone(),
+                    *line_info,
                 ))
             }
         }
@@ -525,7 +521,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                 params: params.clone(),
                 return_type: return_type.clone(),
                 body: body.clone(),
-                line_info: line_info.clone(),
+                line_info: *line_info,
             };
             if let Some(target) = method_target {
                 let artifact_method = ArtifactMethod {
@@ -546,7 +542,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
             if env.artifact_defined_in_current_scope(name) {
                 return Err(EvalError::InvalidOperation(
                     format!("Artifact {} is already defined", name),
-                    line_info.clone(),
+                    *line_info,
                 ));
             }
             let schema = build_artifact_schema(name, fields, env, line_info)?;
@@ -556,7 +552,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                 Value::Glyph(Type::Artifact(name.clone())),
                 Type::Glyph,
                 false,
-                line_info.clone(),
+                *line_info,
             );
             Ok(EvalResult::abyss())
         }
@@ -571,7 +567,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
 fn clone_indexed_child(
     value: &Value,
     index: &EvalResult,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<Value, EvalError> {
     match value {
         Value::Scroll(handle) => {
@@ -580,7 +576,7 @@ fn clone_indexed_child(
             borrowed
                 .get(idx)
                 .cloned()
-                .ok_or_else(|| EvalError::ScrollIndexOutOfBounds(idx, line_info.clone()))
+                .ok_or(EvalError::ScrollIndexOutOfBounds(idx, *line_info))
         }
         Value::Lexicon(handle) => {
             let key = expect_rune_key(index, line_info)?;
@@ -588,11 +584,11 @@ fn clone_indexed_child(
             borrowed
                 .get(&key)
                 .cloned()
-                .ok_or_else(|| EvalError::MissingLexiconKey(key.clone(), line_info.clone()))
+                .ok_or_else(|| EvalError::MissingLexiconKey(key.clone(), *line_info))
         }
         _ => Err(EvalError::InvalidOperation(
             "Cannot index into non-collection value".to_string(),
-            line_info.clone(),
+            *line_info,
         )),
     }
 }
@@ -602,8 +598,8 @@ mod tests {
     use super::*;
     use crate::eval::test_support::{artifact_handle, lexicon, register_artifact, rune, scroll};
 
-    fn line() -> Option<LineInfo> {
-        Some(LineInfo::new(1, 1))
+    fn line() -> Option<Span> {
+        Some(Span::new(1, 1))
     }
 
     #[test]

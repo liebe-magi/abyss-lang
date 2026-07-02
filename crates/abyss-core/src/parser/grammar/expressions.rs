@@ -51,7 +51,7 @@ pub(super) fn or_expr_parser<'src>(
                 let span = merge_span(left.1, right.1);
                 let info = ctx_for_map.info(span);
                 (
-                    AST::LogicalOr(Box::new(left.0), Box::new(right.0), info.clone()),
+                    AST::LogicalOr(Box::new(left.0), Box::new(right.0), info),
                     span,
                 )
             })
@@ -79,7 +79,7 @@ pub(super) fn and_expr_parser<'src>(
                 let span = merge_span(left.1, right.1);
                 let info = ctx_for_map.info(span);
                 (
-                    AST::LogicalAnd(Box::new(left.0), Box::new(right.0), info.clone()),
+                    AST::LogicalAnd(Box::new(left.0), Box::new(right.0), info),
                     span,
                 )
             })
@@ -101,10 +101,7 @@ pub(super) fn not_expr_parser<'src>(
             for span in nots.into_iter().rev() {
                 let total_span = SimpleSpan::new(span.start(), current.1.end());
                 let info = ctx_for_map.info(total_span);
-                current = (
-                    AST::LogicalNot(Box::new(current.0), info.clone()),
-                    total_span,
-                );
+                current = (AST::LogicalNot(Box::new(current.0), info), total_span);
             }
             current
         })
@@ -135,21 +132,17 @@ pub(super) fn comp_expr_parser<'src>(
                 let span = merge_span(left.1, right.1);
                 let info = ctx_for_map.info(span);
                 let ast = match op_token {
-                    Token::Equal => AST::Equal(Box::new(left.0), Box::new(right.0), info.clone()),
-                    Token::NotEqual => {
-                        AST::NotEqual(Box::new(left.0), Box::new(right.0), info.clone())
-                    }
-                    Token::LessThan => {
-                        AST::LessThan(Box::new(left.0), Box::new(right.0), info.clone())
-                    }
+                    Token::Equal => AST::Equal(Box::new(left.0), Box::new(right.0), info),
+                    Token::NotEqual => AST::NotEqual(Box::new(left.0), Box::new(right.0), info),
+                    Token::LessThan => AST::LessThan(Box::new(left.0), Box::new(right.0), info),
                     Token::LessThanOrEqual => {
-                        AST::LessThanOrEqual(Box::new(left.0), Box::new(right.0), info.clone())
+                        AST::LessThanOrEqual(Box::new(left.0), Box::new(right.0), info)
                     }
                     Token::GreaterThan => {
-                        AST::GreaterThan(Box::new(left.0), Box::new(right.0), info.clone())
+                        AST::GreaterThan(Box::new(left.0), Box::new(right.0), info)
                     }
                     Token::GreaterThanOrEqual => {
-                        AST::GreaterThanOrEqual(Box::new(left.0), Box::new(right.0), info.clone())
+                        AST::GreaterThanOrEqual(Box::new(left.0), Box::new(right.0), info)
                     }
                     _ => unreachable!(),
                 };
@@ -181,8 +174,8 @@ pub(super) fn add_expr_parser<'src>(
                 let span = merge_span(left.1, right.1);
                 let info = ctx_for_map.info(span);
                 let ast = match op_token {
-                    Token::Plus => AST::Add(Box::new(left.0), Box::new(right.0), info.clone()),
-                    Token::Minus => AST::Sub(Box::new(left.0), Box::new(right.0), info.clone()),
+                    Token::Plus => AST::Add(Box::new(left.0), Box::new(right.0), info),
+                    Token::Minus => AST::Sub(Box::new(left.0), Box::new(right.0), info),
                     _ => unreachable!(),
                 };
                 (ast, span)
@@ -211,9 +204,9 @@ pub(super) fn mul_expr_parser<'src>(
                 let span = merge_span(left.1, right.1);
                 let info = ctx_for_map.info(span);
                 let ast = match op_token {
-                    Token::Star => AST::Mul(Box::new(left.0), Box::new(right.0), info.clone()),
-                    Token::Slash => AST::Div(Box::new(left.0), Box::new(right.0), info.clone()),
-                    Token::Percent => AST::Mod(Box::new(left.0), Box::new(right.0), info.clone()),
+                    Token::Star => AST::Mul(Box::new(left.0), Box::new(right.0), info),
+                    Token::Slash => AST::Div(Box::new(left.0), Box::new(right.0), info),
+                    Token::Percent => AST::Mod(Box::new(left.0), Box::new(right.0), info),
                     _ => unreachable!(),
                 };
                 (ast, span)
@@ -242,12 +235,8 @@ pub(super) fn pow_expr_parser<'src>(
                 let span = merge_span(left.1, right.1);
                 let info = ctx_for_map.info(span);
                 let ast = match op_token {
-                    Token::DoubleStar => {
-                        AST::PowAether(Box::new(left.0), Box::new(right.0), info.clone())
-                    }
-                    Token::Caret => {
-                        AST::PowArcana(Box::new(left.0), Box::new(right.0), info.clone())
-                    }
+                    Token::DoubleStar => AST::PowAether(Box::new(left.0), Box::new(right.0), info),
+                    Token::Caret => AST::PowArcana(Box::new(left.0), Box::new(right.0), info),
                     _ => unreachable!(),
                 };
                 (ast, span)
@@ -465,7 +454,7 @@ pub(super) fn func_call_parser<'src>(
                     AST::FuncCall {
                         name,
                         args,
-                        line_info: info.clone(),
+                        line_info: info,
                     },
                     span,
                 )
@@ -500,7 +489,7 @@ pub(super) fn list_literal_parser<'src>(
             (
                 AST::ListLiteral {
                     elements,
-                    line_info: info.clone(),
+                    line_info: info,
                 },
                 span,
             )
@@ -538,7 +527,7 @@ pub(super) fn map_literal_parser<'src>(
             (
                 AST::MapLiteral {
                     entries,
-                    line_info: info.clone(),
+                    line_info: info,
                 },
                 span,
             )
@@ -579,7 +568,7 @@ pub(super) fn artifact_literal_parser<'src>(
                     AST::ArtifactLiteral {
                         type_name,
                         fields,
-                        line_info: info.clone(),
+                        line_info: info,
                     },
                     span,
                 )

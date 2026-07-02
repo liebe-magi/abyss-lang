@@ -197,22 +197,17 @@ pub(crate) fn try_evaluate_expression(
                 EvalResult::Data(Value::Scroll(items)) => {
                     let idx = expect_arcana_index(&idx_value, line_info)?;
                     let borrowed = items.borrow();
-                    let value = borrowed.get(idx).cloned().ok_or_else(|| {
-                        EvalError::InvalidOperation(
-                            format!("Index {} is out of bounds for scroll", idx),
-                            line_info.clone(),
-                        )
-                    })?;
+                    let value = borrowed
+                        .get(idx)
+                        .cloned()
+                        .ok_or_else(|| EvalError::ScrollIndexOutOfBounds(idx, line_info.clone()))?;
                     EvalResult::data(value)
                 }
                 EvalResult::Data(Value::Lexicon(entries)) => {
                     let key = expect_rune_key(&idx_value, line_info)?;
                     let borrowed = entries.borrow();
                     let value = borrowed.get(&key).cloned().ok_or_else(|| {
-                        EvalError::InvalidOperation(
-                            format!("Lexicon key '{}' does not exist", key),
-                            line_info.clone(),
-                        )
+                        EvalError::MissingLexiconKey(key.clone(), line_info.clone())
                     })?;
                     EvalResult::data(value)
                 }
@@ -695,13 +690,11 @@ fn validate_artifact_type(
     if actual == expected {
         Ok(Value::Artifact(handle))
     } else {
-        Err(EvalError::TypeError(
-            format!(
-                "Expected artifact of type {} but received {}",
-                expected, actual
-            ),
-            line_info.clone(),
-        ))
+        Err(EvalError::ArtifactTypeMismatch {
+            expected: expected.to_string(),
+            found: actual,
+            line_info: line_info.clone(),
+        })
     }
 }
 
@@ -787,7 +780,7 @@ mod tests {
         let result = try_evaluate_expression(&expr, &mut env);
         assert!(matches!(
             result,
-            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("out of bounds")
+            Err(EvalError::ScrollIndexOutOfBounds(_, _))
         ));
     }
 

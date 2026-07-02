@@ -1,5 +1,5 @@
 use crate::env::{ArtifactHandle, Value};
-use abyss_core::ast::LineInfo;
+use abyss_core::ast::{LineInfo, Type};
 use ariadne::{Color, Label, Report, ReportKind, Source};
 use std::fmt;
 
@@ -44,6 +44,42 @@ pub enum EvalError {
     InvalidOperation(String, Option<LineInfo>),
     NegativeExponent(Option<LineInfo>),
     TypeError(String, Option<LineInfo>),
+    /// A value of the given type was required but something else was
+    /// produced (variable initialisation, argument conversion, builtin
+    /// extraction). For `Type::Artifact` the message names the artifact
+    /// type; use [`EvalError::ArtifactTypeMismatch`] when the *found*
+    /// artifact type is also known.
+    ExpectedType(Type, Option<LineInfo>),
+    /// An artifact of one type appeared where another artifact type was
+    /// required.
+    ArtifactTypeMismatch {
+        expected: String,
+        found: String,
+        line_info: Option<LineInfo>,
+    },
+    /// Assignment to a variable that was not declared `morph`.
+    ImmutableAssignment(String, Option<LineInfo>),
+    /// Scroll index outside the valid range.
+    ScrollIndexOutOfBounds(usize, Option<LineInfo>),
+    /// Lexicon lookup with a key that has no entry.
+    MissingLexiconKey(String, Option<LineInfo>),
+}
+
+/// Lowercase keyword name for a type, as used in "Expected … value"
+/// messages (`arcana`, `rune`, …).
+fn type_label(ty: &Type) -> &str {
+    match ty {
+        Type::Arcana => "arcana",
+        Type::Aether => "aether",
+        Type::Rune => "rune",
+        Type::Omen => "omen",
+        Type::Abyss => "abyss",
+        Type::Scroll => "scroll",
+        Type::Lexicon => "lexicon",
+        Type::Glyph => "glyph",
+        Type::Materia => "materia",
+        Type::Artifact(name) => name,
+    }
 }
 
 impl EvalError {
@@ -53,6 +89,13 @@ impl EvalError {
             EvalError::UndefinedVariable(_, info)
             | EvalError::InvalidOperation(_, info)
             | EvalError::TypeError(_, info)
+            | EvalError::ExpectedType(_, info)
+            | EvalError::ArtifactTypeMismatch {
+                line_info: info, ..
+            }
+            | EvalError::ImmutableAssignment(_, info)
+            | EvalError::ScrollIndexOutOfBounds(_, info)
+            | EvalError::MissingLexiconKey(_, info)
             | EvalError::NegativeExponent(info) => info.as_ref(),
         }
     }
@@ -62,13 +105,22 @@ impl EvalError {
     fn kind_label(&self) -> &'static str {
         match self {
             EvalError::UndefinedVariable(_, _) => "Undefined variable",
-            EvalError::InvalidOperation(_, _) => "Invalid operation",
+            EvalError::InvalidOperation(_, _)
+            | EvalError::ImmutableAssignment(_, _)
+            | EvalError::ScrollIndexOutOfBounds(_, _)
+            | EvalError::MissingLexiconKey(_, _) => "Invalid operation",
             EvalError::NegativeExponent(_) => "Negative exponent",
-            EvalError::TypeError(_, _) => "Type error",
+            EvalError::TypeError(_, _)
+            | EvalError::ExpectedType(_, _)
+            | EvalError::ArtifactTypeMismatch { .. } => "Type error",
         }
     }
 }
 
+// The structured variants render byte-identically to the strings the
+// legacy `InvalidOperation(String)` / `TypeError(String)` sites produced,
+// so published docs and the VS Code extension keep matching. Wording
+// changes are deliberate decisions, made here and nowhere else.
 impl fmt::Display for EvalError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -78,6 +130,32 @@ impl fmt::Display for EvalError {
                 write!(f, "PowArcana operation requires a non-negative exponent!")
             }
             EvalError::TypeError(var_type, _) => write!(f, "Type error: {}", var_type),
+            EvalError::ExpectedType(Type::Artifact(name), _) => {
+                write!(f, "Type error: Expected artifact of type {}", name)
+            }
+            EvalError::ExpectedType(ty, _) => {
+                write!(f, "Type error: Expected {} value", type_label(ty))
+            }
+            EvalError::ArtifactTypeMismatch {
+                expected, found, ..
+            } => write!(
+                f,
+                "Type error: Expected artifact of type {} but received {}",
+                expected, found
+            ),
+            EvalError::ImmutableAssignment(name, _) => write!(
+                f,
+                "Invalid operation: Cannot reassign to immutable variable {}",
+                name
+            ),
+            EvalError::ScrollIndexOutOfBounds(index, _) => write!(
+                f,
+                "Invalid operation: Index {} is out of bounds for scroll",
+                index
+            ),
+            EvalError::MissingLexiconKey(key, _) => {
+                write!(f, "Invalid operation: Lexicon key '{}' does not exist", key)
+            }
         }
     }
 }

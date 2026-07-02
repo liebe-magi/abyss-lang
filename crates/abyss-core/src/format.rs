@@ -1,4 +1,95 @@
 use crate::ast::{AssignmentOp, Expr, Pattern, Stmt, Type};
+use crate::parser::SourceComment;
+
+/// Walks the comment list in source order while statements are being
+/// formatted, so each comment is emitted exactly once, next to the
+/// statement it preceded (or trailed) in the original source.
+struct CommentCursor<'a> {
+    comments: &'a [SourceComment],
+    source: &'a str,
+    next: usize,
+}
+
+impl<'a> CommentCursor<'a> {
+    /// Emit (indented, one per line) every not-yet-consumed comment that
+    /// starts before `pos`.
+    fn flush_before(&mut self, pos: usize, indent_level: usize, out: &mut String) {
+        let indent = "    ".repeat(indent_level);
+        while self.next < self.comments.len() && self.comments[self.next].span.start() < pos {
+            for line in self.comments[self.next].text.lines() {
+                out.push_str(&indent);
+                out.push_str(line.trim_end());
+                out.push('\n');
+            }
+            self.next += 1;
+        }
+    }
+
+    /// If the next comment sits on the same source line as `stmt_end`
+    /// (no newline between them), consume it and return its text so the
+    /// caller can append it to the formatted statement line.
+    fn take_trailing(&mut self, stmt_end: usize) -> Option<String> {
+        let comment = self.comments.get(self.next)?;
+        let start = comment.span.start();
+        if start < stmt_end || self.source.get(stmt_end..start)?.contains('\n') {
+            return None;
+        }
+        self.next += 1;
+        Some(comment.text.clone())
+    }
+}
+
+/// Format a whole parsed program, re-emitting the comments collected by
+/// [`crate::parser::collect_comments`] next to the statements they
+/// accompanied: full-line comments stay above their statement (including
+/// inside blocks), a comment trailing a statement on the same line is
+/// re-attached to the formatted line, and comments after the last
+/// statement land at the end.
+///
+/// Comments embedded somewhere the formatter cannot represent (inside an
+/// expression, between oracle arms) are moved up to the closest preceding
+/// statement boundary.
+pub fn format_program(source: &str, stmts: &[Stmt], comments: &[SourceComment]) -> String {
+    let mut cursor = CommentCursor {
+        comments,
+        source,
+        next: 0,
+    };
+    let mut out = String::new();
+    for stmt in stmts {
+        if let Some(span) = stmt_span(stmt) {
+            cursor.flush_before(span.start(), 0, &mut out);
+        }
+        out.push_str(&format_stmt_inner(stmt, 0, &mut Some(&mut cursor)));
+        if let Some(span) = stmt_span(stmt)
+            && let Some(trailing) = cursor.take_trailing(span.end() + 1)
+        {
+            out.push(' ');
+            out.push_str(&trailing);
+        }
+        out.push('\n');
+    }
+    cursor.flush_before(usize::MAX, 0, &mut out);
+    out
+}
+
+fn stmt_span(stmt: &Stmt) -> Option<crate::span::Span> {
+    match stmt {
+        Stmt::Expr(_, span)
+        | Stmt::Reveal(_, span)
+        | Stmt::Block(_, span)
+        | Stmt::Comment(_, span)
+        | Stmt::Resume(_, span)
+        | Stmt::Eject(_, span)
+        | Stmt::VarAssign { span, .. }
+        | Stmt::Assignment { span, .. }
+        | Stmt::IndexAssignment { span, .. }
+        | Stmt::FieldAssignment { span, .. }
+        | Stmt::Orbit { span, .. }
+        | Stmt::Engrave { span, .. }
+        | Stmt::ArtifactDef { span, .. } => *span,
+    }
+}
 
 fn type_keyword(var_type: &Type) -> String {
     match var_type {
@@ -19,14 +110,34 @@ fn type_keyword(var_type: &Type) -> String {
 /// the statement body, and the trailing semicolon. This is the entry
 /// point the CLI's `align` subcommand and the REPL echo use.
 pub fn format_stmt(stmt: &Stmt, indent_level: usize) -> String {
+    format_stmt_inner(stmt, indent_level, &mut None)
+}
+
+fn format_stmt_inner(
+    stmt: &Stmt,
+    indent_level: usize,
+    comments: &mut Option<&mut CommentCursor>,
+) -> String {
     let indent = "    ".repeat(indent_level);
-    format!("{}{};", indent, format_stmt_body(stmt, indent_level))
+    format!(
+        "{}{};",
+        indent,
+        format_stmt_body_inner(stmt, indent_level, comments)
+    )
 }
 
 /// Formats the body of a statement without indentation or the trailing
 /// semicolon — the shape used inside oracle arm bodies and by
 /// [`format_stmt`].
 fn format_stmt_body(stmt: &Stmt, indent_level: usize) -> String {
+    format_stmt_body_inner(stmt, indent_level, &mut None)
+}
+
+fn format_stmt_body_inner(
+    stmt: &Stmt,
+    indent_level: usize,
+    comments: &mut Option<&mut CommentCursor>,
+) -> String {
     let indent = "    ".repeat(indent_level);
 
     match stmt {
@@ -69,10 +180,24 @@ fn format_stmt_body(stmt: &Stmt, indent_level: usize) -> String {
                 _ => format!("reveal {}", trimmed_val),
             }
         }
-        Stmt::Block(statements, _) => {
+        Stmt::Block(statements, block_span) => {
             let mut result = format!("{}{{\n", indent);
             for statement in statements {
-                result.push_str(&format!("{}\n", format_stmt(statement, indent_level + 1)));
+                if let (Some(cursor), Some(span)) = (comments.as_deref_mut(), stmt_span(statement))
+                {
+                    cursor.flush_before(span.start(), indent_level + 1, &mut result);
+                }
+                result.push_str(&format_stmt_inner(statement, indent_level + 1, comments));
+                if let (Some(cursor), Some(span)) = (comments.as_deref_mut(), stmt_span(statement))
+                    && let Some(trailing) = cursor.take_trailing(span.end() + 1)
+                {
+                    result.push(' ');
+                    result.push_str(&trailing);
+                }
+                result.push('\n');
+            }
+            if let (Some(cursor), Some(span)) = (comments.as_deref_mut(), block_span) {
+                cursor.flush_before(span.end(), indent_level + 1, &mut result);
             }
             result.push_str(&format!("{}}}", indent));
             result
@@ -91,7 +216,9 @@ fn format_stmt_body(stmt: &Stmt, indent_level: usize) -> String {
                     .join(", ");
                 result.push_str(&format!(" ({})", params_str));
             }
-            result.push_str(format_stmt_body(body.as_ref(), indent_level).trim());
+            result.push_str(
+                format_stmt_body_inner(body.as_ref(), indent_level, comments).trim_start(),
+            );
             result
         }
         Stmt::Resume(value, _) => match value {
@@ -149,14 +276,14 @@ fn format_stmt_body(stmt: &Stmt, indent_level: usize) -> String {
                     "engrave {}({}) {}",
                     qualified_name,
                     params_str,
-                    format_stmt_body(body, indent_level)
+                    format_stmt_body_inner(body, indent_level, comments)
                 ),
                 Some(ret) => format!(
                     "engrave {}({}) -> {} {}",
                     qualified_name,
                     params_str,
                     ret,
-                    format_stmt_body(body, indent_level)
+                    format_stmt_body_inner(body, indent_level, comments)
                 ),
             }
         }

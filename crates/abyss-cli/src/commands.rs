@@ -3,8 +3,8 @@
 //! the REPL.
 
 use abyss_core::{
-    format::format_stmt,
-    parser::{ParserDiagnostic, emit_diagnostics, parse},
+    format::format_program,
+    parser::{ParserDiagnostic, collect_comments, emit_diagnostics, parse},
 };
 use abyss_interpreter::{
     eval::{display_error_with_source, evaluate},
@@ -54,7 +54,6 @@ pub fn execute_format(script: &str) {
         return;
     }
 
-    for ast in outcome.ast {
-        println!("{}", format_stmt(&ast, 0));
-    }
+    let comments = collect_comments(script);
+    print!("{}", format_program(script, &outcome.ast, &comments));
 }

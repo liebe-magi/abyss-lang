@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use chumsky::{
     error::Rich,
     extra,
@@ -8,10 +6,9 @@ use chumsky::{
     recursive::{self, Direct},
 };
 
-use crate::ast::{AST, LineInfo};
+use crate::ast::{AST, Span};
 
 use super::SimpleSpan;
-use super::helpers::LineMap;
 use super::tokens::{SpannedToken, Token};
 
 pub(super) type ParserInput<'src> = IterInput<std::vec::IntoIter<SpannedToken>, SimpleSpan<usize>>;
@@ -24,14 +21,16 @@ pub(super) type RecursiveParser<'src, T> =
 pub(super) type SpannedAst = (AST, SimpleSpan<usize>);
 pub(super) type IndexedTarget = (SpannedAst, SpannedAst);
 
+/// Shared per-parser context. Since the span refactor it carries no
+/// state — nodes store byte spans directly — but it is kept as the
+/// construction point for node positions so a future context (e.g.
+/// interning, config) has an obvious home.
 #[derive(Clone)]
-pub(super) struct ParserContext {
-    map: Arc<LineMap>,
-}
+pub(super) struct ParserContext {}
 
 impl ParserContext {
-    fn info(&self, span: SimpleSpan<usize>) -> Option<LineInfo> {
-        self.map.line_info(span)
+    fn info(&self, span: SimpleSpan<usize>) -> Option<Span> {
+        Some(span)
     }
 
     fn wrap_statement(&self, ast: AST, span: SimpleSpan<usize>) -> AST {
@@ -43,8 +42,8 @@ pub(super) fn merge_span(a: SimpleSpan<usize>, b: SimpleSpan<usize>) -> SimpleSp
     SimpleSpan::new(a.start().min(b.start()), a.end().max(b.end()))
 }
 
-pub fn build_parser<'src>(map: Arc<LineMap>) -> BoxedParser<'src, Vec<AST>> {
-    let ctx = ParserContext { map };
+pub fn build_parser<'src>() -> BoxedParser<'src, Vec<AST>> {
+    let ctx = ParserContext {};
 
     let ctx_for_recursive = ctx.clone();
 

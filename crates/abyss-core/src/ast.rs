@@ -1,84 +1,72 @@
-/// Represents line and column information for debugging purposes.
-#[derive(Debug, Clone)]
-pub struct LineInfo {
-    pub line: usize,
-    pub column: usize,
-}
-
-impl LineInfo {
-    /// Creates a `LineInfo` from explicit 1-based line and column values.
-    pub fn new(line: usize, column: usize) -> Self {
-        LineInfo { line, column }
-    }
-}
+pub use crate::span::Span;
 
 /// Represents the abstract syntax tree (AST) for the language.
 #[derive(Debug, Clone)]
 pub enum AST {
-    Statement(Box<AST>, Option<LineInfo>),
-    Omen(bool, Option<LineInfo>),
-    Arcana(i64, Option<LineInfo>),
-    Aether(f64, Option<LineInfo>),
-    Rune(String, Option<LineInfo>),
-    Abyss(Option<LineInfo>),
-    Add(Box<AST>, Box<AST>, Option<LineInfo>),
-    Sub(Box<AST>, Box<AST>, Option<LineInfo>),
-    Mul(Box<AST>, Box<AST>, Option<LineInfo>),
-    Div(Box<AST>, Box<AST>, Option<LineInfo>),
-    Mod(Box<AST>, Box<AST>, Option<LineInfo>),
-    PowArcana(Box<AST>, Box<AST>, Option<LineInfo>),
-    PowAether(Box<AST>, Box<AST>, Option<LineInfo>),
-    Equal(Box<AST>, Box<AST>, Option<LineInfo>),
-    NotEqual(Box<AST>, Box<AST>, Option<LineInfo>),
-    LessThan(Box<AST>, Box<AST>, Option<LineInfo>),
-    LessThanOrEqual(Box<AST>, Box<AST>, Option<LineInfo>),
-    GreaterThan(Box<AST>, Box<AST>, Option<LineInfo>),
-    GreaterThanOrEqual(Box<AST>, Box<AST>, Option<LineInfo>),
-    LogicalAnd(Box<AST>, Box<AST>, Option<LineInfo>),
-    LogicalOr(Box<AST>, Box<AST>, Option<LineInfo>),
-    LogicalNot(Box<AST>, Option<LineInfo>),
+    Statement(Box<AST>, Option<Span>),
+    Omen(bool, Option<Span>),
+    Arcana(i64, Option<Span>),
+    Aether(f64, Option<Span>),
+    Rune(String, Option<Span>),
+    Abyss(Option<Span>),
+    Add(Box<AST>, Box<AST>, Option<Span>),
+    Sub(Box<AST>, Box<AST>, Option<Span>),
+    Mul(Box<AST>, Box<AST>, Option<Span>),
+    Div(Box<AST>, Box<AST>, Option<Span>),
+    Mod(Box<AST>, Box<AST>, Option<Span>),
+    PowArcana(Box<AST>, Box<AST>, Option<Span>),
+    PowAether(Box<AST>, Box<AST>, Option<Span>),
+    Equal(Box<AST>, Box<AST>, Option<Span>),
+    NotEqual(Box<AST>, Box<AST>, Option<Span>),
+    LessThan(Box<AST>, Box<AST>, Option<Span>),
+    LessThanOrEqual(Box<AST>, Box<AST>, Option<Span>),
+    GreaterThan(Box<AST>, Box<AST>, Option<Span>),
+    GreaterThanOrEqual(Box<AST>, Box<AST>, Option<Span>),
+    LogicalAnd(Box<AST>, Box<AST>, Option<Span>),
+    LogicalOr(Box<AST>, Box<AST>, Option<Span>),
+    LogicalNot(Box<AST>, Option<Span>),
     VarAssign {
         name: String,
         value: Box<AST>,
         var_type: Type,
         is_morph: bool,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
     Assignment {
         name: String,
         value: Box<AST>,
         op: AssignmentOp,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
-    Var(String, Option<LineInfo>),
-    Reveal(Box<AST>, Option<LineInfo>),
+    Var(String, Option<Span>),
+    Reveal(Box<AST>, Option<Span>),
     Oracle {
         is_match: bool,
         conditionals: Vec<ConditionalAssignment>,
         branches: Vec<AST>,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
     OracleBranch {
         pattern: Vec<AST>,
         guard: Option<Box<AST>>,
         body: Box<AST>,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
-    OracleDontCareItem(Option<LineInfo>),
+    OracleDontCareItem(Option<Span>),
     /// Scroll-shape pattern that destructures a `scroll` scrutinee into
     /// its elements. Each element is one of: `OracleDontCareItem`,
     /// `OracleScrollRest`, `Var(name)` (binding), or any other AST node
     /// (treated as a literal expression to compare against).
     OracleScrollPattern {
         elements: Vec<AST>,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
     /// Rest segment inside an `OracleScrollPattern`. `name = Some("rest")`
     /// for `..rest` (binds the unmatched tail to a fresh sub-scroll);
     /// `name = None` for `..` (anonymous, drops the tail).
     OracleScrollRest {
         name: Option<String>,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
     /// Artifact-shape pattern that matches a `TypeName { field, … }`
     /// scrutinee. Each `(field_name, sub_pattern)` entry pulls the named
@@ -90,7 +78,7 @@ pub enum AST {
     OracleArtifactPattern {
         type_name: String,
         fields: Vec<(String, AST)>,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
     /// Lexicon-shape pattern that matches a `{ "key": value, … }`
     /// scrutinee. Each `(key, sub_pattern)` entry pulls the named entry
@@ -100,88 +88,88 @@ pub enum AST {
     /// "pick what you need" ergonomics.
     OracleLexiconPattern {
         entries: Vec<(String, AST)>,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
-    Block(Vec<AST>, Option<LineInfo>),
-    Comment(String, Option<LineInfo>),
+    Block(Vec<AST>, Option<Span>),
+    Comment(String, Option<Span>),
     Orbit {
         params: Vec<AST>,
         body: Box<AST>,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
     OrbitParam {
         name: String,
         start: Box<AST>,
         end: Box<AST>,
         op: String,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
-    Resume(Option<String>, Option<LineInfo>),
-    Eject(Option<String>, Option<LineInfo>),
+    Resume(Option<String>, Option<Span>),
+    Eject(Option<String>, Option<Span>),
     Engrave {
         name: String,
         params: Vec<AST>,
         return_type: Type,
         body: Box<AST>,
         method_target: Option<ArtifactMethodTarget>,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
     EngraveParam {
         name: String,
         param_type: Type,
         is_morph: bool,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
     FuncCall {
         name: String,
         args: Vec<AST>,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
     ListLiteral {
         elements: Vec<AST>,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
     MapLiteral {
         entries: Vec<(String, AST)>,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
     IndexAccess {
         target: Box<AST>,
         index: Box<AST>,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
     IndexAssignment {
         target: Box<AST>,
         index: Box<AST>,
         value: Box<AST>,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
     ArtifactDef {
         name: String,
         fields: Vec<ArtifactField>,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
     ArtifactLiteral {
         type_name: String,
         fields: Vec<(String, AST)>,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
     FieldAccess {
         target: Box<AST>,
         field: String,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
     FieldAssignment {
         target: Box<AST>,
         field: String,
         value: Box<AST>,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
     MethodCall {
         receiver: Box<AST>,
         method: String,
         args: Vec<AST>,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     },
 }
 
@@ -189,7 +177,7 @@ pub enum AST {
 pub struct ArtifactField {
     pub name: String,
     pub field_type: Type,
-    pub line_info: Option<LineInfo>,
+    pub line_info: Option<Span>,
 }
 
 #[derive(Debug, Clone)]
@@ -203,7 +191,7 @@ pub struct ArtifactMethodTarget {
 pub struct ConditionalAssignment {
     pub variable: String,
     pub expression: Box<AST>,
-    pub line_info: Option<LineInfo>,
+    pub line_info: Option<Span>,
 }
 
 /// Represents the type of a variable or expression.

@@ -11,7 +11,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::env::{RuntimeEnv, Value};
-use abyss_core::ast::{AST, ConditionalAssignment, LineInfo, Type};
+use abyss_core::ast::{AST, ConditionalAssignment, Span, Type};
 
 use super::artifacts::{lookup_schema_from_handle, read_artifact_field, values_equal};
 use super::result::{EvalError, EvalResult};
@@ -30,7 +30,7 @@ pub(super) fn evaluate_oracle(
     is_match: bool,
     conditionals: &[ConditionalAssignment],
     branches: &[AST],
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
     env: &mut RuntimeEnv,
 ) -> Result<EvalResult, EvalError> {
     let mut scrutinee_values = Vec::with_capacity(conditionals.len());
@@ -59,7 +59,7 @@ pub(super) fn evaluate_oracle(
             other => {
                 return Err(EvalError::InvalidOperation(
                     format!("Unsupported type in oracle scrutinee: {:?}", other),
-                    line_info.clone(),
+                    *line_info,
                 ));
             }
         };
@@ -119,7 +119,7 @@ fn evaluate_oracle_branch(
     pattern: &[AST],
     guard: Option<&AST>,
     body: &AST,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
     scrutinee_values: &[Value],
     env: &mut RuntimeEnv,
 ) -> Result<Option<EvalResult>, EvalError> {
@@ -133,7 +133,7 @@ fn evaluate_oracle_branch(
                     pattern.len(),
                     scrutinee_values.len()
                 ),
-                line_info.clone(),
+                *line_info,
             ));
         }
 
@@ -146,7 +146,7 @@ fn evaluate_oracle_branch(
             let Some(scrutinee_value) = scrutinee_values.get(idx) else {
                 return Err(EvalError::InvalidOperation(
                     "Oracle branch references missing scrutinee".to_string(),
-                    line_info.clone(),
+                    *line_info,
                 ));
             };
 
@@ -161,7 +161,7 @@ fn evaluate_oracle_branch(
                     scrutinee_value.clone(),
                     type_of_scrutinee(scrutinee_value),
                     false,
-                    var_line.clone(),
+                    *var_line,
                 );
                 continue;
             }
@@ -244,7 +244,7 @@ fn evaluate_oracle_branch(
                 _ => {
                     return Err(EvalError::InvalidOperation(
                         "Oracle branch pattern type must match scrutinee type".to_string(),
-                        line_info.clone(),
+                        *line_info,
                     ));
                 }
             }
@@ -265,7 +265,7 @@ fn evaluate_oracle_branch(
                             "Oracle if-else pattern must evaluate to an omen, found {:?}",
                             other
                         ),
-                        line_info.clone(),
+                        *line_info,
                     ));
                 }
             }
@@ -281,7 +281,7 @@ fn evaluate_oracle_branch(
                 other => {
                     return Err(EvalError::InvalidOperation(
                         format!("Oracle ward must evaluate to an omen, found {:?}", other),
-                        line_info.clone(),
+                        *line_info,
                     ));
                 }
             },
@@ -341,7 +341,7 @@ fn type_of_scrutinee(value: &Value) -> Type {
 fn match_scroll_pattern(
     elements: &[AST],
     scrutinee_value: &Value,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
     env: &mut RuntimeEnv,
 ) -> Result<bool, EvalError> {
     let scroll_handle = match scrutinee_value {
@@ -352,7 +352,7 @@ fn match_scroll_pattern(
                     "Scroll pattern requires a scroll scrutinee, found {:?}",
                     scrutinee_value
                 ),
-                line_info.clone(),
+                *line_info,
             ));
         }
     };
@@ -365,7 +365,7 @@ fn match_scroll_pattern(
             if rest_index.is_some() {
                 return Err(EvalError::InvalidOperation(
                     "Scroll pattern may contain at most one rest segment".to_string(),
-                    line_info.clone(),
+                    *line_info,
                 ));
             }
             rest_index = Some(idx);
@@ -377,7 +377,7 @@ fn match_scroll_pattern(
     {
         return Err(EvalError::InvalidOperation(
             "Scroll rest segment must appear at the end of the pattern".to_string(),
-            line_info.clone(),
+            *line_info,
         ));
     }
 
@@ -404,7 +404,7 @@ fn match_scroll_pattern(
                     elem_value.clone(),
                     type_of_scrutinee(elem_value),
                     false,
-                    var_line.clone(),
+                    *var_line,
                 );
             }
             AST::OracleScrollPattern {
@@ -454,7 +454,7 @@ fn match_scroll_pattern(
             Value::Scroll(tail_handle),
             Type::Scroll,
             false,
-            rest_line.clone(),
+            *rest_line,
         );
     }
 
@@ -490,7 +490,7 @@ fn match_artifact_pattern(
     type_name: &str,
     fields: &[(String, AST)],
     scrutinee_value: &Value,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
     env: &mut RuntimeEnv,
 ) -> Result<bool, EvalError> {
     let handle = match scrutinee_value {
@@ -501,7 +501,7 @@ fn match_artifact_pattern(
                     "Artifact pattern requires an artifact scrutinee, found {:?}",
                     scrutinee_value
                 ),
-                line_info.clone(),
+                *line_info,
             ));
         }
     };
@@ -509,7 +509,7 @@ fn match_artifact_pattern(
     if env.get_artifact(type_name).is_none() {
         return Err(EvalError::InvalidOperation(
             format!("Artifact pattern references undefined type {}", type_name),
-            line_info.clone(),
+            *line_info,
         ));
     }
 
@@ -544,13 +544,7 @@ fn match_artifact_pattern(
             AST::OracleDontCareItem(_) => continue,
             AST::Var(name, var_line) => {
                 let bound_type = type_of_scrutinee(&field_value);
-                env.set_var(
-                    name.clone(),
-                    field_value,
-                    bound_type,
-                    false,
-                    var_line.clone(),
-                );
+                env.set_var(name.clone(), field_value, bound_type, false, *var_line);
             }
             AST::OracleScrollPattern {
                 elements,
@@ -597,7 +591,7 @@ fn match_artifact_pattern(
                     EvalResult::Revealed(_) | EvalResult::Resume(_) | EvalResult::Eject(_) => {
                         return Err(EvalError::InvalidOperation(
                             "Artifact field pattern compare must yield a value".to_string(),
-                            line_info.clone(),
+                            *line_info,
                         ));
                     }
                 };
@@ -632,7 +626,7 @@ fn match_artifact_pattern(
 fn match_lexicon_pattern(
     entries: &[(String, AST)],
     scrutinee_value: &Value,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
     env: &mut RuntimeEnv,
 ) -> Result<bool, EvalError> {
     let lexicon_handle = match scrutinee_value {
@@ -643,7 +637,7 @@ fn match_lexicon_pattern(
                     "Lexicon pattern requires a lexicon scrutinee, found {:?}",
                     scrutinee_value
                 ),
-                line_info.clone(),
+                *line_info,
             ));
         }
     };
@@ -661,13 +655,7 @@ fn match_lexicon_pattern(
             AST::OracleDontCareItem(_) => continue,
             AST::Var(name, var_line) => {
                 let bound_type = type_of_scrutinee(&entry_value);
-                env.set_var(
-                    name.clone(),
-                    entry_value,
-                    bound_type,
-                    false,
-                    var_line.clone(),
-                );
+                env.set_var(name.clone(), entry_value, bound_type, false, *var_line);
             }
             AST::OracleScrollPattern {
                 elements,
@@ -710,7 +698,7 @@ fn match_lexicon_pattern(
                     EvalResult::Revealed(_) | EvalResult::Resume(_) | EvalResult::Eject(_) => {
                         return Err(EvalError::InvalidOperation(
                             "Lexicon entry pattern compare must yield a value".to_string(),
-                            line_info.clone(),
+                            *line_info,
                         ));
                     }
                 };
@@ -735,7 +723,7 @@ fn match_lexicon_pattern(
 fn values_match_for_pattern(
     actual: &Value,
     expected: &EvalResult,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<bool, EvalError> {
     match (actual, expected) {
         (Value::Arcana(a), EvalResult::Data(Value::Arcana(b))) => Ok(a == b),
@@ -744,7 +732,7 @@ fn values_match_for_pattern(
         (Value::Omen(a), EvalResult::Data(Value::Omen(b))) => Ok(a == b),
         _ => Err(EvalError::InvalidOperation(
             "Scroll pattern element type must match scrutinee element type".to_string(),
-            line_info.clone(),
+            *line_info,
         )),
     }
 }
@@ -753,8 +741,8 @@ fn values_match_for_pattern(
 mod tests {
     use super::*;
 
-    fn line() -> Option<LineInfo> {
-        Some(LineInfo::new(1, 1))
+    fn line() -> Option<Span> {
+        Some(Span::new(1, 1))
     }
     #[test]
     fn oracle_match_branch_returns_revealed_value() {

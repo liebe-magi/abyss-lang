@@ -5,7 +5,7 @@ use std::rc::Rc;
 use crate::diagnostics::did_you_mean_hint;
 use crate::env::{CallArg, Callable, EngravedFunction, RuntimeEnv, Value};
 use crate::stdlib::methods;
-use abyss_core::ast::{AST, LineInfo, Type};
+use abyss_core::ast::{AST, Span, Type};
 
 use super::artifacts::{
     collect_field_chain, compare_artifacts, ensure_field_exists, expect_artifact_from_eval,
@@ -39,7 +39,7 @@ pub(crate) fn try_evaluate_expression(
             for element in elements {
                 evaluated.push(eval_result_to_value_checked(
                     statements::evaluate(element, env)?,
-                    line_info.clone(),
+                    *line_info,
                 )?);
             }
             EvalResult::data(Value::Scroll(Rc::new(RefCell::new(evaluated))))
@@ -47,10 +47,8 @@ pub(crate) fn try_evaluate_expression(
         AST::MapLiteral { entries, line_info } => {
             let mut map = HashMap::new();
             for (key, expr) in entries {
-                let value = eval_result_to_value_checked(
-                    statements::evaluate(expr, env)?,
-                    line_info.clone(),
-                )?;
+                let value =
+                    eval_result_to_value_checked(statements::evaluate(expr, env)?, *line_info)?;
                 map.insert(key.clone(), value);
             }
             EvalResult::data(Value::Lexicon(Rc::new(RefCell::new(map))))
@@ -121,14 +119,14 @@ pub(crate) fn try_evaluate_expression(
         ) {
             (EvalResult::Data(Value::Arcana(l)), EvalResult::Data(Value::Arcana(r))) => {
                 if r < 0 {
-                    return Err(EvalError::NegativeExponent(line_info.clone()));
+                    return Err(EvalError::NegativeExponent(*line_info));
                 }
                 EvalResult::data(Value::Arcana(l.pow(r as u32)))
             }
             _ => {
                 return Err(EvalError::InvalidOperation(
                     "PowArcana operation requires two Arcana!".to_string(),
-                    line_info.clone(),
+                    *line_info,
                 ));
             }
         },
@@ -142,7 +140,7 @@ pub(crate) fn try_evaluate_expression(
             _ => {
                 return Err(EvalError::InvalidOperation(
                     "PowAether operation requires two Aether!".to_string(),
-                    line_info.clone(),
+                    *line_info,
                 ));
             }
         },
@@ -175,7 +173,7 @@ pub(crate) fn try_evaluate_expression(
                 _ => {
                     return Err(EvalError::InvalidOperation(
                         "LogicalNot operation requires Omen!".to_string(),
-                        line_info.clone(),
+                        *line_info,
                     ));
                 }
             }
@@ -183,7 +181,7 @@ pub(crate) fn try_evaluate_expression(
         AST::Var(name, line_info) => match env.get_var(name) {
             Some(var_info) => value_to_eval_result(&var_info.value),
             None => {
-                return Err(env.undefined_variable_error(name, line_info.clone()));
+                return Err(env.undefined_variable_error(name, *line_info));
             }
         },
         AST::IndexAccess {
@@ -200,21 +198,22 @@ pub(crate) fn try_evaluate_expression(
                     let value = borrowed
                         .get(idx)
                         .cloned()
-                        .ok_or_else(|| EvalError::ScrollIndexOutOfBounds(idx, line_info.clone()))?;
+                        .ok_or(EvalError::ScrollIndexOutOfBounds(idx, *line_info))?;
                     EvalResult::data(value)
                 }
                 EvalResult::Data(Value::Lexicon(entries)) => {
                     let key = expect_rune_key(&idx_value, line_info)?;
                     let borrowed = entries.borrow();
-                    let value = borrowed.get(&key).cloned().ok_or_else(|| {
-                        EvalError::MissingLexiconKey(key.clone(), line_info.clone())
-                    })?;
+                    let value = borrowed
+                        .get(&key)
+                        .cloned()
+                        .ok_or_else(|| EvalError::MissingLexiconKey(key.clone(), *line_info))?;
                     EvalResult::data(value)
                 }
                 _ => {
                     return Err(EvalError::InvalidOperation(
                         "Indexing is only supported for scroll or lexicon".to_string(),
-                        line_info.clone(),
+                        *line_info,
                     ));
                 }
             }
@@ -241,7 +240,7 @@ fn binary_numeric_op<TArc, TAether>(
     env: &mut RuntimeEnv,
     left: &AST,
     right: &AST,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
     arcana_op: TArc,
     aether_op: TAether,
     rune_op: Option<fn(String, String) -> String>,
@@ -271,7 +270,7 @@ where
         }
         _ => Err(EvalError::InvalidOperation(
             "Operation requires compatible types".to_string(),
-            line_info.clone(),
+            *line_info,
         )),
     }
 }
@@ -280,7 +279,7 @@ fn instantiate_artifact_literal(
     env: &mut RuntimeEnv,
     type_name: &str,
     fields: &[(String, AST)],
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let schema = lookup_schema_by_name(env, type_name, line_info)?.clone();
     let mut provided = HashSet::new();
@@ -290,7 +289,7 @@ fn instantiate_artifact_literal(
         if !provided.insert(field_name.clone()) {
             return Err(EvalError::InvalidOperation(
                 format!("Field '{}' is provided multiple times", field_name),
-                line_info.clone(),
+                *line_info,
             ));
         }
 
@@ -313,7 +312,7 @@ fn instantiate_artifact_literal(
                 type_name,
                 missing.join(", ")
             ),
-            line_info.clone(),
+            *line_info,
         ));
     }
 
@@ -328,7 +327,7 @@ fn compare_values(
     env: &mut RuntimeEnv,
     left: &AST,
     right: &AST,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
     equality: bool,
 ) -> Result<EvalResult, EvalError> {
     let left_result = statements::evaluate(left, env)?;
@@ -346,7 +345,7 @@ fn compare_values(
         _ => {
             return Err(EvalError::InvalidOperation(
                 "Comparison requires compatible types!".to_string(),
-                line_info.clone(),
+                *line_info,
             ));
         }
     };
@@ -359,7 +358,7 @@ fn order_values<F>(
     env: &mut RuntimeEnv,
     left: &AST,
     right: &AST,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
     comparator: F,
 ) -> Result<EvalResult, EvalError>
 where
@@ -377,7 +376,7 @@ where
         }
         _ => Err(EvalError::InvalidOperation(
             "Comparison requires numeric types!".to_string(),
-            line_info.clone(),
+            *line_info,
         )),
     }
 }
@@ -386,7 +385,7 @@ fn logical_op<F>(
     env: &mut RuntimeEnv,
     left: &AST,
     right: &AST,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
     op: F,
 ) -> Result<EvalResult, EvalError>
 where
@@ -401,7 +400,7 @@ where
         }
         _ => Err(EvalError::InvalidOperation(
             "Logical operation requires two Omen!".to_string(),
-            line_info.clone(),
+            *line_info,
         )),
     }
 }
@@ -411,7 +410,7 @@ fn evaluate_method_call(
     receiver: &AST,
     method_name: &str,
     args: &[AST],
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let receiver_result = statements::evaluate(receiver, env)?;
     let receiver_var_name = if let AST::Var(var_name, _) = receiver {
@@ -458,7 +457,7 @@ fn evaluate_method_call(
                 "Cannot invoke method {} on control-flow result {:?}",
                 method_name, control
             ),
-            line_info.clone(),
+            *line_info,
         )),
     }
 }
@@ -468,7 +467,7 @@ fn ensure_method_receiver_mutability(
     receiver: &AST,
     artifact_name: &str,
     method_name: &str,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<(), EvalError> {
     if let Some((base_name, _)) = collect_field_chain(receiver) {
         if let Some(var_info) = env.get_var(&base_name) {
@@ -480,10 +479,10 @@ fn ensure_method_receiver_mutability(
                     "Cannot call {}::{} with immutable receiver '{}'",
                     artifact_name, method_name, base_name
                 ),
-                line_info.clone(),
+                *line_info,
             ));
         } else {
-            return Err(env.undefined_variable_error(&base_name, line_info.clone()));
+            return Err(env.undefined_variable_error(&base_name, *line_info));
         }
     }
 
@@ -492,7 +491,7 @@ fn ensure_method_receiver_mutability(
             "Method {}::{} requires a morph receiver, but the expression is not tied to a mutable variable",
             artifact_name, method_name
         ),
-        line_info.clone(),
+        *line_info,
     ))
 }
 
@@ -503,7 +502,7 @@ fn evaluate_artifact_method_call(
     receiver_handle: crate::env::ArtifactHandle,
     method_name: &str,
     arg_values: Vec<CallArg>,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let schema = lookup_schema_from_handle(env, &receiver_handle, line_info)?;
     let artifact_name = schema.name.clone();
@@ -520,7 +519,7 @@ fn evaluate_artifact_method_call(
                     "Method {}::{} is not defined{}",
                     artifact_name, method_name, hint
                 ),
-                line_info.clone(),
+                *line_info,
             )
         })?;
 
@@ -553,12 +552,12 @@ fn evaluate_function_call(
     env: &mut RuntimeEnv,
     name: &str,
     args: &[AST],
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let callable = match env.get_function(name) {
         Some(func) => func.clone(),
         None => {
-            return Err(env.undefined_function_error(name, line_info.clone()));
+            return Err(env.undefined_function_error(name, *line_info));
         }
     };
 
@@ -580,7 +579,7 @@ fn evaluate_function_call(
         Callable::Engraved(function) => {
             evaluate_engraved_function(env, evaluated_args, function, line_info)
         }
-        Callable::Builtin(function) => (function.func)(env, evaluated_args, line_info.clone()),
+        Callable::Builtin(function) => (function.func)(env, evaluated_args, *line_info),
     }
 }
 
@@ -588,7 +587,7 @@ fn evaluate_engraved_function(
     env: &mut RuntimeEnv,
     evaluated_args: Vec<CallArg>,
     function: EngravedFunction,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let eval_args: Vec<EvalResult> = evaluated_args.into_iter().map(|arg| arg.value).collect();
     let params = function.params.clone();
@@ -602,7 +601,7 @@ fn evaluate_engraved_function(
                 params.len(),
                 eval_args.len()
             ),
-            line_info.clone(),
+            *line_info,
         ));
     }
 
@@ -620,7 +619,7 @@ fn evaluate_engraved_function(
                         "Expected EngraveParam in function definition: {}",
                         function.name
                     ),
-                    line_info.clone(),
+                    *line_info,
                 ));
             }
         };
@@ -634,7 +633,7 @@ fn evaluate_engraved_function(
             value,
             param_type.clone(),
             is_morph_param,
-            line_info.clone(),
+            *line_info,
         );
     }
 
@@ -644,7 +643,7 @@ fn evaluate_engraved_function(
         evaluated?
     };
 
-    let value = eval_result_to_value_checked(result, function.line_info.clone())?;
+    let value = eval_result_to_value_checked(result, function.line_info)?;
 
     match (function.return_type.clone(), value) {
         (Type::Arcana, Value::Arcana(v)) => Ok(EvalResult::data(Value::Arcana(v))),
@@ -665,7 +664,7 @@ fn evaluate_engraved_function(
                         "Type mismatch for return value of function {} (expected artifact {}, got {})",
                         function.name, expected, type_name
                     ),
-                    function.line_info.clone(),
+                    function.line_info,
                 ))
             }
         }
@@ -676,7 +675,7 @@ fn evaluate_engraved_function(
                 expected,
                 describe_value(&actual)
             ),
-            function.line_info.clone(),
+            function.line_info,
         )),
     }
 }
@@ -684,7 +683,7 @@ fn evaluate_engraved_function(
 fn validate_artifact_type(
     handle: Rc<RefCell<crate::env::ArtifactValue>>,
     expected: &str,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<Value, EvalError> {
     let actual = handle.borrow().type_name.clone();
     if actual == expected {
@@ -693,7 +692,7 @@ fn validate_artifact_type(
         Err(EvalError::ArtifactTypeMismatch {
             expected: expected.to_string(),
             found: actual,
-            line_info: line_info.clone(),
+            line_info: *line_info,
         })
     }
 }
@@ -701,7 +700,7 @@ fn validate_artifact_type(
 fn convert_morph_param_value(
     evaluated_arg: EvalResult,
     param_type: &Type,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<Value, EvalError> {
     match param_type {
         Type::Artifact(expected) => match evaluated_arg {
@@ -712,7 +711,7 @@ fn convert_morph_param_value(
         },
         _ => Err(EvalError::InvalidOperation(
             "`morph` parameters are only supported for artifact receivers".to_string(),
-            line_info.clone(),
+            *line_info,
         )),
     }
 }
@@ -721,7 +720,7 @@ fn convert_morph_param_value(
 mod tests {
     use super::*;
 
-    fn dummy_line_info() -> Option<LineInfo> {
+    fn dummy_line_info() -> Option<Span> {
         None
     }
 

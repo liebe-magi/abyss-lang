@@ -6,6 +6,10 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 
 ## [Unreleased]
 
+### Changed
+
+- **AST nodes and `EvalError` now carry byte spans instead of point `LineInfo`** ([#510](https://github.com/liebe-magi/abyss-lang/issues/510)) — the parser stores each node's `start..end` byte span (`abyss_core::span::Span`) and diagnostics derive positions at render time, so runtime errors now underline the full offending range instead of a single caret. Pulled forward from the roadmap's v0.8 "Span-tracking Refactor" slot. Breaking for `abyss-core` / `abyss-interpreter` consumers: `LineInfo`, `LineMap`, and `attach_line_info` are gone, and `build_parser` no longer takes a line map. Error message texts are unchanged.
+
 ### Removed
 
 - **`abyss_core::semantic` module (`SymbolTable` / `SymbolInfo`)** ([#503](https://github.com/liebe-magi/abyss-lang/issues/503)) — the static-analysis scaffold had zero consumers anywhere in the workspace since its introduction. The roadmap's LSP milestone (v0.8.1) is preceded by the v0.8 span-tracking refactor, and a symbol table without span data would have been rewritten there anyway; git history preserves the removed code. Breaking for `abyss-core` per Cargo 0.x semver, so this ships with the next `0.x.0` bump.

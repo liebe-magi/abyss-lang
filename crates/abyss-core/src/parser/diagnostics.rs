@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use ariadne::{Color, Label, Report, ReportKind, Source};
 use chumsky::{
     error::{Rich, RichReason},
@@ -7,7 +5,6 @@ use chumsky::{
 };
 
 use super::SimpleSpan;
-use super::helpers::LineMap;
 
 #[derive(Debug, Clone)]
 pub struct ParserDiagnostic {
@@ -17,11 +14,7 @@ pub struct ParserDiagnostic {
     pub help: Option<String>,
 }
 
-pub fn convert_rich_error<'a, T, S>(
-    error: Rich<'a, T, S>,
-    _map: &Arc<LineMap>,
-    title: &str,
-) -> ParserDiagnostic
+pub fn convert_rich_error<'a, T, S>(error: Rich<'a, T, S>, title: &str) -> ParserDiagnostic
 where
     T: std::fmt::Display + Clone,
     S: ChumskySpan<Context = (), Offset = usize> + Clone,

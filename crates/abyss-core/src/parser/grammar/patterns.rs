@@ -58,7 +58,7 @@ pub(super) fn oracle_expr_parser<'src>(
                     (false, Vec::new())
                 };
                 for cond in &mut conditionals {
-                    cond.line_info = info.clone();
+                    cond.line_info = info;
                 }
 
                 let mut branch_asts = Vec::with_capacity(branches.len());
@@ -71,7 +71,7 @@ pub(super) fn oracle_expr_parser<'src>(
                         is_match,
                         conditionals,
                         branches: branch_asts,
-                        line_info: info.clone(),
+                        line_info: info,
                     },
                     span,
                 )
@@ -125,7 +125,7 @@ pub(super) fn oracle_branch_parser<'src>(
                         pattern,
                         guard: guard_ast,
                         body: Box::new(body_ast),
-                        line_info: info.clone(),
+                        line_info: info,
                     },
                     span,
                 )

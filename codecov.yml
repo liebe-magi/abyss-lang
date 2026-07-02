@@ -21,5 +21,12 @@ comment:
 # under native `cargo test`, so they are intrinsically unreachable from
 # our coverage runs. The testable surface (`run`, `PlaygroundBridge`,
 # `EvalOutcome`) lives in `lib.rs` and stays under coverage.
+#
+# `crates/abyss-cli` is the terminal-facing shell: argv dispatch
+# (`main.rs`), the interactive rustyline REPL loop (`repl.rs`), and thin
+# print wrappers over library calls (`commands.rs`). Nothing in it is
+# reachable from `cargo test` — it never had coverage — and all language
+# logic lives in the covered `abyss-core` / `abyss-interpreter` crates.
 ignore:
   - "crates/abyss-wasm/src/bindings.rs"
+  - "crates/abyss-cli/**"

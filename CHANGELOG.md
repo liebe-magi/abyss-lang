@@ -6,6 +6,10 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 
 ## [Unreleased]
 
+### Removed
+
+- **`abyss_core::semantic` module (`SymbolTable` / `SymbolInfo`)** ([#503](https://github.com/liebe-magi/abyss-lang/issues/503)) — the static-analysis scaffold had zero consumers anywhere in the workspace since its introduction. The roadmap's LSP milestone (v0.8.1) is preceded by the v0.8 span-tracking refactor, and a symbol table without span data would have been rewritten there anyway; git history preserves the removed code. Breaking for `abyss-core` per Cargo 0.x semver, so this ships with the next `0.x.0` bump.
+
 ## [0.5.0] - 2026-05-06
 
 A pattern-matching milestone. The `oracle` match-mode arms grew five new powers — guard clauses with `ward`, fresh bindings, and three destructuring shapes (`scroll`, `artifact`, `lexicon`) — composing freely so a single arm can pull values out of nested structured data without follow-up index access. The cycle is intentionally additive: every script that compiled on 0.4.1 keeps compiling.

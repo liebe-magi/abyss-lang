@@ -1,6 +1,7 @@
 pub(crate) mod artifacts;
 mod collections;
 mod expressions;
+mod patterns;
 mod result;
 mod statements;
 #[cfg(test)]

@@ -1,7 +1,8 @@
-mod test_base;
+mod common;
 
+use abyss_interpreter::env::Value;
 use abyss_interpreter::eval::EvalResult;
-use test_base::{Value, test_base};
+use common::test_base;
 
 #[test]
 fn test_oracle_simple_positive() {

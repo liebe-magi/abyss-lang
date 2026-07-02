@@ -253,22 +253,8 @@ fn clone_lexicon(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{cell::RefCell, collections::HashMap, rc::Rc};
-
-    fn artifact_handle(name: &str, fields: Vec<(&str, Value)>) -> ArtifactHandle {
-        let mut map = HashMap::new();
-        let mut order = Vec::new();
-        for (key, value) in fields {
-            let key_string = key.to_string();
-            order.push(key_string.clone());
-            map.insert(key_string, value);
-        }
-        Rc::new(RefCell::new(ArtifactValue {
-            type_name: name.to_string(),
-            fields: map,
-            field_order: order,
-        }))
-    }
+    use crate::eval::test_support::artifact_handle;
+    use std::{cell::RefCell, rc::Rc};
 
     fn line() -> Option<LineInfo> {
         Some(LineInfo::new(2, 3))

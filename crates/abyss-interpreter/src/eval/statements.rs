@@ -1348,60 +1348,10 @@ fn clone_indexed_child(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::env::{ArtifactFieldSchema, ArtifactSchema, ArtifactValue};
-    use std::cell::RefCell;
-    use std::collections::HashMap;
-    use std::rc::Rc;
+    use crate::eval::test_support::{artifact_handle, lexicon, register_artifact, rune, scroll};
 
     fn line() -> Option<LineInfo> {
         Some(LineInfo::new(1, 1))
-    }
-
-    fn scroll(values: Vec<Value>) -> Value {
-        Value::Scroll(Rc::new(RefCell::new(values)))
-    }
-
-    fn lexicon(entries: Vec<(&str, Value)>) -> Value {
-        let mut map = HashMap::new();
-        for (key, value) in entries {
-            map.insert(key.to_string(), value);
-        }
-        Value::Lexicon(Rc::new(RefCell::new(map)))
-    }
-
-    fn rune(text: &str) -> Value {
-        Value::Rune(Rc::new(text.to_string()))
-    }
-
-    fn artifact_handle(name: &str, fields: Vec<(&str, Value)>) -> Rc<RefCell<ArtifactValue>> {
-        let mut map = HashMap::new();
-        let mut order = Vec::new();
-        for (field, value) in fields {
-            let key = field.to_string();
-            order.push(key.clone());
-            map.insert(key, value);
-        }
-        Rc::new(RefCell::new(ArtifactValue {
-            type_name: name.to_string(),
-            fields: map,
-            field_order: order,
-        }))
-    }
-
-    fn register_artifact(env: &mut RuntimeEnv, name: &str, fields: Vec<(&str, Type)>) {
-        let schema = ArtifactSchema {
-            name: name.to_string(),
-            fields: fields
-                .into_iter()
-                .map(|(field, field_type)| ArtifactFieldSchema {
-                    name: field.to_string(),
-                    field_type,
-                })
-                .collect(),
-            methods: HashMap::new(),
-            line_info: None,
-        };
-        env.define_artifact(schema).expect("schema registration");
     }
 
     #[test]

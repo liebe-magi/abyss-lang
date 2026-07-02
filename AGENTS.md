@@ -8,7 +8,7 @@ AbySS is a magic-themed scripting language with its own interpreter, formatter, 
 
 - **`crates/abyss-core`** — AST (`ast.rs`), `chumsky`-based parser (`parser/`), and formatter (`format.rs`). Designed to stay lightweight so a future LSP or Wasm playground can depend on it without pulling in runtime code.
 - **`crates/abyss-interpreter`** — `RuntimeEnv` (`env.rs`), the `Value` enum (`value.rs`), artifact schemas/instances (`artifact.rs`), the evaluator (`eval/`), and the standard library (`stdlib/`, including the per-type method tables).
-- **`crates/abyss-cli`** — the user-facing binary `abyss` (crate name `abyss-lang`, published to crates.io). Hosts `main.rs` with `start_interpreter` (the REPL driver) and the `clap` subcommands `cast`, `invoke`, and `align`.
+- **`crates/abyss-cli`** — the user-facing binary `abyss` (crate name `abyss-lang`, published to crates.io). `main.rs` is `clap` wiring only; the REPL driver (`start_interpreter`) lives in `repl.rs` and the one-shot `invoke` / `align` implementations in `commands.rs`.
 - **`docs/`** — Starlight (Astro + bun) source for <https://abyss-lang.dev>.
 - **`editors/code/`** — the `abyss-codex-familiar` VS Code extension. Version is kept in lockstep with the `abyss-lang` crate (see `scripts/check_version_sync.py`).
 - **`examples/`** — canonical `.aby` programs referenced by both the docs and tests.

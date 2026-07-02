@@ -7,16 +7,12 @@ use std::rc::Rc;
 use super::result::{EvalError, EvalResult};
 
 pub(crate) fn value_to_eval_result(value: &Value) -> EvalResult {
-    match value {
-        Value::Artifact(handle) => EvalResult::Artifact(handle.clone()),
-        _ => EvalResult::data(value.clone()),
-    }
+    EvalResult::data(value.clone())
 }
 
 pub(crate) fn eval_result_to_value_any(result: EvalResult) -> Result<Value, EvalError> {
     match result {
         EvalResult::Data(value) => Ok(value),
-        EvalResult::Artifact(handle) => Ok(Value::Artifact(handle)),
         EvalResult::Revealed(_) | EvalResult::Resume(_) | EvalResult::Eject(_) => {
             Err(EvalError::InvalidOperation(
                 "Control-flow result cannot be treated as data".to_string(),
@@ -44,7 +40,6 @@ pub(crate) fn convert_to_typed_value(
 ) -> Result<Value, EvalError> {
     let value = match result {
         EvalResult::Data(value) => value,
-        EvalResult::Artifact(handle) => Value::Artifact(handle),
         control => {
             return Err(EvalError::InvalidOperation(
                 format!("Expected data value but received {:?}", control),
@@ -270,7 +265,9 @@ mod tests {
 
         let handle = artifact_handle("Glyph", vec![("power", Value::Arcana(3))]);
         match value_to_eval_result(&Value::Artifact(handle.clone())) {
-            EvalResult::Artifact(result_handle) => assert!(Rc::ptr_eq(&handle, &result_handle)),
+            EvalResult::Data(Value::Artifact(result_handle)) => {
+                assert!(Rc::ptr_eq(&handle, &result_handle))
+            }
             other => panic!("expected artifact handle, got {:?}", other),
         }
     }

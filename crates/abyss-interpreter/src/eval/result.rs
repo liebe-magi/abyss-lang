@@ -4,10 +4,14 @@ use ariadne::{Color, Label, Report, ReportKind, Source};
 use std::fmt;
 
 /// Represents the result of an evaluation in the interpreter.
+///
+/// Artifacts have no dedicated variant: they travel as
+/// `Data(Value::Artifact(_))` like every other value, so consumers only
+/// need to distinguish data from the control-flow variants
+/// (`Revealed` / `Resume` / `Eject`).
 #[derive(Debug, Clone)]
 pub enum EvalResult {
     Data(Value),
-    Artifact(ArtifactHandle),
     Revealed(Box<EvalResult>),
     Resume(Option<String>),
     Eject(Option<String>),
@@ -23,7 +27,7 @@ impl EvalResult {
     }
 
     pub fn artifact(handle: ArtifactHandle) -> Self {
-        EvalResult::Artifact(handle)
+        EvalResult::Data(Value::Artifact(handle))
     }
 }
 
@@ -253,7 +257,7 @@ mod tests {
     fn artifact_constructor_preserves_handle() {
         let handle = sample_handle("Sigil");
         match EvalResult::artifact(handle.clone()) {
-            EvalResult::Artifact(result_handle) => {
+            EvalResult::Data(Value::Artifact(result_handle)) => {
                 assert!(Rc::ptr_eq(&result_handle, &handle))
             }
             other => panic!("expected artifact handle, got {:?}", other),

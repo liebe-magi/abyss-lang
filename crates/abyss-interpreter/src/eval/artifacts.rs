@@ -99,7 +99,6 @@ pub(crate) fn expect_artifact_from_eval(
     line_info: &Option<LineInfo>,
 ) -> Result<ArtifactHandle, EvalError> {
     match result {
-        EvalResult::Artifact(handle) => Ok(handle),
         EvalResult::Data(Value::Artifact(handle)) => Ok(handle),
         EvalResult::Data(other) => Err(EvalError::InvalidOperation(
             format!("Expected artifact value, found {}", describe_value(&other)),
@@ -413,7 +412,7 @@ mod tests {
     fn expect_artifact_from_eval_accepts_multiple_sources() {
         let handle = artifact_handle("Sigil", vec![]);
         let eval_handle =
-            expect_artifact_from_eval(EvalResult::Artifact(handle.clone()), &None).unwrap();
+            expect_artifact_from_eval(EvalResult::artifact(handle.clone()), &None).unwrap();
         assert!(Rc::ptr_eq(&handle, &eval_handle));
 
         let data_handle =

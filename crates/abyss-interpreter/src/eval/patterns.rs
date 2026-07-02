@@ -49,11 +49,8 @@ pub(super) fn evaluate_oracle(
             EvalResult::Data(Value::Scroll(handle)) => Value::Scroll(handle.clone()),
             // Artifacts (typed records) flow through similarly so an
             // artifact pattern arm sees the same handle the user passed
-            // in. The `EvalResult::Artifact` variant is also accepted so
-            // the helper can be invoked equally from places that hand
-            // through the dedicated artifact result.
+            // in.
             EvalResult::Data(Value::Artifact(handle)) => Value::Artifact(handle.clone()),
-            EvalResult::Artifact(handle) => Value::Artifact(handle.clone()),
             // Lexicons flow through as their shared handle so a lexicon
             // pattern arm sees the same entries the user passed in. Mutating
             // the lexicon inside the arm body therefore visibly mutates the
@@ -597,7 +594,6 @@ fn match_artifact_pattern(
                 let pattern_result = evaluate(other, env)?;
                 let pattern_value = match pattern_result {
                     EvalResult::Data(value) => value,
-                    EvalResult::Artifact(handle) => Value::Artifact(handle),
                     EvalResult::Revealed(_) | EvalResult::Resume(_) | EvalResult::Eject(_) => {
                         return Err(EvalError::InvalidOperation(
                             "Artifact field pattern compare must yield a value".to_string(),
@@ -711,7 +707,6 @@ fn match_lexicon_pattern(
                 let pattern_result = evaluate(other, env)?;
                 let pattern_value = match pattern_result {
                     EvalResult::Data(value) => value,
-                    EvalResult::Artifact(handle) => Value::Artifact(handle),
                     EvalResult::Revealed(_) | EvalResult::Resume(_) | EvalResult::Eject(_) => {
                         return Err(EvalError::InvalidOperation(
                             "Lexicon entry pattern compare must yield a value".to_string(),

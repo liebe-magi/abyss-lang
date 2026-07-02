@@ -68,10 +68,7 @@ pub(crate) fn try_evaluate_expression(
             let value = statements::evaluate(target, env)?;
             let handle = expect_artifact_from_eval(value, line_info)?;
             let field_value = read_artifact_field(env, &handle, field, line_info)?;
-            match field_value {
-                Value::Artifact(inner) => EvalResult::Artifact(inner),
-                other => EvalResult::data(other),
-            }
+            EvalResult::data(field_value)
         }
         AST::Add(left, right, line_info) => binary_numeric_op(
             env,
@@ -325,7 +322,7 @@ fn instantiate_artifact_literal(
         ));
     }
 
-    Ok(EvalResult::Artifact(instantiate_artifact_handle(
+    Ok(EvalResult::artifact(instantiate_artifact_handle(
         type_name,
         field_order,
         values,
@@ -348,10 +345,7 @@ fn compare_values(
             (l - r).abs() < f64::EPSILON
         }
         (EvalResult::Data(Value::Rune(l)), EvalResult::Data(Value::Rune(r))) => l == r,
-        (EvalResult::Artifact(left), EvalResult::Artifact(right))
-        | (EvalResult::Artifact(left), EvalResult::Data(Value::Artifact(right)))
-        | (EvalResult::Data(Value::Artifact(left)), EvalResult::Artifact(right))
-        | (EvalResult::Data(Value::Artifact(left)), EvalResult::Data(Value::Artifact(right))) => {
+        (EvalResult::Data(Value::Artifact(left)), EvalResult::Data(Value::Artifact(right))) => {
             compare_artifacts(env, &left, &right, line_info)?
         }
         _ => {
@@ -446,15 +440,6 @@ fn evaluate_method_call(
     }
 
     match receiver_result {
-        EvalResult::Artifact(handle) => evaluate_artifact_method_call(
-            env,
-            receiver,
-            receiver_var_name,
-            handle,
-            method_name,
-            evaluated_args,
-            line_info,
-        ),
         EvalResult::Data(Value::Artifact(handle)) => evaluate_artifact_method_call(
             env,
             receiver,
@@ -556,7 +541,7 @@ fn evaluate_artifact_method_call(
 
     let mut evaluated_args = Vec::with_capacity(arg_values.len() + 1);
     evaluated_args.push(CallArg {
-        value: EvalResult::Artifact(receiver_handle),
+        value: EvalResult::artifact(receiver_handle),
         var_name: receiver_var_name,
     });
     evaluated_args.extend(arg_values);
@@ -678,7 +663,7 @@ fn evaluate_engraved_function(
         (Type::Artifact(expected), Value::Artifact(handle)) => {
             let type_name = handle.borrow().type_name.clone();
             if type_name == expected {
-                Ok(EvalResult::Artifact(handle))
+                Ok(EvalResult::artifact(handle))
             } else {
                 Err(EvalError::TypeError(
                     format!(
@@ -727,7 +712,7 @@ fn convert_morph_param_value(
 ) -> Result<Value, EvalError> {
     match param_type {
         Type::Artifact(expected) => match evaluated_arg {
-            EvalResult::Artifact(handle) | EvalResult::Data(Value::Artifact(handle)) => {
+            EvalResult::Data(Value::Artifact(handle)) => {
                 validate_artifact_type(handle, expected, line_info)
             }
             other => convert_to_typed_value(other, param_type, line_info),

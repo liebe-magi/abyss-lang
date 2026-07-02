@@ -96,8 +96,8 @@ pub(crate) fn format_eval_result(
     line: &Option<LineInfo>,
 ) -> Result<String, EvalError> {
     match value {
+        EvalResult::Data(Value::Artifact(handle)) => format_artifact(handle, line),
         EvalResult::Data(inner) => format_value(inner, line),
-        EvalResult::Artifact(handle) => format_artifact(handle, line),
         EvalResult::Revealed(_) => Err(EvalError::InvalidOperation(
             "Cannot unveil a Revealed value (control flow construct)".to_string(),
             line.clone(),

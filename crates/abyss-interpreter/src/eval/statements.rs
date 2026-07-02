@@ -1,5 +1,5 @@
 use crate::env::{ArtifactMethod, Callable, EngravedFunction, RuntimeEnv, Value};
-use abyss_core::ast::{AST, AssignmentOp, Span, Type};
+use abyss_core::ast::{AssignmentOp, Span, Stmt, Type};
 use std::rc::Rc;
 
 use super::artifacts::{
@@ -7,67 +7,30 @@ use super::artifacts::{
     expect_artifact_handle, lookup_schema_from_handle, missing_field_error,
 };
 use super::collections::{collect_index_chain, expect_arcana_index, expect_rune_key};
-use super::expressions::try_evaluate_expression;
-use super::patterns::evaluate_oracle;
+use super::expressions::evaluate_expr;
 use super::result::{EvalError, EvalResult};
 use super::values::{
     convert_to_typed_value, describe_value, eval_result_to_value_checked, extract_aether,
     extract_arcana, extract_omen, extract_rune,
 };
 
-/// Evaluates an abstract syntax tree (AST) node in the given environment.
+/// Evaluates a statement in the given environment.
 ///
-/// # Arguments
-///
-/// * `ast` - The AST node to be evaluated.
-/// * `env` - The environment containing variable and function bindings.
-///
-/// # Returns
-///
-/// The result of the evaluation, or an `EvalError` if an error occurs.
-pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError> {
-    if let Some(result) = try_evaluate_expression(ast, env)? {
-        return Ok(result);
-    }
-
-    match ast {
-        AST::Statement(node, _line_info) => evaluate(node, env),
-        AST::Omen(..)
-        | AST::Arcana(..)
-        | AST::Aether(..)
-        | AST::Rune(..)
-        | AST::Abyss(..)
-        | AST::ListLiteral { .. }
-        | AST::MapLiteral { .. }
-        | AST::Add(..)
-        | AST::Sub(..)
-        | AST::Mul(..)
-        | AST::Div(..)
-        | AST::Mod(..)
-        | AST::PowArcana(..)
-        | AST::PowAether(..)
-        | AST::Equal(..)
-        | AST::NotEqual(..)
-        | AST::LessThan(..)
-        | AST::LessThanOrEqual(..)
-        | AST::GreaterThan(..)
-        | AST::GreaterThanOrEqual(..)
-        | AST::LogicalAnd(..)
-        | AST::LogicalOr(..)
-        | AST::LogicalNot(..)
-        | AST::Var(..)
-        | AST::IndexAccess { .. }
-        | AST::FuncCall { .. }
-        | AST::MethodCall { .. } => unreachable!("expression nodes handled earlier"),
-        AST::VarAssign {
+/// Bare expressions in statement position arrive as [`Stmt::Expr`] and
+/// delegate to [`evaluate_expr`]; there is no longer a shared node type
+/// between the two, so each evaluator states its input in its signature.
+pub fn evaluate(stmt: &Stmt, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError> {
+    match stmt {
+        Stmt::Expr(expr, _span) => evaluate_expr(expr, env),
+        Stmt::VarAssign {
             name,
             value,
             var_type,
             is_morph,
-            line_info,
+            span: line_info,
         } => {
             ensure_type_known(var_type, env, line_info)?;
-            let evaluated_value = evaluate(value, env)?;
+            let evaluated_value = evaluate_expr(value, env)?;
             let stored_value = convert_to_typed_value(evaluated_value, var_type, line_info)?;
             env.set_var(
                 name.clone(),
@@ -78,13 +41,13 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
             );
             Ok(EvalResult::abyss())
         }
-        AST::Assignment {
+        Stmt::Assignment {
             name,
             value,
             op,
-            line_info,
+            span: line_info,
         } => {
-            let evaluated_value = evaluate(value, env)?;
+            let evaluated_value = evaluate_expr(value, env)?;
             if let Some(var_info) = env.get_var_mut(name) {
                 if !var_info.is_morph {
                     return Err(EvalError::ImmutableAssignment(name.clone(), *line_info));
@@ -227,11 +190,11 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                 Err(env.undefined_variable_error(name, *line_info))
             }
         }
-        AST::IndexAssignment {
+        Stmt::IndexAssignment {
             target,
             index,
             value,
-            line_info,
+            span: line_info,
         } => {
             let (base_name, nested_indices) = collect_index_chain(target).ok_or_else(|| {
                 EvalError::InvalidOperation(
@@ -242,11 +205,11 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
 
             let mut evaluated_indices = Vec::new();
             for idx_ast in nested_indices {
-                evaluated_indices.push(evaluate(idx_ast, env)?);
+                evaluated_indices.push(evaluate_expr(idx_ast, env)?);
             }
 
-            let final_index_value = evaluate(index, env)?;
-            let new_value = eval_result_to_value_checked(evaluate(value, env)?, *line_info)?;
+            let final_index_value = evaluate_expr(index, env)?;
+            let new_value = eval_result_to_value_checked(evaluate_expr(value, env)?, *line_info)?;
 
             let var_info = match env.get_var_mut(&base_name) {
                 Some(var_info) => var_info,
@@ -291,11 +254,11 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
 
             Ok(EvalResult::abyss())
         }
-        AST::FieldAssignment {
+        Stmt::FieldAssignment {
             target,
             field,
             value,
-            line_info,
+            span: line_info,
         } => {
             let (base_name, access_chain) = collect_field_chain(target).ok_or_else(|| {
                 EvalError::InvalidOperation(
@@ -304,7 +267,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                 )
             })?;
 
-            let evaluated_value = evaluate(value, env)?;
+            let evaluated_value = evaluate_expr(value, env)?;
 
             let var_info = match env.get_var_mut(&base_name) {
                 Some(var_info) => var_info,
@@ -357,26 +320,11 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
 
             Ok(EvalResult::abyss())
         }
-        AST::Oracle {
-            is_match,
-            conditionals,
-            branches,
-            line_info,
-        } => {
-            // Push the oracle's local scope, run the body, and unconditionally
-            // pop on the way out — including error paths — so a failing
-            // scrutinee, pattern, ward, or body cannot leak a scope back into
-            // the REPL. The helper itself uses `?` freely.
-            env.push_scope();
-            let result = evaluate_oracle(*is_match, conditionals, branches, line_info, env);
-            env.pop_scope();
-            result
-        }
-        AST::Reveal(expr, _line_info) => {
-            let result = evaluate(expr, env)?;
+        Stmt::Reveal(expr, _span) => {
+            let result = evaluate_expr(expr, env)?;
             Ok(EvalResult::Revealed(Box::new(result)))
         }
-        AST::Block(statements, _line_info) => {
+        Stmt::Block(statements, _span) => {
             let mut last_result = EvalResult::abyss();
             for statement in statements {
                 let result = evaluate(statement, env)?;
@@ -391,11 +339,10 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
             }
             Ok(last_result)
         }
-        AST::OracleDontCareItem(_line_info) => Ok(EvalResult::data(Value::Omen(true))),
-        AST::Orbit {
+        Stmt::Orbit {
             params,
             body,
-            line_info,
+            span: line_info,
         } => {
             if params.is_empty() {
                 loop {
@@ -413,16 +360,11 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                 }
 
                 Ok(EvalResult::abyss())
-            } else if let AST::OrbitParam {
-                name,
-                start,
-                end,
-                op,
-                ..
-            } = &params[0]
-            {
-                let start_value = evaluate(start, env)?;
-                let end_value = evaluate(end, env)?;
+            } else {
+                let param = &params[0];
+                let (name, start, end, op) = (&param.name, &param.start, &param.end, &param.op);
+                let start_value = evaluate_expr(start, env)?;
+                let end_value = evaluate_expr(end, env)?;
 
                 let start_num = extract_arcana(&start_value, line_info)?;
                 let end_num = extract_arcana(&end_value, line_info)?;
@@ -445,10 +387,10 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                         evaluate(body.as_ref(), env)?
                     } else {
                         evaluate(
-                            &AST::Orbit {
+                            &Stmt::Orbit {
                                 params: remaining_params,
                                 body: body.clone(),
-                                line_info: *line_info,
+                                span: *line_info,
                             },
                             env,
                         )?
@@ -483,33 +425,21 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
                     env.pop_scope();
                 }
                 Ok(EvalResult::abyss())
-            } else {
-                Err(EvalError::InvalidOperation(
-                    "Expected OrbitParam in Orbit".to_string(),
-                    *line_info,
-                ))
             }
         }
-        AST::Resume(identifier, _line_info) => Ok(EvalResult::Resume(identifier.clone())),
-        AST::Eject(identifier, _line_info) => Ok(EvalResult::Eject(identifier.clone())),
-        AST::Engrave {
+        Stmt::Resume(identifier, _span) => Ok(EvalResult::Resume(identifier.clone())),
+        Stmt::Eject(identifier, _span) => Ok(EvalResult::Eject(identifier.clone())),
+        Stmt::Engrave {
             name,
             params,
             return_type,
             body,
             method_target,
-            line_info,
+            span: line_info,
         } => {
             ensure_type_known(return_type, env, line_info)?;
             for param in params {
-                if let AST::EngraveParam {
-                    param_type,
-                    line_info: param_info,
-                    ..
-                } = param
-                {
-                    ensure_type_known(param_type, env, param_info)?;
-                }
+                ensure_type_known(&param.param_type, env, &param.span)?;
             }
             let function_name = if let Some(target) = method_target {
                 format!("{}::{}", target.artifact, name)
@@ -534,10 +464,10 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
             }
             Ok(EvalResult::abyss())
         }
-        AST::ArtifactDef {
+        Stmt::ArtifactDef {
             name,
             fields,
-            line_info,
+            span: line_info,
         } => {
             if env.artifact_defined_in_current_scope(name) {
                 return Err(EvalError::InvalidOperation(
@@ -556,11 +486,7 @@ pub fn evaluate(ast: &AST, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError
             );
             Ok(EvalResult::abyss())
         }
-        AST::Comment(_, _) => Ok(EvalResult::abyss()),
-        _ => Err(EvalError::InvalidOperation(
-            format!("Unsupported operation: {:?}", ast),
-            None,
-        )),
+        Stmt::Comment(_, _) => Ok(EvalResult::abyss()),
     }
 }
 
@@ -597,6 +523,7 @@ fn clone_indexed_child(
 mod tests {
     use super::*;
     use crate::eval::test_support::{artifact_handle, lexicon, register_artifact, rune, scroll};
+    use abyss_core::ast::Expr;
 
     fn line() -> Option<Span> {
         Some(Span::new(1, 1))
@@ -607,11 +534,11 @@ mod tests {
         let mut env = RuntimeEnv::new();
         env.set_var("sigil".into(), Value::Arcana(2), Type::Arcana, true, line());
 
-        let assignment = AST::Assignment {
+        let assignment = Stmt::Assignment {
             name: "sigil".into(),
-            value: Box::new(AST::Arcana(5, line())),
+            value: Expr::Arcana(5, line()),
             op: AssignmentOp::AddAssign,
-            line_info: line(),
+            span: line(),
         };
 
         evaluate(&assignment, &mut env).expect("assignment should succeed");
@@ -633,11 +560,11 @@ mod tests {
             line(),
         );
 
-        let assignment = AST::Assignment {
+        let assignment = Stmt::Assignment {
             name: "sigil".into(),
-            value: Box::new(AST::Arcana(5, line())),
+            value: Expr::Arcana(5, line()),
             op: AssignmentOp::Assign,
-            line_info: line(),
+            span: line(),
         };
 
         let err = evaluate(&assignment, &mut env).expect_err("immutable reassign should fail");
@@ -658,11 +585,11 @@ mod tests {
             line(),
         );
 
-        let index_assignment = AST::IndexAssignment {
-            target: Box::new(AST::Var("scroll".into(), line())),
-            index: Box::new(AST::Arcana(0, line())),
-            value: Box::new(AST::Arcana(99, line())),
-            line_info: line(),
+        let index_assignment = Stmt::IndexAssignment {
+            target: Expr::Var("scroll".into(), line()),
+            index: Expr::Arcana(0, line()),
+            value: Expr::Arcana(99, line()),
+            span: line(),
         };
 
         let err = evaluate(&index_assignment, &mut env).expect_err("immutable index assignment");
@@ -681,11 +608,11 @@ mod tests {
             line(),
         );
 
-        let field_assignment = AST::FieldAssignment {
-            target: Box::new(AST::Var("relic".into(), line())),
+        let field_assignment = Stmt::FieldAssignment {
+            target: Expr::Var("relic".into(), line()),
             field: "power".into(),
-            value: Box::new(AST::Arcana(2, line())),
-            line_info: line(),
+            value: Expr::Arcana(2, line()),
+            span: line(),
         };
 
         let err = evaluate(&field_assignment, &mut env).expect_err("immutable field assignment");
@@ -703,11 +630,11 @@ mod tests {
             line(),
         );
 
-        let index_assignment = AST::IndexAssignment {
-            target: Box::new(AST::Var("scroll".into(), line())),
-            index: Box::new(AST::Arcana(1, line())),
-            value: Box::new(AST::Arcana(99, line())),
-            line_info: line(),
+        let index_assignment = Stmt::IndexAssignment {
+            target: Expr::Var("scroll".into(), line()),
+            index: Expr::Arcana(1, line()),
+            value: Expr::Arcana(99, line()),
+            span: line(),
         };
 
         evaluate(&index_assignment, &mut env).expect("index assignment succeeds");
@@ -726,11 +653,11 @@ mod tests {
     #[test]
     fn field_assignment_requires_artifact_target() {
         let mut env = RuntimeEnv::new();
-        let assignment = AST::FieldAssignment {
-            target: Box::new(AST::Arcana(1, line())),
+        let assignment = Stmt::FieldAssignment {
+            target: Expr::Arcana(1, line()),
             field: "power".into(),
-            value: Box::new(AST::Arcana(2, line())),
-            line_info: line(),
+            value: Expr::Arcana(2, line()),
+            span: line(),
         };
 
         let err = evaluate(&assignment, &mut env).expect_err("non artifact target should fail");
@@ -743,11 +670,11 @@ mod tests {
     #[test]
     fn field_assignment_reports_missing_variable() {
         let mut env = RuntimeEnv::new();
-        let assignment = AST::FieldAssignment {
-            target: Box::new(AST::Var("missing".into(), line())),
+        let assignment = Stmt::FieldAssignment {
+            target: Expr::Var("missing".into(), line()),
             field: "power".into(),
-            value: Box::new(AST::Arcana(1, line())),
-            line_info: line(),
+            value: Expr::Arcana(1, line()),
+            span: line(),
         };
 
         let err = evaluate(&assignment, &mut env).expect_err("missing variable should error");
@@ -776,16 +703,16 @@ mod tests {
             line(),
         );
 
-        let target = AST::FieldAccess {
-            target: Box::new(AST::Var("sigil".into(), line())),
+        let target = Expr::FieldAccess {
+            target: Box::new(Expr::Var("sigil".into(), line())),
             field: "core".into(),
-            line_info: line(),
+            span: line(),
         };
-        let assignment = AST::FieldAssignment {
-            target: Box::new(target),
+        let assignment = Stmt::FieldAssignment {
+            target,
             field: "power".into(),
-            value: Box::new(AST::Arcana(10, line())),
-            line_info: line(),
+            value: Expr::Arcana(10, line()),
+            span: line(),
         };
 
         let err = evaluate(&assignment, &mut env).expect_err("non artifact segment should error");
@@ -821,16 +748,16 @@ mod tests {
             line(),
         );
 
-        let target = AST::FieldAccess {
-            target: Box::new(AST::Var("sigil".into(), line())),
+        let target = Expr::FieldAccess {
+            target: Box::new(Expr::Var("sigil".into(), line())),
             field: "core".into(),
-            line_info: line(),
+            span: line(),
         };
-        let assignment = AST::FieldAssignment {
-            target: Box::new(target),
+        let assignment = Stmt::FieldAssignment {
+            target,
             field: "power".into(),
-            value: Box::new(AST::Arcana(10, line())),
-            line_info: line(),
+            value: Expr::Arcana(10, line()),
+            span: line(),
         };
 
         evaluate(&assignment, &mut env).expect("field assignment succeeds");
@@ -883,10 +810,10 @@ mod tests {
     #[test]
     fn artifact_definition_creates_glyph_variable() {
         let mut env = RuntimeEnv::new();
-        let artifact = AST::ArtifactDef {
+        let artifact = Stmt::ArtifactDef {
             name: "Relic".into(),
             fields: Vec::new(),
-            line_info: line(),
+            span: line(),
         };
 
         evaluate(&artifact, &mut env).expect("artifact definition succeeds");

@@ -6,7 +6,7 @@ use chumsky::{
     recursive::{self, Direct},
 };
 
-use crate::ast::{AST, Span};
+use crate::ast::{Expr, Span, Stmt};
 
 use super::SimpleSpan;
 use super::tokens::{SpannedToken, Token};
@@ -18,8 +18,9 @@ pub(super) type BoxedParser<'src, T> =
     chumsky::Boxed<'src, 'src, ParserInput<'src>, T, ParserExtra<'src>>;
 pub(super) type RecursiveParser<'src, T> =
     recursive::Recursive<Direct<'src, 'src, ParserInput<'src>, T, ParserExtra<'src>>>;
-pub(super) type SpannedAst = (AST, SimpleSpan<usize>);
-pub(super) type IndexedTarget = (SpannedAst, SpannedAst);
+pub(super) type SpannedExpr = (Expr, SimpleSpan<usize>);
+pub(super) type SpannedStmt = (Stmt, SimpleSpan<usize>);
+pub(super) type IndexedTarget = (SpannedExpr, SpannedExpr);
 
 /// Shared per-parser context. Since the span refactor it carries no
 /// state — nodes store byte spans directly — but it is kept as the
@@ -32,17 +33,13 @@ impl ParserContext {
     fn info(&self, span: SimpleSpan<usize>) -> Option<Span> {
         Some(span)
     }
-
-    fn wrap_statement(&self, ast: AST, span: SimpleSpan<usize>) -> AST {
-        AST::Statement(Box::new(ast), self.info(span))
-    }
 }
 
 pub(super) fn merge_span(a: SimpleSpan<usize>, b: SimpleSpan<usize>) -> SimpleSpan<usize> {
     SimpleSpan::new(a.start().min(b.start()), a.end().max(b.end()))
 }
 
-pub fn build_parser<'src>() -> BoxedParser<'src, Vec<AST>> {
+pub fn build_parser<'src>() -> BoxedParser<'src, Vec<Stmt>> {
     let ctx = ParserContext {};
 
     let ctx_for_recursive = ctx.clone();
@@ -53,50 +50,43 @@ pub fn build_parser<'src>() -> BoxedParser<'src, Vec<AST>> {
         let block = block_parser(ctx.clone(), statement.clone());
         let expression = expression_parser(ctx.clone(), block.clone());
         let body = statement_body_parser(ctx.clone(), expression.clone(), block.clone());
-        let ctx_for_stmt = ctx.clone();
 
-        body.then(just(Token::Semicolon).map_with(|_, extra| {
-            let span: SimpleSpan<usize> = extra.span();
-            span
-        }))
-        .map(move |((ast, body_span), semi_span)| {
-            let total_span = merge_span(body_span, semi_span);
-            ctx_for_stmt.wrap_statement(ast, total_span)
-        })
-        .boxed()
+        body.then_ignore(just(Token::Semicolon))
+            .map(|(stmt, _)| stmt)
+            .boxed()
     })
     .boxed();
 
     statement
         .clone()
         .repeated()
-        .collect::<Vec<AST>>()
+        .collect::<Vec<Stmt>>()
         .then_ignore(end())
         .boxed()
 }
 
 pub(super) fn block_parser<'src>(
     ctx: ParserContext,
-    statement: RecursiveParser<'src, AST>,
-) -> BoxedParser<'src, SpannedAst> {
+    statement: RecursiveParser<'src, Stmt>,
+) -> BoxedParser<'src, SpannedStmt> {
     let ctx_for_map = ctx.clone();
     just(Token::OpenBrace)
         .map_with(|_, extra| extra.span())
-        .then(statement.clone().repeated().collect::<Vec<AST>>())
+        .then(statement.clone().repeated().collect::<Vec<Stmt>>())
         .then(just(Token::CloseBrace).map_with(|_, extra| extra.span()))
         .map(move |((open_span, statements), close_span)| {
             let span = SimpleSpan::new(open_span.start(), close_span.end());
             let info = ctx_for_map.info(span);
-            (AST::Block(statements, info), span)
+            (Stmt::Block(statements, info), span)
         })
         .boxed()
 }
 
 pub(super) fn expression_parser<'src>(
     ctx: ParserContext,
-    block: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
-    recursive(|expression: RecursiveParser<'src, SpannedAst>| {
+    block: BoxedParser<'src, SpannedStmt>,
+) -> BoxedParser<'src, SpannedExpr> {
+    recursive(|expression: RecursiveParser<'src, SpannedExpr>| {
         let ctx = ctx.clone();
         let block = block.clone();
         let expr = expression.clone().boxed();
@@ -109,9 +99,14 @@ pub(super) fn expression_parser<'src>(
 
 pub(super) fn statement_body_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-    block: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
+    expression: BoxedParser<'src, SpannedExpr>,
+    block: BoxedParser<'src, SpannedStmt>,
+) -> BoxedParser<'src, SpannedStmt> {
+    let ctx_for_expr = ctx.clone();
+    let expression_stmt = expression
+        .clone()
+        .map(move |(expr, span)| (Stmt::Expr(expr, ctx_for_expr.info(span)), span))
+        .boxed();
     choice((
         artifact_def_parser(ctx.clone()),
         forge_parser(ctx.clone(), expression.clone()),
@@ -121,8 +116,8 @@ pub(super) fn statement_body_parser<'src>(
         orbit_flow_parser(ctx.clone()),
         index_assignment_parser(ctx.clone(), expression.clone()),
         field_assignment_parser(ctx.clone(), expression.clone()),
-        assignment_parser(ctx.clone(), expression.clone()),
-        expression,
+        assignment_parser(ctx.clone(), expression),
+        expression_stmt,
     ))
     .boxed()
 }

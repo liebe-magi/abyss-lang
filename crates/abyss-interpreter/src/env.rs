@@ -1,6 +1,6 @@
 use crate::diagnostics::{did_you_mean, label_with_suggestions};
 use crate::eval::{EvalError, EvalResult};
-use abyss_core::ast::{AST, Span, Type};
+use abyss_core::ast::{EngraveParam, Expr, Span, Stmt, Type};
 use std::collections::HashMap;
 
 // Value and artifact types moved to dedicated modules; re-exported here so
@@ -16,7 +16,7 @@ pub type BuiltinFunc =
 
 pub type BuiltinMethodHandler = fn(
     &mut RuntimeEnv,
-    &AST,
+    &Expr,
     Option<&str>,
     Value,
     Vec<CallArg>,
@@ -40,9 +40,9 @@ pub enum Callable {
 #[derive(Debug, Clone)]
 pub struct EngravedFunction {
     pub name: String,
-    pub params: Vec<AST>,
+    pub params: Vec<EngraveParam>,
     pub return_type: Type,
-    pub body: Box<AST>,
+    pub body: Box<Stmt>,
     pub line_info: Option<Span>,
 }
 
@@ -371,7 +371,7 @@ mod tests {
             name: name.to_string(),
             params: Vec::new(),
             return_type: Type::Abyss,
-            body: Box::new(AST::Abyss(None)),
+            body: Box::new(Stmt::Expr(Expr::Abyss(None), None)),
             line_info: None,
         }
     }

@@ -1,183 +1,204 @@
 pub use crate::span::Span;
 
-/// Represents the abstract syntax tree (AST) for the language.
+/// Expressions — nodes that evaluate to a value.
+///
+/// `Oracle` lives here (not in [`Stmt`]) because AbySS allows match
+/// expressions in value position (`forge x: arcana = oracle(y) { … };`);
+/// an oracle used as a statement flows through [`Stmt::Expr`].
 #[derive(Debug, Clone)]
-pub enum AST {
-    Statement(Box<AST>, Option<Span>),
+pub enum Expr {
     Omen(bool, Option<Span>),
     Arcana(i64, Option<Span>),
     Aether(f64, Option<Span>),
     Rune(String, Option<Span>),
     Abyss(Option<Span>),
-    Add(Box<AST>, Box<AST>, Option<Span>),
-    Sub(Box<AST>, Box<AST>, Option<Span>),
-    Mul(Box<AST>, Box<AST>, Option<Span>),
-    Div(Box<AST>, Box<AST>, Option<Span>),
-    Mod(Box<AST>, Box<AST>, Option<Span>),
-    PowArcana(Box<AST>, Box<AST>, Option<Span>),
-    PowAether(Box<AST>, Box<AST>, Option<Span>),
-    Equal(Box<AST>, Box<AST>, Option<Span>),
-    NotEqual(Box<AST>, Box<AST>, Option<Span>),
-    LessThan(Box<AST>, Box<AST>, Option<Span>),
-    LessThanOrEqual(Box<AST>, Box<AST>, Option<Span>),
-    GreaterThan(Box<AST>, Box<AST>, Option<Span>),
-    GreaterThanOrEqual(Box<AST>, Box<AST>, Option<Span>),
-    LogicalAnd(Box<AST>, Box<AST>, Option<Span>),
-    LogicalOr(Box<AST>, Box<AST>, Option<Span>),
-    LogicalNot(Box<AST>, Option<Span>),
-    VarAssign {
-        name: String,
-        value: Box<AST>,
-        var_type: Type,
-        is_morph: bool,
-        line_info: Option<Span>,
-    },
-    Assignment {
-        name: String,
-        value: Box<AST>,
-        op: AssignmentOp,
-        line_info: Option<Span>,
-    },
+    Add(Box<Expr>, Box<Expr>, Option<Span>),
+    Sub(Box<Expr>, Box<Expr>, Option<Span>),
+    Mul(Box<Expr>, Box<Expr>, Option<Span>),
+    Div(Box<Expr>, Box<Expr>, Option<Span>),
+    Mod(Box<Expr>, Box<Expr>, Option<Span>),
+    PowArcana(Box<Expr>, Box<Expr>, Option<Span>),
+    PowAether(Box<Expr>, Box<Expr>, Option<Span>),
+    Equal(Box<Expr>, Box<Expr>, Option<Span>),
+    NotEqual(Box<Expr>, Box<Expr>, Option<Span>),
+    LessThan(Box<Expr>, Box<Expr>, Option<Span>),
+    LessThanOrEqual(Box<Expr>, Box<Expr>, Option<Span>),
+    GreaterThan(Box<Expr>, Box<Expr>, Option<Span>),
+    GreaterThanOrEqual(Box<Expr>, Box<Expr>, Option<Span>),
+    LogicalAnd(Box<Expr>, Box<Expr>, Option<Span>),
+    LogicalOr(Box<Expr>, Box<Expr>, Option<Span>),
+    LogicalNot(Box<Expr>, Option<Span>),
     Var(String, Option<Span>),
-    Reveal(Box<AST>, Option<Span>),
+    FuncCall {
+        name: String,
+        args: Vec<Expr>,
+        span: Option<Span>,
+    },
+    MethodCall {
+        receiver: Box<Expr>,
+        method: String,
+        args: Vec<Expr>,
+        span: Option<Span>,
+    },
+    IndexAccess {
+        target: Box<Expr>,
+        index: Box<Expr>,
+        span: Option<Span>,
+    },
+    FieldAccess {
+        target: Box<Expr>,
+        field: String,
+        span: Option<Span>,
+    },
+    ListLiteral {
+        elements: Vec<Expr>,
+        span: Option<Span>,
+    },
+    MapLiteral {
+        entries: Vec<(String, Expr)>,
+        span: Option<Span>,
+    },
+    ArtifactLiteral {
+        type_name: String,
+        fields: Vec<(String, Expr)>,
+        span: Option<Span>,
+    },
     Oracle {
         is_match: bool,
         conditionals: Vec<ConditionalAssignment>,
-        branches: Vec<AST>,
-        line_info: Option<Span>,
+        branches: Vec<OracleBranch>,
+        span: Option<Span>,
     },
-    OracleBranch {
-        pattern: Vec<AST>,
-        guard: Option<Box<AST>>,
-        body: Box<AST>,
-        line_info: Option<Span>,
+}
+
+/// Statements — nodes executed for their effect. A bare expression in
+/// statement position is wrapped in [`Stmt::Expr`].
+#[derive(Debug, Clone)]
+pub enum Stmt {
+    Expr(Expr, Option<Span>),
+    VarAssign {
+        name: String,
+        value: Expr,
+        var_type: Type,
+        is_morph: bool,
+        span: Option<Span>,
     },
-    OracleDontCareItem(Option<Span>),
-    /// Scroll-shape pattern that destructures a `scroll` scrutinee into
-    /// its elements. Each element is one of: `OracleDontCareItem`,
-    /// `OracleScrollRest`, `Var(name)` (binding), or any other AST node
-    /// (treated as a literal expression to compare against).
-    OracleScrollPattern {
-        elements: Vec<AST>,
-        line_info: Option<Span>,
+    Assignment {
+        name: String,
+        value: Expr,
+        op: AssignmentOp,
+        span: Option<Span>,
     },
-    /// Rest segment inside an `OracleScrollPattern`. `name = Some("rest")`
-    /// for `..rest` (binds the unmatched tail to a fresh sub-scroll);
-    /// `name = None` for `..` (anonymous, drops the tail).
-    OracleScrollRest {
-        name: Option<String>,
-        line_info: Option<Span>,
+    IndexAssignment {
+        target: Expr,
+        index: Expr,
+        value: Expr,
+        span: Option<Span>,
     },
-    /// Artifact-shape pattern that matches a `TypeName { field, … }`
-    /// scrutinee. Each `(field_name, sub_pattern)` entry pulls the named
-    /// field out of the artifact and matches it against `sub_pattern`
-    /// (typically `Var` for binding, a literal for compare, or
-    /// `OracleDontCareItem` to ignore). Fields not listed here are not
-    /// matched against — the pattern is non-exhaustive by default, so
-    /// users can pick out only the fields they care about.
-    OracleArtifactPattern {
-        type_name: String,
-        fields: Vec<(String, AST)>,
-        line_info: Option<Span>,
+    FieldAssignment {
+        target: Expr,
+        field: String,
+        value: Expr,
+        span: Option<Span>,
     },
-    /// Lexicon-shape pattern that matches a `{ "key": value, … }`
-    /// scrutinee. Each `(key, sub_pattern)` entry pulls the named entry
-    /// out of the lexicon and matches it against `sub_pattern`. Keys not
-    /// listed here are not matched against — the pattern is
-    /// non-exhaustive by default, mirroring the artifact pattern's
-    /// "pick what you need" ergonomics.
-    OracleLexiconPattern {
-        entries: Vec<(String, AST)>,
-        line_info: Option<Span>,
-    },
-    Block(Vec<AST>, Option<Span>),
+    Reveal(Expr, Option<Span>),
+    Block(Vec<Stmt>, Option<Span>),
+    /// Never produced by the parser (comments are scrubbed before lexing);
+    /// retained so hand-built trees — formatter tests, generated code —
+    /// can round-trip comment text through `format`.
     Comment(String, Option<Span>),
     Orbit {
-        params: Vec<AST>,
-        body: Box<AST>,
-        line_info: Option<Span>,
-    },
-    OrbitParam {
-        name: String,
-        start: Box<AST>,
-        end: Box<AST>,
-        op: String,
-        line_info: Option<Span>,
+        params: Vec<OrbitParam>,
+        body: Box<Stmt>,
+        span: Option<Span>,
     },
     Resume(Option<String>, Option<Span>),
     Eject(Option<String>, Option<Span>),
     Engrave {
         name: String,
-        params: Vec<AST>,
+        params: Vec<EngraveParam>,
         return_type: Type,
-        body: Box<AST>,
+        body: Box<Stmt>,
         method_target: Option<ArtifactMethodTarget>,
-        line_info: Option<Span>,
-    },
-    EngraveParam {
-        name: String,
-        param_type: Type,
-        is_morph: bool,
-        line_info: Option<Span>,
-    },
-    FuncCall {
-        name: String,
-        args: Vec<AST>,
-        line_info: Option<Span>,
-    },
-    ListLiteral {
-        elements: Vec<AST>,
-        line_info: Option<Span>,
-    },
-    MapLiteral {
-        entries: Vec<(String, AST)>,
-        line_info: Option<Span>,
-    },
-    IndexAccess {
-        target: Box<AST>,
-        index: Box<AST>,
-        line_info: Option<Span>,
-    },
-    IndexAssignment {
-        target: Box<AST>,
-        index: Box<AST>,
-        value: Box<AST>,
-        line_info: Option<Span>,
+        span: Option<Span>,
     },
     ArtifactDef {
         name: String,
         fields: Vec<ArtifactField>,
-        line_info: Option<Span>,
+        span: Option<Span>,
     },
-    ArtifactLiteral {
+}
+
+/// Patterns — the shapes an `oracle` match arm can take. Only meaningful
+/// inside [`OracleBranch::pattern`]; a bare [`Pattern::Expr`] is evaluated
+/// and compared against the scrutinee (in match mode a lone
+/// `Expr::Var` instead introduces a fresh binding).
+#[derive(Debug, Clone)]
+pub enum Pattern {
+    /// `_` — matches anything, binds nothing.
+    DontCare(Option<Span>),
+    /// Scroll-shape pattern destructuring a `scroll` scrutinee.
+    Scroll {
+        elements: Vec<Pattern>,
+        span: Option<Span>,
+    },
+    /// Rest segment inside a scroll pattern: `..rest` (named) or `..`
+    /// (anonymous, drops the tail). Only valid as the final element.
+    Rest {
+        name: Option<String>,
+        span: Option<Span>,
+    },
+    /// Artifact-shape pattern: `TypeName { field: sub_pattern, … }`.
+    /// Unlisted fields are not matched (non-exhaustive by default).
+    Artifact {
         type_name: String,
-        fields: Vec<(String, AST)>,
-        line_info: Option<Span>,
+        fields: Vec<(String, Pattern)>,
+        span: Option<Span>,
     },
-    FieldAccess {
-        target: Box<AST>,
-        field: String,
-        line_info: Option<Span>,
+    /// Lexicon-shape pattern: `{ "key": sub_pattern, … }`. Unlisted keys
+    /// are not matched.
+    Lexicon {
+        entries: Vec<(String, Pattern)>,
+        span: Option<Span>,
     },
-    FieldAssignment {
-        target: Box<AST>,
-        field: String,
-        value: Box<AST>,
-        line_info: Option<Span>,
-    },
-    MethodCall {
-        receiver: Box<AST>,
-        method: String,
-        args: Vec<AST>,
-        line_info: Option<Span>,
-    },
+    /// Fallback: an expression evaluated and compared against the
+    /// scrutinee. In match mode a bare `Expr::Var` binds instead.
+    Expr(Expr),
+}
+
+/// One `oracle` match arm: `(pattern, …) ward guard => body`.
+#[derive(Debug, Clone)]
+pub struct OracleBranch {
+    pub pattern: Vec<Pattern>,
+    pub guard: Option<Expr>,
+    pub body: Stmt,
+    pub span: Option<Span>,
+}
+
+/// One `orbit` loop parameter: `name = start..end` (op is `..` or `..=`).
+#[derive(Debug, Clone)]
+pub struct OrbitParam {
+    pub name: String,
+    pub start: Expr,
+    pub end: Expr,
+    pub op: String,
+    pub span: Option<Span>,
+}
+
+/// One `engrave` parameter: `name: type` with optional `morph`.
+#[derive(Debug, Clone)]
+pub struct EngraveParam {
+    pub name: String,
+    pub param_type: Type,
+    pub is_morph: bool,
+    pub span: Option<Span>,
 }
 
 #[derive(Debug, Clone)]
 pub struct ArtifactField {
     pub name: String,
     pub field_type: Type,
-    pub line_info: Option<Span>,
+    pub span: Option<Span>,
 }
 
 #[derive(Debug, Clone)]
@@ -190,8 +211,8 @@ pub struct ArtifactMethodTarget {
 #[derive(Debug, Clone)]
 pub struct ConditionalAssignment {
     pub variable: String,
-    pub expression: Box<AST>,
-    pub line_info: Option<Span>,
+    pub expression: Box<Expr>,
+    pub span: Option<Span>,
 }
 
 /// Represents the type of a variable or expression.

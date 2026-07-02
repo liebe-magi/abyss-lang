@@ -1,5 +1,5 @@
 use crate::env::Value;
-use abyss_core::ast::AST;
+use abyss_core::ast::Expr;
 use abyss_core::ast::Span;
 
 use super::result::{EvalError, EvalResult};
@@ -38,17 +38,17 @@ pub(crate) fn expect_rune_key(
     }
 }
 
-pub(crate) fn collect_index_chain(target: &AST) -> Option<(String, Vec<&AST>)> {
+pub(crate) fn collect_index_chain(target: &Expr) -> Option<(String, Vec<&Expr>)> {
     let mut indices = Vec::new();
     let mut current = target;
 
     loop {
         match current {
-            AST::Var(name, _) => {
+            Expr::Var(name, _) => {
                 indices.reverse();
                 return Some((name.clone(), indices));
             }
-            AST::IndexAccess { target, index, .. } => {
+            Expr::IndexAccess { target, index, .. } => {
                 indices.push(index.as_ref());
                 current = target.as_ref();
             }
@@ -115,40 +115,40 @@ mod tests {
 
     #[test]
     fn collect_index_chain_extracts_indices_in_order() {
-        let ast = AST::IndexAccess {
-            target: Box::new(AST::IndexAccess {
-                target: Box::new(AST::Var("sigils".into(), None)),
-                index: Box::new(AST::Arcana(1, None)),
-                line_info: None,
+        let ast = Expr::IndexAccess {
+            target: Box::new(Expr::IndexAccess {
+                target: Box::new(Expr::Var("sigils".into(), None)),
+                index: Box::new(Expr::Arcana(1, None)),
+                span: None,
             }),
-            index: Box::new(AST::Rune("beta".into(), None)),
-            line_info: None,
+            index: Box::new(Expr::Rune("beta".into(), None)),
+            span: None,
         };
 
         let (name, indices) = collect_index_chain(&ast).expect("expected chain");
         assert_eq!(name, "sigils");
         assert_eq!(indices.len(), 2);
         match indices[0] {
-            AST::Arcana(value, _) => assert_eq!(*value, 1),
+            Expr::Arcana(value, _) => assert_eq!(*value, 1),
             other => panic!("Unexpected first index: {:?}", other),
         }
         match indices[1] {
-            AST::Rune(value, _) => assert_eq!(value, "beta"),
+            Expr::Rune(value, _) => assert_eq!(value, "beta"),
             other => panic!("Unexpected second index: {:?}", other),
         }
     }
 
     #[test]
     fn collect_index_chain_handles_non_chain_inputs() {
-        let var = AST::Var("sigils".into(), None);
+        let var = Expr::Var("sigils".into(), None);
         let (name, indices) = collect_index_chain(&var).expect("var should be recognized");
         assert_eq!(name, "sigils");
         assert!(indices.is_empty());
 
-        let field_access = AST::FieldAccess {
-            target: Box::new(AST::Var("sigils".into(), None)),
+        let field_access = Expr::FieldAccess {
+            target: Box::new(Expr::Var("sigils".into(), None)),
             field: "core".into(),
-            line_info: None,
+            span: None,
         };
         assert!(collect_index_chain(&field_access).is_none());
     }

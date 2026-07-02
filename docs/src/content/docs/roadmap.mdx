@@ -57,9 +57,9 @@ Promote runtime failures from "interpreter prints a diagnostic and either aborts
 
 User-defined sum types (true enums with arbitrary variants, payloads, and generics) remain in *Later*; they require generics, which the `Option<T>` / `Result<T, E>` shape would otherwise demand.
 
-### v0.8.0 — Span-tracking Refactor
+### v0.8.0 — Span-tracking Refactor *(shipped early, in the v0.6.0 cycle)*
 
-Replace the current single-point `LineInfo` (`{ line, column }`) attached to AST nodes and `EvalError` with `start..end` byte spans. This is what the `#[non_exhaustive]` marker on `EvalError` shipped in v0.4.1 was reserved for. Pure infrastructure with no user-visible language change, but a hard prerequisite for the LSP work that follows.
+~~Replace the current single-point `LineInfo` (`{ line, column }`) attached to AST nodes and `EvalError` with `start..end` byte spans.~~ **Done ahead of schedule** ([#510](https://github.com/liebe-magi/abyss-lang/issues/510)): AST nodes and `EvalError` now carry byte spans (runtime diagnostics underline the full offending range), and the single `AST` enum has been split into `Expr` / `Stmt` / `Pattern`. This is what the `#[non_exhaustive]` marker on `EvalError` shipped in v0.4.1 was reserved for. Pure infrastructure with no user-visible language change — pulled forward because every prerequisite refactor had already landed, clearing the runway for the LSP work below.
 
 ### v0.8.1+ — LSP MVP
 

@@ -8,6 +8,7 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 
 ### Changed
 
+- **The single `AST` enum is split into `Expr` / `Stmt` / `Pattern`** ([#510](https://github.com/liebe-magi/abyss-lang/issues/510)) — expressions, statements, and oracle match-arm patterns are now distinct types, with `OracleBranch` / `OrbitParam` / `EngraveParam` as plain structs. The evaluator gains honest signatures (`evaluate(&Stmt)` / expression evaluation without the old `Option`-returning probe), the 27-arm `unreachable!()` guard is gone, and `parse` returns `Vec<Stmt>`. `format_ast` is replaced by `format_stmt` / `format_expr` / `format_pattern`. Breaking for `abyss-core` / `abyss-interpreter` consumers; no language-level change — every existing script parses and runs identically.
 - **AST nodes and `EvalError` now carry byte spans instead of point `LineInfo`** ([#510](https://github.com/liebe-magi/abyss-lang/issues/510)) — the parser stores each node's `start..end` byte span (`abyss_core::span::Span`) and diagnostics derive positions at render time, so runtime errors now underline the full offending range instead of a single caret. Pulled forward from the roadmap's v0.8 "Span-tracking Refactor" slot. Breaking for `abyss-core` / `abyss-interpreter` consumers: `LineInfo`, `LineMap`, and `attach_line_info` are gone, and `build_parser` no longer takes a line map. Error message texts are unchanged.
 
 ### Removed

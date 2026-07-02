@@ -5,14 +5,16 @@ use std::collections::HashMap;
 
 use chumsky::{error::Rich, prelude::*};
 
-use crate::ast::{AST, ArtifactField, ArtifactMethodTarget, AssignmentOp, Type};
+use crate::ast::{
+    ArtifactField, ArtifactMethodTarget, AssignmentOp, EngraveParam, Expr, OrbitParam, Stmt, Type,
+};
 
 use crate::parser::SimpleSpan;
 use crate::parser::tokens::Token;
 
 use super::*;
 
-pub(super) fn artifact_def_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedAst> {
+pub(super) fn artifact_def_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedStmt> {
     let ctx_for_map = ctx.clone();
     let ident =
         select! { Token::Identifier(name) => name }.map_with(|name, extra| (name, extra.span()));
@@ -25,10 +27,10 @@ pub(super) fn artifact_def_parser<'src>(ctx: ParserContext) -> BoxedParser<'src,
             let span = SimpleSpan::new(artifact_span.start(), body_span.end());
             let info = ctx_for_map.info(span);
             (
-                AST::ArtifactDef {
+                Stmt::ArtifactDef {
                     name,
                     fields,
-                    line_info: info,
+                    span: info,
                 },
                 span,
             )
@@ -66,7 +68,7 @@ pub(super) fn artifact_fields_parser<'src>(
                 fields.push(ArtifactField {
                     name,
                     field_type,
-                    line_info: info,
+                    span: info,
                 });
             }
             Ok((fields, span))
@@ -76,8 +78,8 @@ pub(super) fn artifact_fields_parser<'src>(
 
 pub(super) fn forge_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
+    expression: BoxedParser<'src, SpannedExpr>,
+) -> BoxedParser<'src, SpannedStmt> {
     let ctx_for_map = ctx.clone();
     let morph_flag = just(Token::Morph)
         .to(true)
@@ -103,12 +105,12 @@ pub(super) fn forge_parser<'src>(
                 let span = SimpleSpan::new(forge_span.start(), value_span.end());
                 let info = ctx_for_map.info(span);
                 (
-                    AST::VarAssign {
+                    Stmt::VarAssign {
                         name,
-                        value: Box::new(value_ast),
+                        value: value_ast,
                         var_type: ty,
                         is_morph,
-                        line_info: info,
+                        span: info,
                     },
                     span,
                 )
@@ -125,7 +127,7 @@ pub(super) enum RawEngraveParam {
         is_morph: bool,
         span: SimpleSpan<usize>,
     },
-    Param(AST),
+    Param(EngraveParam),
 }
 
 /// Internal representation for engrave target classification.
@@ -169,8 +171,8 @@ pub(super) fn core_keyword_span<'src>() -> BoxedParser<'src, SimpleSpan<usize>> 
 
 pub(super) fn engrave_parser<'src>(
     ctx: ParserContext,
-    block: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
+    block: BoxedParser<'src, SpannedStmt>,
+) -> BoxedParser<'src, SpannedStmt> {
     let ctx_for_map = ctx.clone();
 
     let params = choice((
@@ -237,13 +239,13 @@ pub(super) fn engrave_parser<'src>(
                         }
 
                         Ok((
-                            AST::Engrave {
+                            Stmt::Engrave {
                                 name,
                                 params,
                                 return_type,
                                 body: Box::new(body_ast),
                                 method_target: None,
-                                line_info: info,
+                                span: info,
                             },
                             span,
                         ))
@@ -281,11 +283,11 @@ pub(super) fn engrave_parser<'src>(
                                     receiver_seen = true;
                                     target_meta.requires_morph = is_morph;
                                     let info = ctx_for_map.info(recv_span);
-                                    params.push(AST::EngraveParam {
+                                    params.push(EngraveParam {
                                         name: "core".to_string(),
                                         param_type: Type::Artifact(target_meta.artifact.clone()),
                                         is_morph,
-                                        line_info: info,
+                                        span: info,
                                     });
                                 }
                                 RawEngraveParam::Param(node) => params.push(node),
@@ -300,13 +302,13 @@ pub(super) fn engrave_parser<'src>(
                         }
 
                         Ok((
-                            AST::Engrave {
+                            Stmt::Engrave {
                                 name: method,
                                 params,
                                 return_type,
                                 body: Box::new(body_ast),
                                 method_target: Some(target_meta),
-                                line_info: info,
+                                span: info,
                             },
                             span,
                         ))
@@ -319,8 +321,8 @@ pub(super) fn engrave_parser<'src>(
 
 pub(super) fn reveal_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
+    expression: BoxedParser<'src, SpannedExpr>,
+) -> BoxedParser<'src, SpannedStmt> {
     let ctx_for_map = ctx.clone();
     just(Token::Reveal)
         .map_with(|_, extra| extra.span())
@@ -332,18 +334,18 @@ pub(super) fn reveal_parser<'src>(
                 .unwrap_or(reveal_span);
             let info = ctx_for_map.info(span);
             let value = maybe_expr
-                .map(|(ast, _)| Box::new(ast))
-                .unwrap_or_else(|| Box::new(AST::Abyss(info)));
-            (AST::Reveal(value, info), span)
+                .map(|(expr, _)| expr)
+                .unwrap_or_else(|| Expr::Abyss(info));
+            (Stmt::Reveal(value, info), span)
         })
         .boxed()
 }
 
 pub(super) fn orbit_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-    block: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
+    expression: BoxedParser<'src, SpannedExpr>,
+    block: BoxedParser<'src, SpannedStmt>,
+) -> BoxedParser<'src, SpannedStmt> {
     let ctx_for_map = ctx.clone();
     let params = orbit_param_parser(ctx.clone(), expression.clone())
         .separated_by(just(Token::Comma))
@@ -360,10 +362,10 @@ pub(super) fn orbit_parser<'src>(
             let span = SimpleSpan::new(orbit_span.start(), body_span.end());
             let info = ctx_for_map.info(span);
             (
-                AST::Orbit {
+                Stmt::Orbit {
                     params: params_opt.unwrap_or_default(),
                     body: Box::new(body_ast),
-                    line_info: info,
+                    span: info,
                 },
                 span,
             )
@@ -371,7 +373,7 @@ pub(super) fn orbit_parser<'src>(
         .boxed()
 }
 
-pub(super) fn orbit_flow_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedAst> {
+pub(super) fn orbit_flow_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedStmt> {
     let ctx_resume = ctx.clone();
     let ident: BoxedParser<'src, (String, SimpleSpan<usize>)> = select! {
         Token::Identifier(name) => name
@@ -392,7 +394,7 @@ pub(super) fn orbit_flow_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, S
                     .map(|(_, id_span)| SimpleSpan::new(resume_span.start(), id_span.end()))
                     .unwrap_or(resume_span);
                 let info = ctx_resume.info(span);
-                (AST::Resume(maybe_ident.map(|(name, _)| name), info), span)
+                (Stmt::Resume(maybe_ident.map(|(name, _)| name), info), span)
             },
         );
 
@@ -410,7 +412,7 @@ pub(super) fn orbit_flow_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, S
                     .map(|(_, id_span)| SimpleSpan::new(eject_span.start(), id_span.end()))
                     .unwrap_or(eject_span);
                 let info = ctx_eject.info(span);
-                (AST::Eject(maybe_ident.map(|(name, _)| name), info), span)
+                (Stmt::Eject(maybe_ident.map(|(name, _)| name), info), span)
             },
         );
 
@@ -419,8 +421,8 @@ pub(super) fn orbit_flow_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, S
 
 pub(super) fn assignment_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
+    expression: BoxedParser<'src, SpannedExpr>,
+) -> BoxedParser<'src, SpannedStmt> {
     let ctx_for_map = ctx.clone();
     let ident =
         select! { Token::Identifier(name) => name }.map_with(|name, extra| (name, extra.span()));
@@ -445,11 +447,11 @@ pub(super) fn assignment_parser<'src>(
                 let span = SimpleSpan::new(name_span.start(), value_span.end());
                 let info = ctx_for_map.info(span);
                 (
-                    AST::Assignment {
+                    Stmt::Assignment {
                         name,
-                        value: Box::new(value_ast),
+                        value: value_ast,
                         op: assignment_op_from_token(token),
-                        line_info: info,
+                        span: info,
                     },
                     span,
                 )
@@ -460,8 +462,8 @@ pub(super) fn assignment_parser<'src>(
 
 pub(super) fn field_assignment_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
+    expression: BoxedParser<'src, SpannedExpr>,
+) -> BoxedParser<'src, SpannedStmt> {
     let ctx_for_map = ctx.clone();
     expression
         .clone()
@@ -469,15 +471,15 @@ pub(super) fn field_assignment_parser<'src>(
         .then(expression)
         .try_map(
             move |((target_ast, target_span), (value_ast, value_span)), _extra| {
-                if let AST::FieldAccess { target, field, .. } = target_ast {
+                if let Expr::FieldAccess { target, field, .. } = target_ast {
                     let span = SimpleSpan::new(target_span.start(), value_span.end());
                     let info = ctx_for_map.info(span);
                     Ok((
-                        AST::FieldAssignment {
-                            target,
+                        Stmt::FieldAssignment {
+                            target: *target,
                             field,
-                            value: Box::new(value_ast),
-                            line_info: info,
+                            value: value_ast,
+                            span: info,
                         },
                         span,
                     ))
@@ -508,8 +510,8 @@ pub(super) fn assignment_op_from_token(token: Token) -> AssignmentOp {
 
 pub(super) fn index_assignment_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, SpannedAst> {
+    expression: BoxedParser<'src, SpannedExpr>,
+) -> BoxedParser<'src, SpannedStmt> {
     let ctx_for_map = ctx.clone();
     indexed_target_parser(ctx, expression.clone())
         .then_ignore(just(Token::Assign))
@@ -523,11 +525,11 @@ pub(super) fn index_assignment_parser<'src>(
                 let span = SimpleSpan::new(lhs_span.start(), value_span.end());
                 let info = ctx_for_map.info(span);
                 (
-                    AST::IndexAssignment {
-                        target: Box::new(target_ast),
-                        index: Box::new(index_ast),
-                        value: Box::new(value_ast),
-                        line_info: info,
+                    Stmt::IndexAssignment {
+                        target: target_ast,
+                        index: index_ast,
+                        value: value_ast,
+                        span: info,
                     },
                     span,
                 )
@@ -538,7 +540,7 @@ pub(super) fn index_assignment_parser<'src>(
 
 pub(super) fn indexed_target_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
+    expression: BoxedParser<'src, SpannedExpr>,
 ) -> BoxedParser<'src, IndexedTarget> {
     let ctx_for_map = ctx.clone();
     primary_expr_parser(ctx.clone(), expression.clone())
@@ -562,8 +564,8 @@ pub(super) fn indexed_target_parser<'src>(
 
 pub(super) fn orbit_param_parser<'src>(
     ctx: ParserContext,
-    expression: BoxedParser<'src, SpannedAst>,
-) -> BoxedParser<'src, AST> {
+    expression: BoxedParser<'src, SpannedExpr>,
+) -> BoxedParser<'src, OrbitParam> {
     let ctx_for_map = ctx.clone();
     select! { Token::Identifier(name) => name }
         .map_with(|name, extra| (name, extra.span()))
@@ -573,19 +575,19 @@ pub(super) fn orbit_param_parser<'src>(
             move |((name, name_span), (start_ast, end_ast, op, range_span))| {
                 let span = merge_span(name_span, range_span);
                 let info = ctx_for_map.info(span);
-                AST::OrbitParam {
+                OrbitParam {
                     name,
-                    start: Box::new(start_ast),
-                    end: Box::new(end_ast),
+                    start: start_ast,
+                    end: end_ast,
                     op,
-                    line_info: info,
+                    span: info,
                 }
             },
         )
         .boxed()
 }
 
-pub(super) fn engrave_param_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, AST> {
+pub(super) fn engrave_param_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, EngraveParam> {
     let ctx_for_map = ctx.clone();
     select! { Token::Identifier(name) => name }
         .map_with(|name, extra| (name, extra.span()))
@@ -594,11 +596,11 @@ pub(super) fn engrave_param_parser<'src>(ctx: ParserContext) -> BoxedParser<'src
         .map(move |((name, name_span), (ty, ty_span))| {
             let span = merge_span(name_span, ty_span);
             let info = ctx_for_map.info(span);
-            AST::EngraveParam {
+            EngraveParam {
                 name,
                 param_type: ty,
                 is_morph: false,
-                line_info: info,
+                span: info,
             }
         })
         .boxed()

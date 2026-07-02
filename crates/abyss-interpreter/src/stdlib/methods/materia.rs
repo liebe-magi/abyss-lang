@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use crate::env::{BuiltinMethodRegistry, CallArg, RuntimeEnv, Value};
 use crate::eval::{EvalError, EvalResult};
-use abyss_core::ast::{AST, Span, Type};
+use abyss_core::ast::{Expr, Span, Type};
 
 use super::{expect_glyph_argument, method_table_for};
 
@@ -13,7 +13,7 @@ pub(super) fn register_methods(registry: &mut BuiltinMethodRegistry) {
 
 fn materia_trans_method(
     _env: &mut RuntimeEnv,
-    _receiver_ast: &AST,
+    _receiver_ast: &Expr,
     _receiver_var_name: Option<&str>,
     receiver_value: Value,
     args: Vec<CallArg>,
@@ -108,7 +108,7 @@ mod tests {
         let mut env = RuntimeEnv::new();
         let result = materia_trans_method(
             &mut env,
-            &AST::Abyss(None),
+            &Expr::Abyss(None),
             None,
             Value::Abyss,
             vec![], // Needs 1
@@ -126,8 +126,14 @@ mod tests {
         // Pass a non-glyph (e.g. integer) as target type
         let args = dummy_args(Value::Arcana(1));
 
-        let result =
-            materia_trans_method(&mut env, &AST::Abyss(None), None, Value::Abyss, args, &None);
+        let result = materia_trans_method(
+            &mut env,
+            &Expr::Abyss(None),
+            None,
+            Value::Abyss,
+            args,
+            &None,
+        );
 
         assert!(matches!(
             result,
@@ -140,8 +146,14 @@ mod tests {
         let mut env = RuntimeEnv::new();
         let args = dummy_args(Value::Rune(Rc::new("unknown".to_string())));
 
-        let result =
-            materia_trans_method(&mut env, &AST::Abyss(None), None, Value::Abyss, args, &None);
+        let result = materia_trans_method(
+            &mut env,
+            &Expr::Abyss(None),
+            None,
+            Value::Abyss,
+            args,
+            &None,
+        );
 
         assert!(matches!(
             result,

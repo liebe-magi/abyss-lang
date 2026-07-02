@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use crate::env::{BuiltinMethodRegistry, CallArg, RuntimeEnv, Value};
 use crate::eval::{EvalError, EvalResult};
-use abyss_core::ast::{AST, Span, Type};
+use abyss_core::ast::{Expr, Span, Type};
 
 use super::{call_arg_to_value, ensure_mutable_receiver, method_table_for};
 
@@ -18,7 +18,7 @@ pub(super) fn register_methods(registry: &mut BuiltinMethodRegistry) {
 
 fn lexicon_tally(
     _env: &mut RuntimeEnv,
-    _receiver_ast: &AST,
+    _receiver_ast: &Expr,
     _receiver_var_name: Option<&str>,
     receiver_value: Value,
     args: Vec<CallArg>,
@@ -38,7 +38,7 @@ fn lexicon_tally(
 
 fn lexicon_define(
     env: &mut RuntimeEnv,
-    receiver_ast: &AST,
+    receiver_ast: &Expr,
     receiver_var_name: Option<&str>,
     receiver_value: Value,
     args: Vec<CallArg>,
@@ -78,7 +78,7 @@ fn lexicon_define(
 
 fn lexicon_expunge(
     env: &mut RuntimeEnv,
-    receiver_ast: &AST,
+    receiver_ast: &Expr,
     receiver_var_name: Option<&str>,
     receiver_value: Value,
     args: Vec<CallArg>,
@@ -120,7 +120,7 @@ fn lexicon_expunge(
 
 fn lexicon_glossary(
     _env: &mut RuntimeEnv,
-    _receiver_ast: &AST,
+    _receiver_ast: &Expr,
     _receiver_var_name: Option<&str>,
     receiver_value: Value,
     args: Vec<CallArg>,
@@ -173,7 +173,7 @@ mod tests {
         let mut env = RuntimeEnv::new();
         let result = lexicon_tally(
             &mut env,
-            &AST::Abyss(None),
+            &Expr::Abyss(None),
             None,
             dummy_lexicon(),
             dummy_args(1),
@@ -190,7 +190,7 @@ mod tests {
         let mut env = RuntimeEnv::new();
         let _result = lexicon_define(
             &mut env,
-            &AST::Abyss(None),
+            &Expr::Abyss(None),
             Some("lex"), // Mutable receiver needs a name
             dummy_lexicon(),
             dummy_args(1), // Needs 2
@@ -216,7 +216,7 @@ mod tests {
         // Now call with wrong args
         let result = lexicon_define(
             &mut env,
-            &AST::Var("lex".to_string(), None),
+            &Expr::Var("lex".to_string(), None),
             Some("lex"),
             dummy_lexicon(),
             dummy_args(1),
@@ -242,7 +242,7 @@ mod tests {
 
         let result = lexicon_expunge(
             &mut env,
-            &AST::Var("lex".to_string(), None),
+            &Expr::Var("lex".to_string(), None),
             Some("lex"),
             dummy_lexicon(),
             dummy_args(0), // Needs 1
@@ -260,7 +260,7 @@ mod tests {
         let mut env = RuntimeEnv::new();
         let result = lexicon_glossary(
             &mut env,
-            &AST::Abyss(None),
+            &Expr::Abyss(None),
             None,
             dummy_lexicon(),
             dummy_args(1),

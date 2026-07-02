@@ -1,23 +1,24 @@
 //! Oracle evaluation and pattern matching.
 //!
-//! Hosts the `AST::Oracle` machinery extracted from `statements.rs`:
-//! scrutinee evaluation, per-branch scope handling, and the three
-//! destructuring shapes (scroll, artifact, lexicon) with their shared
-//! literal-compare fallback. [`evaluate_oracle`] is the only entry point;
-//! the caller (the `AST::Oracle` arm in [`super::statements::evaluate`])
-//! pushes the outer oracle scope before calling and pops it after.
+//! Hosts the `Expr::Oracle` machinery: scrutinee evaluation, per-branch
+//! scope handling, and the three destructuring shapes (scroll, artifact,
+//! lexicon) with their shared literal-compare fallback.
+//! [`evaluate_oracle`] is the only entry point; the caller (the
+//! `Expr::Oracle` arm in [`super::expressions::evaluate_expr`]) pushes
+//! the outer oracle scope before calling and pops it after.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::env::{RuntimeEnv, Value};
-use abyss_core::ast::{AST, ConditionalAssignment, Span, Type};
+use abyss_core::ast::{ConditionalAssignment, Expr, OracleBranch, Pattern, Span, Stmt, Type};
 
 use super::artifacts::{lookup_schema_from_handle, read_artifact_field, values_equal};
+use super::expressions::evaluate_expr;
 use super::result::{EvalError, EvalResult};
 use super::statements::evaluate;
 
-/// Inner body of `AST::Oracle` evaluation. The caller is responsible for
+/// Inner body of `Expr::Oracle` evaluation. The caller is responsible for
 /// pairing one `env.push_scope()` before this call with one `env.pop_scope()`
 /// after, so every `?` inside this helper unwinds through the caller and the
 /// outer oracle scope is always popped.
@@ -29,13 +30,13 @@ use super::statements::evaluate;
 pub(super) fn evaluate_oracle(
     is_match: bool,
     conditionals: &[ConditionalAssignment],
-    branches: &[AST],
+    branches: &[OracleBranch],
     line_info: &Option<Span>,
     env: &mut RuntimeEnv,
 ) -> Result<EvalResult, EvalError> {
     let mut scrutinee_values = Vec::with_capacity(conditionals.len());
     for conditional in conditionals {
-        let result = evaluate(&conditional.expression, env)?;
+        let result = evaluate_expr(&conditional.expression, env)?;
         let stored = match result {
             EvalResult::Data(Value::Arcana(n)) => Value::Arcana(n),
             EvalResult::Data(Value::Aether(n)) => Value::Aether(n),
@@ -67,27 +68,13 @@ pub(super) fn evaluate_oracle(
     }
 
     for branch in branches {
-        if let AST::Comment(_, _) = branch {
-            continue;
-        }
-
-        let AST::OracleBranch {
-            pattern,
-            guard,
-            body,
-            line_info,
-        } = branch
-        else {
-            continue;
-        };
-
         env.push_scope();
         let outcome = evaluate_oracle_branch(
             is_match,
-            pattern,
-            guard.as_deref(),
-            body,
-            line_info,
+            &branch.pattern,
+            branch.guard.as_ref(),
+            &branch.body,
+            &branch.span,
             &scrutinee_values,
             env,
         );
@@ -116,9 +103,9 @@ pub(super) fn evaluate_oracle(
 /// caller pops.
 fn evaluate_oracle_branch(
     is_match: bool,
-    pattern: &[AST],
-    guard: Option<&AST>,
-    body: &AST,
+    pattern: &[Pattern],
+    guard: Option<&Expr>,
+    body: &Stmt,
     line_info: &Option<Span>,
     scrutinee_values: &[Value],
     env: &mut RuntimeEnv,
@@ -139,7 +126,7 @@ fn evaluate_oracle_branch(
 
         let mut matched = true;
         for (idx, pattern_elem) in pattern.iter().enumerate() {
-            if let AST::OracleDontCareItem(_) = pattern_elem {
+            if let Pattern::DontCare(_) = pattern_elem {
                 continue;
             }
 
@@ -155,7 +142,7 @@ fn evaluate_oracle_branch(
             // identifier up as an expression). The binding lives in the
             // per-branch scope the caller pushed, so it is visible to the
             // ward and body of this arm and disappears when the arm finishes.
-            if let AST::Var(name, var_line) = pattern_elem {
+            if let Pattern::Expr(Expr::Var(name, var_line)) = pattern_elem {
                 env.set_var(
                     name.clone(),
                     scrutinee_value.clone(),
@@ -168,9 +155,9 @@ fn evaluate_oracle_branch(
 
             // Scroll-shape pattern destructures the scrutinee — which must be
             // a `scroll` — into its elements, with optional trailing rest.
-            if let AST::OracleScrollPattern {
+            if let Pattern::Scroll {
                 elements,
-                line_info: scroll_line,
+                span: scroll_line,
             } = pattern_elem
             {
                 if !match_scroll_pattern(elements, scrutinee_value, scroll_line, env)? {
@@ -184,10 +171,10 @@ fn evaluate_oracle_branch(
             // be an artifact of the named type — by pulling out the listed
             // fields. Fields not listed are not matched against, so partial
             // patterns like `Player { name }` are valid.
-            if let AST::OracleArtifactPattern {
+            if let Pattern::Artifact {
                 type_name,
                 fields,
-                line_info: artifact_line,
+                span: artifact_line,
             } = pattern_elem
             {
                 if !match_artifact_pattern(type_name, fields, scrutinee_value, artifact_line, env)?
@@ -202,9 +189,9 @@ fn evaluate_oracle_branch(
             // be a `lexicon` — by pulling out the listed keys. Keys not
             // listed are not matched against, so partial patterns like
             // `{ "name": n }` are valid; an absent key falls through.
-            if let AST::OracleLexiconPattern {
+            if let Pattern::Lexicon {
                 entries,
-                line_info: lexicon_line,
+                span: lexicon_line,
             } = pattern_elem
             {
                 if !match_lexicon_pattern(entries, scrutinee_value, lexicon_line, env)? {
@@ -214,7 +201,15 @@ fn evaluate_oracle_branch(
                 continue;
             }
 
-            let pattern_result = evaluate(pattern_elem, env)?;
+            let Pattern::Expr(pattern_expr) = pattern_elem else {
+                // Only a trailing rest segment reaches here, and it is
+                // meaningless outside a scroll pattern.
+                return Err(EvalError::InvalidOperation(
+                    "Rest segment is only valid inside a scroll pattern".to_string(),
+                    *line_info,
+                ));
+            };
+            let pattern_result = evaluate_expr(pattern_expr, env)?;
 
             match (scrutinee_value, pattern_result) {
                 (Value::Arcana(cond_n), EvalResult::Data(Value::Arcana(pat_n))) => {
@@ -252,8 +247,14 @@ fn evaluate_oracle_branch(
         matched
     } else {
         let mut all_true = true;
-        for pattern_expr in pattern {
-            match evaluate(pattern_expr, env)? {
+        for pattern_elem in pattern {
+            let Pattern::Expr(pattern_expr) = pattern_elem else {
+                return Err(EvalError::InvalidOperation(
+                    "Oracle if-else pattern must be an expression".to_string(),
+                    *line_info,
+                ));
+            };
+            match evaluate_expr(pattern_expr, env)? {
                 EvalResult::Data(Value::Omen(true)) => continue,
                 EvalResult::Data(Value::Omen(false)) => {
                     all_true = false;
@@ -276,7 +277,7 @@ fn evaluate_oracle_branch(
     let matched = if matched {
         match guard {
             None => true,
-            Some(guard_expr) => match evaluate(guard_expr, env)? {
+            Some(guard_expr) => match evaluate_expr(guard_expr, env)? {
                 EvalResult::Data(Value::Omen(b)) => b,
                 other => {
                     return Err(EvalError::InvalidOperation(
@@ -339,7 +340,7 @@ fn type_of_scrutinee(value: &Value) -> Type {
 /// element. Mid-list rests like `[a, .., last]` are rejected here so the
 /// matching logic stays linear.
 fn match_scroll_pattern(
-    elements: &[AST],
+    elements: &[Pattern],
     scrutinee_value: &Value,
     line_info: &Option<Span>,
     env: &mut RuntimeEnv,
@@ -361,7 +362,7 @@ fn match_scroll_pattern(
 
     let mut rest_index: Option<usize> = None;
     for (idx, element) in elements.iter().enumerate() {
-        if matches!(element, AST::OracleScrollRest { .. }) {
+        if matches!(element, Pattern::Rest { .. }) {
             if rest_index.is_some() {
                 return Err(EvalError::InvalidOperation(
                     "Scroll pattern may contain at most one rest segment".to_string(),
@@ -397,8 +398,8 @@ fn match_scroll_pattern(
     for (idx, element) in elements.iter().take(prefix_len).enumerate() {
         let elem_value = &scroll_values[idx];
         match element {
-            AST::OracleDontCareItem(_) => continue,
-            AST::Var(name, var_line) => {
+            Pattern::DontCare(_) => continue,
+            Pattern::Expr(Expr::Var(name, var_line)) => {
                 env.set_var(
                     name.clone(),
                     elem_value.clone(),
@@ -407,33 +408,38 @@ fn match_scroll_pattern(
                     *var_line,
                 );
             }
-            AST::OracleScrollPattern {
+            Pattern::Scroll {
                 elements: nested_elements,
-                line_info: nested_line,
+                span: nested_line,
             } => {
                 if !match_scroll_pattern(nested_elements, elem_value, nested_line, env)? {
                     return Ok(false);
                 }
             }
-            AST::OracleArtifactPattern {
+            Pattern::Artifact {
                 type_name,
                 fields,
-                line_info: artifact_line,
+                span: artifact_line,
             } => {
                 if !match_artifact_pattern(type_name, fields, elem_value, artifact_line, env)? {
                     return Ok(false);
                 }
             }
-            AST::OracleLexiconPattern {
+            Pattern::Lexicon {
                 entries,
-                line_info: lexicon_line,
+                span: lexicon_line,
             } => {
                 if !match_lexicon_pattern(entries, elem_value, lexicon_line, env)? {
                     return Ok(false);
                 }
             }
-            other => {
-                let pattern_result = evaluate(other, env)?;
+            Pattern::Rest { .. } => {
+                // Validated above: at most one rest, trailing only. A rest
+                // inside the prefix loop is unreachable.
+                unreachable!("rest segment handled after the prefix loop")
+            }
+            Pattern::Expr(other) => {
+                let pattern_result = evaluate_expr(other, env)?;
                 if !values_match_for_pattern(elem_value, &pattern_result, line_info)? {
                     return Ok(false);
                 }
@@ -442,9 +448,9 @@ fn match_scroll_pattern(
     }
 
     if let Some(idx) = rest_index
-        && let AST::OracleScrollRest {
+        && let Pattern::Rest {
             name: Some(name),
-            line_info: rest_line,
+            span: rest_line,
         } = &elements[idx]
     {
         let tail: Vec<Value> = scroll_values.iter().skip(prefix_len).cloned().collect();
@@ -488,7 +494,7 @@ fn match_scroll_pattern(
 /// distinction proves valuable.
 fn match_artifact_pattern(
     type_name: &str,
-    fields: &[(String, AST)],
+    fields: &[(String, Pattern)],
     scrutinee_value: &Value,
     line_info: &Option<Span>,
     env: &mut RuntimeEnv,
@@ -541,23 +547,29 @@ fn match_artifact_pattern(
         let field_value = read_artifact_field(env, &handle, field_name, line_info)?;
 
         match sub_pattern {
-            AST::OracleDontCareItem(_) => continue,
-            AST::Var(name, var_line) => {
+            Pattern::DontCare(_) => continue,
+            Pattern::Rest { .. } => {
+                return Err(EvalError::InvalidOperation(
+                    "Rest segment is only valid inside a scroll pattern".to_string(),
+                    *line_info,
+                ));
+            }
+            Pattern::Expr(Expr::Var(name, var_line)) => {
                 let bound_type = type_of_scrutinee(&field_value);
                 env.set_var(name.clone(), field_value, bound_type, false, *var_line);
             }
-            AST::OracleScrollPattern {
+            Pattern::Scroll {
                 elements,
-                line_info: scroll_line,
+                span: scroll_line,
             } => {
                 if !match_scroll_pattern(elements, &field_value, scroll_line, env)? {
                     return Ok(false);
                 }
             }
-            AST::OracleArtifactPattern {
+            Pattern::Artifact {
                 type_name: nested_type,
                 fields: nested_fields,
-                line_info: nested_line,
+                span: nested_line,
             } => {
                 if !match_artifact_pattern(
                     nested_type,
@@ -569,15 +581,15 @@ fn match_artifact_pattern(
                     return Ok(false);
                 }
             }
-            AST::OracleLexiconPattern {
+            Pattern::Lexicon {
                 entries: nested_entries,
-                line_info: nested_line,
+                span: nested_line,
             } => {
                 if !match_lexicon_pattern(nested_entries, &field_value, nested_line, env)? {
                     return Ok(false);
                 }
             }
-            other => {
+            Pattern::Expr(other) => {
                 // For literal-compare on an artifact field we want a deep,
                 // type-aware equality so nested scrolls / lexicons / artifacts
                 // compare by structure (matching the existing `==` semantics
@@ -585,7 +597,7 @@ fn match_artifact_pattern(
                 // `values_match_for_pattern` would only handle scalars and
                 // emit a misleading "Scroll pattern element" error for any
                 // non-scalar field.
-                let pattern_result = evaluate(other, env)?;
+                let pattern_result = evaluate_expr(other, env)?;
                 let pattern_value = match pattern_result {
                     EvalResult::Data(value) => value,
                     EvalResult::Revealed(_) | EvalResult::Resume(_) | EvalResult::Eject(_) => {
@@ -624,7 +636,7 @@ fn match_artifact_pattern(
 /// `Tag {}` matches any artifact of type `Tag`. Keys not mentioned in the
 /// pattern are intentionally unrestricted.
 fn match_lexicon_pattern(
-    entries: &[(String, AST)],
+    entries: &[(String, Pattern)],
     scrutinee_value: &Value,
     line_info: &Option<Span>,
     env: &mut RuntimeEnv,
@@ -652,23 +664,29 @@ fn match_lexicon_pattern(
         };
 
         match sub_pattern {
-            AST::OracleDontCareItem(_) => continue,
-            AST::Var(name, var_line) => {
+            Pattern::DontCare(_) => continue,
+            Pattern::Rest { .. } => {
+                return Err(EvalError::InvalidOperation(
+                    "Rest segment is only valid inside a scroll pattern".to_string(),
+                    *line_info,
+                ));
+            }
+            Pattern::Expr(Expr::Var(name, var_line)) => {
                 let bound_type = type_of_scrutinee(&entry_value);
                 env.set_var(name.clone(), entry_value, bound_type, false, *var_line);
             }
-            AST::OracleScrollPattern {
+            Pattern::Scroll {
                 elements,
-                line_info: scroll_line,
+                span: scroll_line,
             } => {
                 if !match_scroll_pattern(elements, &entry_value, scroll_line, env)? {
                     return Ok(false);
                 }
             }
-            AST::OracleArtifactPattern {
+            Pattern::Artifact {
                 type_name: nested_type,
                 fields: nested_fields,
-                line_info: nested_line,
+                span: nested_line,
             } => {
                 if !match_artifact_pattern(
                     nested_type,
@@ -680,19 +698,19 @@ fn match_lexicon_pattern(
                     return Ok(false);
                 }
             }
-            AST::OracleLexiconPattern {
+            Pattern::Lexicon {
                 entries: nested_entries,
-                line_info: nested_line,
+                span: nested_line,
             } => {
                 if !match_lexicon_pattern(nested_entries, &entry_value, nested_line, env)? {
                     return Ok(false);
                 }
             }
-            other => {
+            Pattern::Expr(other) => {
                 // Same deep-equality strategy as `match_artifact_pattern`'s
                 // literal-compare path so non-scalar entry values compare
                 // structurally and match the runtime `==` semantics.
-                let pattern_result = evaluate(other, env)?;
+                let pattern_result = evaluate_expr(other, env)?;
                 let pattern_value = match pattern_result {
                     EvalResult::Data(value) => value,
                     EvalResult::Revealed(_) | EvalResult::Resume(_) | EvalResult::Eject(_) => {
@@ -749,25 +767,25 @@ mod tests {
         let mut env = RuntimeEnv::new();
         let conditional = ConditionalAssignment {
             variable: "sigil".into(),
-            expression: Box::new(AST::Arcana(1, line())),
-            line_info: line(),
+            expression: Box::new(Expr::Arcana(1, line())),
+            span: line(),
         };
 
-        let branch = AST::OracleBranch {
-            pattern: vec![AST::Arcana(1, line())],
+        let branch = OracleBranch {
+            pattern: vec![Pattern::Expr(Expr::Arcana(1, line()))],
             guard: None,
-            body: Box::new(AST::Reveal(Box::new(AST::Arcana(42, line())), line())),
-            line_info: line(),
+            body: Stmt::Reveal(Expr::Arcana(42, line()), line()),
+            span: line(),
         };
 
-        let oracle = AST::Oracle {
+        let oracle = Expr::Oracle {
             is_match: true,
             conditionals: vec![conditional],
             branches: vec![branch],
-            line_info: line(),
+            span: line(),
         };
 
-        let result = evaluate(&oracle, &mut env).expect("oracle should succeed");
+        let result = evaluate_expr(&oracle, &mut env).expect("oracle should succeed");
         match result {
             EvalResult::Data(Value::Arcana(value)) => assert_eq!(value, 42),
             other => panic!("unexpected oracle result {:?}", other),
@@ -780,31 +798,34 @@ mod tests {
         let conditionals = vec![
             ConditionalAssignment {
                 variable: "flux".into(),
-                expression: Box::new(AST::Aether(1.5, line())),
-                line_info: line(),
+                expression: Box::new(Expr::Aether(1.5, line())),
+                span: line(),
             },
             ConditionalAssignment {
                 variable: "word".into(),
-                expression: Box::new(AST::Rune("moon".into(), line())),
-                line_info: line(),
+                expression: Box::new(Expr::Rune("moon".into(), line())),
+                span: line(),
             },
         ];
 
-        let branch = AST::OracleBranch {
-            pattern: vec![AST::Aether(1.5, line()), AST::Rune("moon".into(), line())],
+        let branch = OracleBranch {
+            pattern: vec![
+                Pattern::Expr(Expr::Aether(1.5, line())),
+                Pattern::Expr(Expr::Rune("moon".into(), line())),
+            ],
             guard: None,
-            body: Box::new(AST::Arcana(7, line())),
-            line_info: line(),
+            body: Stmt::Expr(Expr::Arcana(7, line()), line()),
+            span: line(),
         };
 
-        let oracle = AST::Oracle {
+        let oracle = Expr::Oracle {
             is_match: true,
             conditionals,
             branches: vec![branch],
-            line_info: line(),
+            span: line(),
         };
 
-        let result = evaluate(&oracle, &mut env).expect("oracle should match scalars");
+        let result = evaluate_expr(&oracle, &mut env).expect("oracle should match scalars");
         match result {
             EvalResult::Data(Value::Arcana(value)) => assert_eq!(value, 7),
             other => panic!("unexpected oracle result {:?}", other),
@@ -814,21 +835,22 @@ mod tests {
     #[test]
     fn oracle_if_else_pattern_requires_omen_values() {
         let mut env = RuntimeEnv::new();
-        let pattern_branch = AST::OracleBranch {
-            pattern: vec![AST::Arcana(1, line())],
+        let pattern_branch = OracleBranch {
+            pattern: vec![Pattern::Expr(Expr::Arcana(1, line()))],
             guard: None,
-            body: Box::new(AST::Arcana(0, line())),
-            line_info: line(),
+            body: Stmt::Expr(Expr::Arcana(0, line()), line()),
+            span: line(),
         };
 
-        let oracle = AST::Oracle {
+        let oracle = Expr::Oracle {
             is_match: false,
             conditionals: vec![],
             branches: vec![pattern_branch],
-            line_info: line(),
+            span: line(),
         };
 
-        let err = evaluate(&oracle, &mut env).expect_err("if-else mode patterns must yield omens");
+        let err =
+            evaluate_expr(&oracle, &mut env).expect_err("if-else mode patterns must yield omens");
         match err {
             EvalError::InvalidOperation(message, _) => {
                 assert!(
@@ -846,25 +868,29 @@ mod tests {
         let mut env = RuntimeEnv::new();
         let conditional = ConditionalAssignment {
             variable: "sigil".into(),
-            expression: Box::new(AST::Arcana(1, line())),
-            line_info: line(),
+            expression: Box::new(Expr::Arcana(1, line())),
+            span: line(),
         };
 
-        let branch = AST::OracleBranch {
-            pattern: vec![AST::Arcana(1, line()), AST::Arcana(2, line())],
+        let branch = OracleBranch {
+            pattern: vec![
+                Pattern::Expr(Expr::Arcana(1, line())),
+                Pattern::Expr(Expr::Arcana(2, line())),
+            ],
             guard: None,
-            body: Box::new(AST::Arcana(0, line())),
-            line_info: line(),
+            body: Stmt::Expr(Expr::Arcana(0, line()), line()),
+            span: line(),
         };
 
-        let oracle = AST::Oracle {
+        let oracle = Expr::Oracle {
             is_match: true,
             conditionals: vec![conditional],
             branches: vec![branch],
-            line_info: line(),
+            span: line(),
         };
 
-        let err = evaluate(&oracle, &mut env).expect_err("pattern length mismatch should fail");
+        let err =
+            evaluate_expr(&oracle, &mut env).expect_err("pattern length mismatch should fail");
         match err {
             EvalError::InvalidOperation(message, _) => {
                 assert!(message.contains("pattern length"), "{}", message)
@@ -878,25 +904,25 @@ mod tests {
         let mut env = RuntimeEnv::new();
         let conditional = ConditionalAssignment {
             variable: "arc".into(),
-            expression: Box::new(AST::Arcana(99, line())),
-            line_info: line(),
+            expression: Box::new(Expr::Arcana(99, line())),
+            span: line(),
         };
 
-        let branch = AST::OracleBranch {
-            pattern: vec![AST::OracleDontCareItem(line())],
+        let branch = OracleBranch {
+            pattern: vec![Pattern::DontCare(line())],
             guard: None,
-            body: Box::new(AST::Arcana(5, line())),
-            line_info: line(),
+            body: Stmt::Expr(Expr::Arcana(5, line()), line()),
+            span: line(),
         };
 
-        let oracle = AST::Oracle {
+        let oracle = Expr::Oracle {
             is_match: true,
             conditionals: vec![conditional],
-            branches: vec![AST::Comment("ignored".into(), line()), branch],
-            line_info: line(),
+            branches: vec![branch],
+            span: line(),
         };
 
-        let result = evaluate(&oracle, &mut env).expect("dont care branch should match");
+        let result = evaluate_expr(&oracle, &mut env).expect("dont care branch should match");
         match result {
             EvalResult::Data(Value::Arcana(value)) => assert_eq!(value, 5),
             other => panic!("unexpected oracle result {:?}", other),
@@ -915,78 +941,81 @@ mod tests {
         //    accepted Arcana / Aether / Rune / Omen list).
         let mut env = RuntimeEnv::new();
         assert_eq!(env.scope_depth(), 1);
-        let oracle = AST::Oracle {
+        let oracle = Expr::Oracle {
             is_match: true,
             conditionals: vec![ConditionalAssignment {
                 variable: "v".into(),
-                expression: Box::new(AST::Abyss(line())),
-                line_info: line(),
+                expression: Box::new(Expr::Abyss(line())),
+                span: line(),
             }],
-            branches: vec![AST::OracleBranch {
-                pattern: vec![AST::Arcana(1, line())],
+            branches: vec![OracleBranch {
+                pattern: vec![Pattern::Expr(Expr::Arcana(1, line()))],
                 guard: None,
-                body: Box::new(AST::Arcana(0, line())),
-                line_info: line(),
+                body: Stmt::Expr(Expr::Arcana(0, line()), line()),
+                span: line(),
             }],
-            line_info: line(),
+            span: line(),
         };
-        evaluate(&oracle, &mut env).expect_err("scrutinee type error");
+        evaluate_expr(&oracle, &mut env).expect_err("scrutinee type error");
         assert_eq!(env.scope_depth(), 1, "scrutinee error leaked a scope");
 
         // 2. Pattern length mismatch (1 scrutinee vs 2-element pattern).
         let mut env = RuntimeEnv::new();
-        let oracle = AST::Oracle {
+        let oracle = Expr::Oracle {
             is_match: true,
             conditionals: vec![ConditionalAssignment {
                 variable: "v".into(),
-                expression: Box::new(AST::Arcana(1, line())),
-                line_info: line(),
+                expression: Box::new(Expr::Arcana(1, line())),
+                span: line(),
             }],
-            branches: vec![AST::OracleBranch {
-                pattern: vec![AST::Arcana(1, line()), AST::Arcana(2, line())],
+            branches: vec![OracleBranch {
+                pattern: vec![
+                    Pattern::Expr(Expr::Arcana(1, line())),
+                    Pattern::Expr(Expr::Arcana(2, line())),
+                ],
                 guard: None,
-                body: Box::new(AST::Arcana(0, line())),
-                line_info: line(),
+                body: Stmt::Expr(Expr::Arcana(0, line()), line()),
+                span: line(),
             }],
-            line_info: line(),
+            span: line(),
         };
-        evaluate(&oracle, &mut env).expect_err("pattern length error");
+        evaluate_expr(&oracle, &mut env).expect_err("pattern length error");
         assert_eq!(env.scope_depth(), 1, "pattern length error leaked a scope");
 
         // 3. Pattern type mismatch (Arcana scrutinee vs Rune pattern).
         let mut env = RuntimeEnv::new();
-        let oracle = AST::Oracle {
+        let oracle = Expr::Oracle {
             is_match: true,
             conditionals: vec![ConditionalAssignment {
                 variable: "v".into(),
-                expression: Box::new(AST::Arcana(1, line())),
-                line_info: line(),
+                expression: Box::new(Expr::Arcana(1, line())),
+                span: line(),
             }],
-            branches: vec![AST::OracleBranch {
-                pattern: vec![AST::Rune("x".into(), line())],
+            branches: vec![OracleBranch {
+                pattern: vec![Pattern::Expr(Expr::Rune("x".into(), line()))],
                 guard: None,
-                body: Box::new(AST::Arcana(0, line())),
-                line_info: line(),
+                body: Stmt::Expr(Expr::Arcana(0, line()), line()),
+                span: line(),
             }],
-            line_info: line(),
+            span: line(),
         };
-        evaluate(&oracle, &mut env).expect_err("pattern type error");
+        evaluate_expr(&oracle, &mut env).expect_err("pattern type error");
         assert_eq!(env.scope_depth(), 1, "pattern type error leaked a scope");
 
         // 4. If-else mode pattern that does not yield an omen.
         let mut env = RuntimeEnv::new();
-        let oracle = AST::Oracle {
+        let oracle = Expr::Oracle {
             is_match: false,
             conditionals: vec![],
-            branches: vec![AST::OracleBranch {
-                pattern: vec![AST::Arcana(1, line())],
+            branches: vec![OracleBranch {
+                pattern: vec![Pattern::Expr(Expr::Arcana(1, line()))],
                 guard: None,
-                body: Box::new(AST::Arcana(0, line())),
-                line_info: line(),
+                body: Stmt::Expr(Expr::Arcana(0, line()), line()),
+                span: line(),
             }],
-            line_info: line(),
+            span: line(),
         };
-        evaluate(&oracle, &mut env).expect_err("if-else mode pattern type error");
+        evaluate_expr(&oracle, &mut env).expect_err("if-else mode pattern type error");
         assert_eq!(
             env.scope_depth(),
             1,
@@ -995,42 +1024,42 @@ mod tests {
 
         // 5. Ward expression evaluates to a non-omen.
         let mut env = RuntimeEnv::new();
-        let oracle = AST::Oracle {
+        let oracle = Expr::Oracle {
             is_match: true,
             conditionals: vec![ConditionalAssignment {
                 variable: "v".into(),
-                expression: Box::new(AST::Arcana(1, line())),
-                line_info: line(),
+                expression: Box::new(Expr::Arcana(1, line())),
+                span: line(),
             }],
-            branches: vec![AST::OracleBranch {
-                pattern: vec![AST::Arcana(1, line())],
-                guard: Some(Box::new(AST::Arcana(42, line()))),
-                body: Box::new(AST::Arcana(0, line())),
-                line_info: line(),
+            branches: vec![OracleBranch {
+                pattern: vec![Pattern::Expr(Expr::Arcana(1, line()))],
+                guard: Some(Expr::Arcana(42, line())),
+                body: Stmt::Expr(Expr::Arcana(0, line()), line()),
+                span: line(),
             }],
-            line_info: line(),
+            span: line(),
         };
-        evaluate(&oracle, &mut env).expect_err("ward type error");
+        evaluate_expr(&oracle, &mut env).expect_err("ward type error");
         assert_eq!(env.scope_depth(), 1, "ward type error leaked a scope");
 
         // 6. Body raises an error after the pattern matched (undefined var).
         let mut env = RuntimeEnv::new();
-        let oracle = AST::Oracle {
+        let oracle = Expr::Oracle {
             is_match: true,
             conditionals: vec![ConditionalAssignment {
                 variable: "v".into(),
-                expression: Box::new(AST::Arcana(1, line())),
-                line_info: line(),
+                expression: Box::new(Expr::Arcana(1, line())),
+                span: line(),
             }],
-            branches: vec![AST::OracleBranch {
-                pattern: vec![AST::Arcana(1, line())],
+            branches: vec![OracleBranch {
+                pattern: vec![Pattern::Expr(Expr::Arcana(1, line()))],
                 guard: None,
-                body: Box::new(AST::Var("missing".into(), line())),
-                line_info: line(),
+                body: Stmt::Expr(Expr::Var("missing".into(), line()), line()),
+                span: line(),
             }],
-            line_info: line(),
+            span: line(),
         };
-        evaluate(&oracle, &mut env).expect_err("body undefined-variable error");
+        evaluate_expr(&oracle, &mut env).expect_err("body undefined-variable error");
         assert_eq!(env.scope_depth(), 1, "body error leaked a scope");
     }
 
@@ -1047,22 +1076,22 @@ mod tests {
         // A. Scrutinee expression itself fails — exercises
         //    `evaluate(&conditional.expression, env)?`.
         let mut env = RuntimeEnv::new();
-        let oracle = AST::Oracle {
+        let oracle = Expr::Oracle {
             is_match: true,
             conditionals: vec![ConditionalAssignment {
                 variable: "v".into(),
-                expression: Box::new(AST::Var("missing".into(), line())),
-                line_info: line(),
+                expression: Box::new(Expr::Var("missing".into(), line())),
+                span: line(),
             }],
-            branches: vec![AST::OracleBranch {
-                pattern: vec![AST::Arcana(1, line())],
+            branches: vec![OracleBranch {
+                pattern: vec![Pattern::Expr(Expr::Arcana(1, line()))],
                 guard: None,
-                body: Box::new(AST::Arcana(0, line())),
-                line_info: line(),
+                body: Stmt::Expr(Expr::Arcana(0, line()), line()),
+                span: line(),
             }],
-            line_info: line(),
+            span: line(),
         };
-        evaluate(&oracle, &mut env).expect_err("scrutinee var lookup error");
+        evaluate_expr(&oracle, &mut env).expect_err("scrutinee var lookup error");
         assert_eq!(
             env.scope_depth(),
             1,
@@ -1071,34 +1100,34 @@ mod tests {
 
         // B. Match-mode pattern expression fails — exercises
         //    `evaluate(pattern, env)?` inside the pattern loop. We use
-        //    `AST::Add(Var("missing"), Arcana(1))` here rather than a bare
-        //    `AST::Var("missing", _)` because, after PR2's binding-pattern
+        //    `Expr::Add(Var("missing"), Arcana(1))` here rather than a bare
+        //    `Expr::Var("missing", _)` because, after PR2's binding-pattern
         //    work, a bare identifier in match-mode pattern position is
         //    intercepted as a fresh binding and never reaches `evaluate`.
         //    Wrapping the missing identifier inside an `Add` keeps the
         //    pattern an expression so the inner `evaluate` actually runs and
         //    can raise `UndefinedVariable`.
         let mut env = RuntimeEnv::new();
-        let oracle = AST::Oracle {
+        let oracle = Expr::Oracle {
             is_match: true,
             conditionals: vec![ConditionalAssignment {
                 variable: "v".into(),
-                expression: Box::new(AST::Arcana(1, line())),
-                line_info: line(),
+                expression: Box::new(Expr::Arcana(1, line())),
+                span: line(),
             }],
-            branches: vec![AST::OracleBranch {
-                pattern: vec![AST::Add(
-                    Box::new(AST::Var("missing".into(), line())),
-                    Box::new(AST::Arcana(1, line())),
+            branches: vec![OracleBranch {
+                pattern: vec![Pattern::Expr(Expr::Add(
+                    Box::new(Expr::Var("missing".into(), line())),
+                    Box::new(Expr::Arcana(1, line())),
                     line(),
-                )],
+                ))],
                 guard: None,
-                body: Box::new(AST::Arcana(0, line())),
-                line_info: line(),
+                body: Stmt::Expr(Expr::Arcana(0, line()), line()),
+                span: line(),
             }],
-            line_info: line(),
+            span: line(),
         };
-        evaluate(&oracle, &mut env).expect_err("match-mode pattern var lookup error");
+        evaluate_expr(&oracle, &mut env).expect_err("match-mode pattern var lookup error");
         assert_eq!(
             env.scope_depth(),
             1,
@@ -1108,18 +1137,18 @@ mod tests {
         // C. If-else-mode pattern expression fails — exercises
         //    `evaluate(pattern_expr, env)?` inside the all-true loop.
         let mut env = RuntimeEnv::new();
-        let oracle = AST::Oracle {
+        let oracle = Expr::Oracle {
             is_match: false,
             conditionals: vec![],
-            branches: vec![AST::OracleBranch {
-                pattern: vec![AST::Var("missing".into(), line())],
+            branches: vec![OracleBranch {
+                pattern: vec![Pattern::Expr(Expr::Var("missing".into(), line()))],
                 guard: None,
-                body: Box::new(AST::Arcana(0, line())),
-                line_info: line(),
+                body: Stmt::Expr(Expr::Arcana(0, line()), line()),
+                span: line(),
             }],
-            line_info: line(),
+            span: line(),
         };
-        evaluate(&oracle, &mut env).expect_err("if-else-mode pattern var lookup error");
+        evaluate_expr(&oracle, &mut env).expect_err("if-else-mode pattern var lookup error");
         assert_eq!(
             env.scope_depth(),
             1,
@@ -1130,22 +1159,22 @@ mod tests {
         //    `evaluate(guard_expr.as_ref(), env)?` (the original bug site
         //    from PR #414, now folded into the central pop_scope).
         let mut env = RuntimeEnv::new();
-        let oracle = AST::Oracle {
+        let oracle = Expr::Oracle {
             is_match: true,
             conditionals: vec![ConditionalAssignment {
                 variable: "v".into(),
-                expression: Box::new(AST::Arcana(1, line())),
-                line_info: line(),
+                expression: Box::new(Expr::Arcana(1, line())),
+                span: line(),
             }],
-            branches: vec![AST::OracleBranch {
-                pattern: vec![AST::Arcana(1, line())],
-                guard: Some(Box::new(AST::Var("missing".into(), line()))),
-                body: Box::new(AST::Arcana(0, line())),
-                line_info: line(),
+            branches: vec![OracleBranch {
+                pattern: vec![Pattern::Expr(Expr::Arcana(1, line()))],
+                guard: Some(Expr::Var("missing".into(), line())),
+                body: Stmt::Expr(Expr::Arcana(0, line()), line()),
+                span: line(),
             }],
-            line_info: line(),
+            span: line(),
         };
-        evaluate(&oracle, &mut env).expect_err("ward var lookup error");
+        evaluate_expr(&oracle, &mut env).expect_err("ward var lookup error");
         assert_eq!(env.scope_depth(), 1, "ward `?` propagation leaked a scope");
     }
 }

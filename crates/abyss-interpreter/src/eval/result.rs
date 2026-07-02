@@ -342,6 +342,98 @@ mod tests {
         }
     }
 
+    /// Pins the Display contract of the structured variants: these strings
+    /// are referenced by published docs and the VS Code extension, and must
+    /// stay byte-identical to the legacy stringly-typed messages.
+    #[test]
+    fn structured_variants_render_legacy_messages() {
+        let info = Some(LineInfo::new(3, 7));
+
+        let cases: Vec<(EvalError, &str, &str)> = vec![
+            (
+                EvalError::ExpectedType(Type::Arcana, info.clone()),
+                "Type error: Expected arcana value",
+                "Type error",
+            ),
+            (
+                EvalError::ExpectedType(Type::Aether, info.clone()),
+                "Type error: Expected aether value",
+                "Type error",
+            ),
+            (
+                EvalError::ExpectedType(Type::Rune, info.clone()),
+                "Type error: Expected rune value",
+                "Type error",
+            ),
+            (
+                EvalError::ExpectedType(Type::Omen, info.clone()),
+                "Type error: Expected omen value",
+                "Type error",
+            ),
+            (
+                EvalError::ExpectedType(Type::Abyss, info.clone()),
+                "Type error: Expected abyss value",
+                "Type error",
+            ),
+            (
+                EvalError::ExpectedType(Type::Scroll, info.clone()),
+                "Type error: Expected scroll value",
+                "Type error",
+            ),
+            (
+                EvalError::ExpectedType(Type::Lexicon, info.clone()),
+                "Type error: Expected lexicon value",
+                "Type error",
+            ),
+            (
+                EvalError::ExpectedType(Type::Glyph, info.clone()),
+                "Type error: Expected glyph value",
+                "Type error",
+            ),
+            (
+                EvalError::ExpectedType(Type::Materia, info.clone()),
+                "Type error: Expected materia value",
+                "Type error",
+            ),
+            (
+                EvalError::ExpectedType(Type::Artifact("Player".into()), info.clone()),
+                "Type error: Expected artifact of type Player",
+                "Type error",
+            ),
+            (
+                EvalError::ArtifactTypeMismatch {
+                    expected: "Player".into(),
+                    found: "Enemy".into(),
+                    line_info: info.clone(),
+                },
+                "Type error: Expected artifact of type Player but received Enemy",
+                "Type error",
+            ),
+            (
+                EvalError::ImmutableAssignment("sigil".into(), info.clone()),
+                "Invalid operation: Cannot reassign to immutable variable sigil",
+                "Invalid operation",
+            ),
+            (
+                EvalError::ScrollIndexOutOfBounds(9, info.clone()),
+                "Invalid operation: Index 9 is out of bounds for scroll",
+                "Invalid operation",
+            ),
+            (
+                EvalError::MissingLexiconKey("port".into(), info.clone()),
+                "Invalid operation: Lexicon key 'port' does not exist",
+                "Invalid operation",
+            ),
+        ];
+
+        for (err, expected_display, expected_kind) in cases {
+            assert_eq!(err.to_string(), expected_display);
+            assert_eq!(err.kind_label(), expected_kind);
+            let returned = err.line_info().expect("line info should be attached");
+            assert_eq!((returned.line, returned.column), (3, 7));
+        }
+    }
+
     #[test]
     fn line_info_returns_attached_position() {
         let err = EvalError::TypeError("x".into(), Some(LineInfo::new(3, 4)));

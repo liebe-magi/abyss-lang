@@ -652,6 +652,51 @@ mod tests {
     }
 
     #[test]
+    fn index_assignment_rejects_immutable_variables() {
+        let mut env = RuntimeEnv::new();
+        env.set_var(
+            "scroll".into(),
+            scroll(vec![Value::Arcana(0)]),
+            Type::Scroll,
+            false,
+            line(),
+        );
+
+        let index_assignment = AST::IndexAssignment {
+            target: Box::new(AST::Var("scroll".into(), line())),
+            index: Box::new(AST::Arcana(0, line())),
+            value: Box::new(AST::Arcana(99, line())),
+            line_info: line(),
+        };
+
+        let err = evaluate(&index_assignment, &mut env).expect_err("immutable index assignment");
+        assert!(matches!(err, EvalError::ImmutableAssignment(name, _) if name == "scroll"));
+    }
+
+    #[test]
+    fn field_assignment_rejects_immutable_variables() {
+        let mut env = RuntimeEnv::new();
+        register_artifact(&mut env, "Relic", vec![("power", Type::Arcana)]);
+        env.set_var(
+            "relic".into(),
+            Value::Artifact(artifact_handle("Relic", vec![("power", Value::Arcana(1))])),
+            Type::Artifact("Relic".into()),
+            false,
+            line(),
+        );
+
+        let field_assignment = AST::FieldAssignment {
+            target: Box::new(AST::Var("relic".into(), line())),
+            field: "power".into(),
+            value: Box::new(AST::Arcana(2, line())),
+            line_info: line(),
+        };
+
+        let err = evaluate(&field_assignment, &mut env).expect_err("immutable field assignment");
+        assert!(matches!(err, EvalError::ImmutableAssignment(name, _) if name == "relic"));
+    }
+
+    #[test]
     fn index_assignment_updates_scroll_entries() {
         let mut env = RuntimeEnv::new();
         env.set_var(

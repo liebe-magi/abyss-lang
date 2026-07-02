@@ -785,6 +785,32 @@ mod tests {
     }
 
     #[test]
+    fn test_index_access_missing_lexicon_key() {
+        let mut env = RuntimeEnv::new();
+        let mut entries = HashMap::new();
+        entries.insert("known".to_string(), Value::Arcana(1));
+        env.set_var(
+            "lex".to_string(),
+            Value::Lexicon(Rc::new(RefCell::new(entries))),
+            Type::Lexicon,
+            false,
+            None,
+        );
+
+        let expr = AST::IndexAccess {
+            target: Box::new(AST::Var("lex".to_string(), dummy_line_info())),
+            index: Box::new(AST::Rune("missing".to_string(), dummy_line_info())),
+            line_info: dummy_line_info(),
+        };
+
+        let result = try_evaluate_expression(&expr, &mut env);
+        assert!(matches!(
+            result,
+            Err(EvalError::MissingLexiconKey(key, _)) if key == "missing"
+        ));
+    }
+
+    #[test]
     fn test_index_access_invalid_target() {
         let mut env = RuntimeEnv::new();
         let target = AST::Arcana(1, dummy_line_info()); // Not a collection

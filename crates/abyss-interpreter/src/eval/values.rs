@@ -341,6 +341,43 @@ mod tests {
     }
 
     #[test]
+    fn convert_to_typed_value_rejects_each_scalar_mismatch() {
+        let info = line();
+        let cases: Vec<(Type, Value)> = vec![
+            (Type::Arcana, Value::Abyss),
+            (Type::Aether, Value::Arcana(1)),
+            (Type::Rune, Value::Arcana(1)),
+            (Type::Omen, Value::Arcana(1)),
+            (Type::Abyss, Value::Arcana(1)),
+            (Type::Scroll, Value::Arcana(1)),
+            (Type::Lexicon, Value::Arcana(1)),
+            (Type::Glyph, Value::Arcana(1)),
+        ];
+        for (expected, value) in cases {
+            let err = convert_to_typed_value(EvalResult::data(value), &expected, &info)
+                .expect_err("mismatched value should fail");
+            match err {
+                EvalError::ExpectedType(ty, returned) => {
+                    assert_eq!(ty, expected);
+                    assert!(returned.is_some());
+                }
+                other => panic!("expected ExpectedType for {:?}, got {:?}", expected, other),
+            }
+        }
+
+        let err = convert_to_typed_value(
+            EvalResult::data(Value::Arcana(1)),
+            &Type::Artifact("Player".into()),
+            &info,
+        )
+        .expect_err("non-artifact should fail artifact conversion");
+        match err {
+            EvalError::ExpectedType(Type::Artifact(name), _) => assert_eq!(name, "Player"),
+            other => panic!("expected artifact ExpectedType, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn extractors_error_on_wrong_type() {
         let info = line();
         let err = extract_rune(&EvalResult::data(Value::Arcana(1)), &info).unwrap_err();
@@ -348,6 +385,11 @@ mod tests {
             EvalError::ExpectedType(Type::Rune, info) => assert!(info.is_some()),
             other => panic!("expected type error, got {:?}", other),
         }
+
+        let err = extract_arcana(&EvalResult::data(Value::Abyss), &info).unwrap_err();
+        assert!(matches!(err, EvalError::ExpectedType(Type::Arcana, _)));
+        let err = extract_omen(&EvalResult::data(Value::Abyss), &info).unwrap_err();
+        assert!(matches!(err, EvalError::ExpectedType(Type::Omen, _)));
 
         let resume = EvalResult::Resume(None);
         let info = line();

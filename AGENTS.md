@@ -17,8 +17,8 @@ AbySS is a magic-themed scripting language with its own interpreter, formatter, 
 ## Tech Stack
 
 - Rust stable toolchain, edition 2024.
-- `chumsky` 0.12 for parser combinators and `ariadne` 0.6 for themed diagnostics (both in `abyss-core`).
-- `ordered-float` 5 for deterministic floating-point comparisons.
+- `chumsky` 0.13 for parser combinators and `ariadne` 0.6 for themed diagnostics (both in `abyss-core`).
+- `ordered-float` 5 for deterministic floating-point comparisons (in `abyss-core`; shared third-party versions are pinned once in the root `[workspace.dependencies]`).
 - `clap` 4, `rustyline` 18, `colored` 3, and `dirs` 6 in `abyss-cli` for the CLI, REPL, terminal styling, and OS config paths.
 
 ## Conventions

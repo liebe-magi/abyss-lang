@@ -17,7 +17,6 @@ version = "0.5.0"
 dependencies = [
  "abyss-core",
  "ariadne",
- "ordered-float",
 ]
 
 [[package]]

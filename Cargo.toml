@@ -18,6 +18,9 @@ homepage = "https://abyss-lang.dev"
 [workspace.dependencies]
 abyss-core = { path = "crates/abyss-core", version = "0.5.0" }
 abyss-interpreter = { path = "crates/abyss-interpreter", version = "0.5.0" }
+ariadne = "0.6"
+chumsky = "0.13"
+ordered-float = "5"
 
 [workspace.metadata.release]
 shared-version = true

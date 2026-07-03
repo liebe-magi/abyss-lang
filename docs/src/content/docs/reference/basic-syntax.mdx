@@ -14,6 +14,30 @@ AbySS leans into symbolic, magic-inspired keywords without sacrificing readabili
 */
 ```
 
+## Math Rituals
+
+Pure, sandbox-safe helpers available everywhere — including the Playground:
+
+- `abs(x)` → magnitude of an `arcana` or `aether`, preserving the type.
+- `sqrt(x)` → square root of a non-negative `aether` (negative input errors for now; a `fate` return arrives with v0.7.0 error handling).
+- `floor(x)` / `ceil(x)` → nearest `arcana` at or below / above an `aether`.
+
+```aby
+unveil(abs(-7).transmute(rune));
+unveil(abs(-2.5).transmute(rune));
+unveil(sqrt(9.0).transmute(rune));
+unveil(floor(2.9).transmute(rune));
+unveil(ceil(2.1).transmute(rune));
+```
+
+```
+7
+2.5
+3
+2
+3
+```
+
 ## Style Notes
 
 - Keywords such as `forge`, `oracle`, and `orbit` are intentionally thematic but remain deterministic.

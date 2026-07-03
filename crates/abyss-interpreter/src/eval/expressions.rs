@@ -23,7 +23,7 @@ use super::values::{
 ///
 /// Returns an [`EvalResult`] rather than a bare [`Value`] because an
 /// expression may contain an `oracle` whose arm body triggers control
-/// flow (`reveal` / `resume` / `eject`) that must propagate outward.
+/// flow (`reveal` / `revolve` / `eject`) that must propagate outward.
 pub(crate) fn evaluate_expr(expr: &Expr, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError> {
     let result = match expr {
         Expr::Omen(value, _) => return Ok(EvalResult::data(Value::Omen(*value))),

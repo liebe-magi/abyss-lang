@@ -1,5 +1,5 @@
 //! Statement-level parsers: `forge`, `engrave`, artifact definitions,
-//! `reveal`, `orbit` (with `resume` / `eject`), and the assignment family.
+//! `reveal`, `orbit` (with `revolve` / `eject`), and the assignment family.
 
 use std::collections::HashMap;
 
@@ -381,7 +381,7 @@ pub(super) fn orbit_flow_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, S
     .map_with(|name, extra| (name, extra.span()))
     .boxed();
 
-    let resume = just(Token::Resume)
+    let revolve = just(Token::Revolve)
         .map_with(|_, extra| extra.span())
         .then(ident.clone().or_not())
         .map(
@@ -394,7 +394,7 @@ pub(super) fn orbit_flow_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, S
                     .map(|(_, id_span)| SimpleSpan::new(resume_span.start(), id_span.end()))
                     .unwrap_or(resume_span);
                 let info = ctx_resume.info(span);
-                (Stmt::Resume(maybe_ident.map(|(name, _)| name), info), span)
+                (Stmt::Revolve(maybe_ident.map(|(name, _)| name), info), span)
             },
         );
 
@@ -416,7 +416,7 @@ pub(super) fn orbit_flow_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, S
             },
         );
 
-    resume.or(eject).boxed()
+    revolve.or(eject).boxed()
 }
 
 pub(super) fn assignment_parser<'src>(

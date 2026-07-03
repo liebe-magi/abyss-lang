@@ -24,7 +24,7 @@ unveil("Continue:");
 orbit(i = 0..3, j = 0..3) {
     oracle(i==j) {
         // 内側のループをスキップ
-        (boon) => resume j;
+        (boon) => revolve j;
     };
     unveil(i, " ", j);
 };

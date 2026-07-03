@@ -6,6 +6,11 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 
 ## [Unreleased]
 
+### Changed (breaking — language)
+
+- **`resume` → `revolve`** ([#525](https://github.com/liebe-magi/abyss-lang/issues/525)) — the loop-continue keyword inside `orbit` is renamed to the themed `revolve` ("another revolution of the orbit", pairing with `eject`'s orbital ejection). Hard switch with no alias: `resume` no longer parses. Migration is a find-and-replace; done now while the user base is small, ahead of a proper deprecation/warning channel planned with the LSP diagnostics work.
+- **`trans` → `transmute`** ([#524](https://github.com/liebe-magi/abyss-lang/issues/524)) — the `materia` conversion method is renamed to the alchemical `transmute`. Hard switch: calling `trans` now raises the usual unknown-method error, with "did you mean: transmute?" surfacing via the existing suggestion machinery.
+
 ### Added
 
 - **`abyss align` preserves comments** ([#521](https://github.com/liebe-magi/abyss-lang/issues/521)) — the formatter re-emits line and block comments next to the statements they accompanied: full-line comments stay above their statement (including inside `engrave` / `orbit` blocks), a comment trailing a statement on the same line is re-attached to the formatted line, and end-of-file comments are kept. Previously every comment was silently dropped. Powered by the new byte spans: comments are collected with their spans (`parser::collect_comments`) and interleaved by position (`format::format_program`). Comments in positions the formatter cannot represent (inside an expression, between oracle arms) move to the nearest preceding statement boundary.

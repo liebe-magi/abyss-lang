@@ -409,10 +409,10 @@ fn format_control_flow_and_functions() {
     let orbit_expected = concat!("orbit (i = 0..2)", "{\n    reveal sigil;\n};");
     assert_eq!(format_stmt(&orbit, 0), orbit_expected);
 
-    let resume_named = Stmt::Resume(Some("outer".into()), None);
-    assert_eq!(format_stmt(&resume_named, 0), "resume outer;");
-    let resume_default = Stmt::Resume(None, None);
-    assert_eq!(format_stmt(&resume_default, 0), "resume;");
+    let resume_named = Stmt::Revolve(Some("outer".into()), None);
+    assert_eq!(format_stmt(&resume_named, 0), "revolve outer;");
+    let resume_default = Stmt::Revolve(None, None);
+    assert_eq!(format_stmt(&resume_default, 0), "revolve;");
 
     let eject_named = Stmt::Eject(Some("inner".into()), None);
     assert_eq!(format_stmt(&eject_named, 0), "eject inner;");

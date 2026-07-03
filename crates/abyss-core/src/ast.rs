@@ -112,7 +112,7 @@ pub enum Stmt {
         body: Box<Stmt>,
         span: Option<Span>,
     },
-    Resume(Option<String>, Option<Span>),
+    Revolve(Option<String>, Option<Span>),
     Eject(Option<String>, Option<Span>),
     Engrave {
         name: String,

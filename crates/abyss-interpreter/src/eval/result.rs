@@ -8,12 +8,12 @@ use std::fmt;
 /// Artifacts have no dedicated variant: they travel as
 /// `Data(Value::Artifact(_))` like every other value, so consumers only
 /// need to distinguish data from the control-flow variants
-/// (`Revealed` / `Resume` / `Eject`).
+/// (`Revealed` / `Revolve` / `Eject`).
 #[derive(Debug, Clone)]
 pub enum EvalResult {
     Data(Value),
     Revealed(Box<EvalResult>),
-    Resume(Option<String>),
+    Revolve(Option<String>),
     Eject(Option<String>),
 }
 

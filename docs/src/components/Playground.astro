@@ -162,7 +162,7 @@
 
     const SAMPLES: Record<string, string> = {
         hello: `unveil("Hello, AbySS!");\n`,
-        patterns: `forge xs: scroll = [10, 20, 30, 40];\n\noracle (xs) {\n    [] => unveil("empty");\n    [head, ..rest] ward head > 5 => unveil(\n        "head=" + head.trans(rune) + ", " + rest.tally().trans(rune) + " more"\n    );\n    _ => unveil("other");\n};\n`,
+        patterns: `forge xs: scroll = [10, 20, 30, 40];\n\noracle (xs) {\n    [] => unveil("empty");\n    [head, ..rest] ward head > 5 => unveil(\n        "head=" + head.transmute(rune) + ", " + rest.tally().transmute(rune) + " more"\n    );\n    _ => unveil("other");\n};\n`,
         empty: '',
     };
 

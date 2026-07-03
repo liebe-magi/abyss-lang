@@ -146,7 +146,7 @@ pub(super) fn call_arg_to_value(
 ) -> Result<Value, EvalError> {
     match arg.value {
         EvalResult::Data(value) => Ok(value),
-        EvalResult::Revealed(_) | EvalResult::Resume(_) | EvalResult::Eject(_) => {
+        EvalResult::Revealed(_) | EvalResult::Revolve(_) | EvalResult::Eject(_) => {
             Err(EvalError::InvalidOperation(
                 format!("{} cannot accept control-flow results", context),
                 *line_info,
@@ -240,7 +240,7 @@ mod tests {
 
     #[test]
     fn dispatch_unknown_method_falls_back_to_materia_table_for_suggestions() {
-        // `trans` lives on the Materia fallback table; a typo on a non-Materia
+        // `transmute` lives on the Materia fallback table; a typo on a non-Materia
         // receiver should still surface it as a suggestion.
         let mut env = env_with_builtin_methods();
         let scroll_value = Value::Scroll(std::rc::Rc::new(std::cell::RefCell::new(vec![])));
@@ -249,7 +249,7 @@ mod tests {
             &Expr::Abyss(None),
             None,
             scroll_value,
-            "tarns",
+            "transmet",
             vec![],
             &None,
         )
@@ -257,7 +257,7 @@ mod tests {
 
         match err {
             EvalError::InvalidOperation(msg, _) => {
-                assert!(msg.contains("did you mean: trans"), "msg: {msg}");
+                assert!(msg.contains("did you mean: transmute"), "msg: {msg}");
             }
             other => panic!("expected invalid operation, got {:?}", other),
         }

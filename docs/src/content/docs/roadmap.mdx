@@ -31,6 +31,7 @@ AbySS's reserved words are the language's signature. New keywords are chosen by 
 - **Web Playground & Wasm (v0.6.0 cycle)** – `crates/abyss-wasm` adapter and a browser editor on this site, seeded with the `examples/` programs.
 - **Span-tracking & AST Overhaul (v0.6.0 cycle, pulled forward from v0.8.0)** – AST nodes and `EvalError` carry `start..end` byte spans (runtime diagnostics underline the full offending range), the AST is split into `Expr` / `Stmt` / `Pattern`, and `EvalError` gained structured variants. Pure infrastructure, no language change — it cleared the runway for the LSP.
 - **Comment-preserving Formatter (v0.6.0 cycle)** – `abyss align` re-emits comments beside the statements they accompanied, powered by the new spans.
+- **Vocabulary Fixes (v0.6.0 cycle)** – the two off-theme names were hard-switched while the user base is small: the `materia` conversion method `trans` → **`transmute`** ([#524](https://github.com/liebe-magi/abyss-lang/issues/524)) and the loop-continue keyword `resume` → **`revolve`** ([#525](https://github.com/liebe-magi/abyss-lang/issues/525)). A deprecation/warning channel arrives later with the LSP's diagnostics model.
 - **Multi-crate Workspace, Release Pipeline, Diagnostic Polish** – as before: independent crates on crates.io, one-push releases with per-target binaries and the VS Code extension, and "did you mean?" hints throughout.
 
 ## Release Plan
@@ -48,7 +49,6 @@ Round out the everyday helpers as compatibility-preserving point releases. `rune
 - `rune` methods: `upper`, `lower`, `contains`, `split`, `replace`, `trim`, `tally`.
 - `scroll` methods: `sort`, `unique`, `sum`, `min`, `max`. Empty-scroll `min` / `max` raise an error for now; they move to `augury` returns in the v0.7.x API revision.
 - Math rituals that are sandbox-safe everywhere: `abs`, `sqrt`, `floor`, `ceil`. Time rituals wait for the I/O design.
-- **Vocabulary fix**: register `transmute` as the themed name for the `materia` conversion method and deprecate the off-theme `trans` ([#524](https://github.com/liebe-magi/abyss-lang/issues/524)).
 
 ### v0.7.0 — First-class Error Handling
 
@@ -58,7 +58,6 @@ Promote runtime failures from "interpreter prints a diagnostic and aborts" to a 
 - Stdlib **`augury`** type (the themed `Option`): **`manifest { value }`** / **`naught {}`** — an augury may reveal something, or nothing.
 - New `?` propagation operator that early-returns the `curse` / `naught` variant from the enclosing function: `forge x: arcana = parse(input)?;`.
 - `engrave` return-type support for `fate` and `augury`, with call-time enforcement.
-- **Vocabulary fix**: `resume` → **`revolve`** (loop-continue that reads like another revolution of the `orbit`; [#525](https://github.com/liebe-magi/abyss-lang/issues/525)).
 - `try` / `recover` block syntax stays deferred — `?` covers the bulk of the use cases.
 
 ### v0.7.x — Scripting Ergonomics

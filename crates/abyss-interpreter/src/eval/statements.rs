@@ -331,7 +331,7 @@ pub fn evaluate(stmt: &Stmt, env: &mut RuntimeEnv) -> Result<EvalResult, EvalErr
 
                 match result {
                     EvalResult::Revealed(revealed) => return Ok(*revealed),
-                    EvalResult::Resume(_) | EvalResult::Eject(_) => return Ok(result),
+                    EvalResult::Revolve(_) | EvalResult::Eject(_) => return Ok(result),
                     _ => {}
                 }
 
@@ -351,7 +351,7 @@ pub fn evaluate(stmt: &Stmt, env: &mut RuntimeEnv) -> Result<EvalResult, EvalErr
                     let result = evaluate(body, env)?;
 
                     match result {
-                        EvalResult::Resume(_) => continue,
+                        EvalResult::Revolve(_) => continue,
                         EvalResult::Eject(_) => break,
                         _ => {}
                     }
@@ -397,13 +397,13 @@ pub fn evaluate(stmt: &Stmt, env: &mut RuntimeEnv) -> Result<EvalResult, EvalErr
                     };
 
                     match result {
-                        EvalResult::Resume(identifier) => {
+                        EvalResult::Revolve(identifier) => {
                             if let Some(id) = identifier {
                                 if id == *name {
                                     continue;
                                 } else {
                                     env.pop_scope();
-                                    return Ok(EvalResult::Resume(Some(id)));
+                                    return Ok(EvalResult::Revolve(Some(id)));
                                 }
                             }
                             continue;
@@ -427,7 +427,7 @@ pub fn evaluate(stmt: &Stmt, env: &mut RuntimeEnv) -> Result<EvalResult, EvalErr
                 Ok(EvalResult::abyss())
             }
         }
-        Stmt::Resume(identifier, _span) => Ok(EvalResult::Resume(identifier.clone())),
+        Stmt::Revolve(identifier, _span) => Ok(EvalResult::Revolve(identifier.clone())),
         Stmt::Eject(identifier, _span) => Ok(EvalResult::Eject(identifier.clone())),
         Stmt::Engrave {
             name,

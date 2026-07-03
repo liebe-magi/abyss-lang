@@ -8,10 +8,10 @@ use super::{expect_glyph_argument, method_table_for};
 
 pub(super) fn register_methods(registry: &mut BuiltinMethodRegistry) {
     let table = method_table_for(registry, Type::Materia);
-    table.insert("trans".to_string(), materia_trans_method);
+    table.insert("transmute".to_string(), materia_transmute_method);
 }
 
-fn materia_trans_method(
+fn materia_transmute_method(
     _env: &mut RuntimeEnv,
     _receiver_ast: &Expr,
     _receiver_var_name: Option<&str>,
@@ -19,12 +19,12 @@ fn materia_trans_method(
     args: Vec<CallArg>,
     line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
-    let target_type = expect_glyph_argument(args, "trans()", line_info)?;
-    let converted = convert_value_via_trans(receiver_value, &target_type, line_info)?;
+    let target_type = expect_glyph_argument(args, "transmute()", line_info)?;
+    let converted = convert_value_via_transmute(receiver_value, &target_type, line_info)?;
     Ok(EvalResult::data(converted))
 }
 
-fn convert_value_via_trans(
+fn convert_value_via_transmute(
     receiver: Value,
     target_type: &Type,
     line_info: &Option<Span>,
@@ -104,9 +104,9 @@ mod tests {
     }
 
     #[test]
-    fn test_trans_arguments() {
+    fn test_transmute_arguments() {
         let mut env = RuntimeEnv::new();
-        let result = materia_trans_method(
+        let result = materia_transmute_method(
             &mut env,
             &Expr::Abyss(None),
             None,
@@ -126,7 +126,7 @@ mod tests {
         // Pass a non-glyph (e.g. integer) as target type
         let args = dummy_args(Value::Arcana(1));
 
-        let result = materia_trans_method(
+        let result = materia_transmute_method(
             &mut env,
             &Expr::Abyss(None),
             None,
@@ -146,7 +146,7 @@ mod tests {
         let mut env = RuntimeEnv::new();
         let args = dummy_args(Value::Rune(Rc::new("unknown".to_string())));
 
-        let result = materia_trans_method(
+        let result = materia_transmute_method(
             &mut env,
             &Expr::Abyss(None),
             None,

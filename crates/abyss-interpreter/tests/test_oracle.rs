@@ -461,8 +461,8 @@ fn test_oracle_scroll_pattern_literal_elements_compare_by_value() {
     let input = r#"
     forge xs: scroll = [42, 100];
     forge label: rune = oracle (xs) {
-        [42, x] => reveal("starts with 42, second=" + x.trans(rune));
-        [_, x] => reveal("other, second=" + x.trans(rune));
+        [42, x] => reveal("starts with 42, second=" + x.transmute(rune));
+        [_, x] => reveal("other, second=" + x.transmute(rune));
     };
     label;
     "#;
@@ -481,7 +481,7 @@ fn test_oracle_scroll_pattern_binding_visible_in_ward() {
     forge xs: scroll = [3, 4, 5];
     forge label: rune = oracle (xs) {
         [head, ..rest] ward head > 10 => reveal("big");
-        [head, ..rest] => reveal("small head: " + head.trans(rune));
+        [head, ..rest] => reveal("small head: " + head.transmute(rune));
     };
     label;
     "#;
@@ -564,7 +564,7 @@ fn test_oracle_artifact_pattern_literal_field_value() {
     artifact Player { name: rune; health: arcana; };
     forge hero: Player = Player { name: "Ardyn", health: 100 };
     forge label: rune = oracle (hero) {
-        Player { name: "Ardyn", health } => reveal("chosen, hp=" + health.trans(rune));
+        Player { name: "Ardyn", health } => reveal("chosen, hp=" + health.transmute(rune));
         Player { name } => reveal("someone: " + name);
     };
     label;
@@ -586,7 +586,7 @@ fn test_oracle_artifact_pattern_dispatches_on_type() {
     forge foe: Enemy = Enemy { name: "Goblin", damage: 7 };
     forge label: rune = oracle (foe) {
         Player { name } => reveal("hero " + name);
-        Enemy { name, damage } => reveal("foe " + name + " (" + damage.trans(rune) + ")");
+        Enemy { name, damage } => reveal("foe " + name + " (" + damage.transmute(rune) + ")");
     };
     label;
     "#;
@@ -680,7 +680,7 @@ fn test_oracle_artifact_pattern_nested_artifact_and_scroll() {
     forge hero: Player = Player { name: "Ardyn", bag: inv };
     forge label: rune = oracle (hero) {
         Player { name, bag: Inventory { items: [first, ..rest], gold } } =>
-            reveal(name + " carries " + first + " and " + gold.trans(rune) + " gold");
+            reveal(name + " carries " + first + " and " + gold.transmute(rune) + " gold");
     };
     label;
     "#;
@@ -725,7 +725,7 @@ fn test_oracle_lexicon_pattern_binds_listed_keys() {
     let input = r#"
     forge config: lexicon = { "name": "Ardyn", "port": 8080 };
     forge label: rune = oracle (config) {
-        { "name": n, "port": p } => reveal(n + "@" + p.trans(rune));
+        { "name": n, "port": p } => reveal(n + "@" + p.transmute(rune));
     };
     label;
     "#;
@@ -835,7 +835,7 @@ fn test_oracle_lexicon_pattern_nested_value_destructure() {
     forge bag: lexicon = { "name": "satchel", "items": ["sword", "shield", "rune"] };
     forge label: rune = oracle (bag) {
         { "name": n, "items": [first, ..rest] } =>
-            reveal(n + " holds " + first + " plus " + rest.tally().trans(rune) + " more");
+            reveal(n + " holds " + first + " plus " + rest.tally().transmute(rune) + " more");
     };
     label;
     "#;

@@ -6,6 +6,10 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 
 ## [Unreleased]
 
+### Fixed
+
+- **Comment scrubber corrupted string literals containing `//` or `/*`** ([#532](https://github.com/liebe-magi/abyss-lang/issues/532)) — the pre-lex comment scanner treated comment openers inside rune literals as comments, so any string containing them (every URL, for instance) failed to parse. The scanner is now string-aware, honouring the lexer's escape rules, and a single shared region scan backs both the scrubber and the formatter's comment collector so their views cannot diverge. Bonus fix: comments are now blanked byte-wise, so multi-byte characters in comments no longer shift the spans of everything after them.
+
 ## [0.6.0] - 2026-07-03
 
 The Web Playground release, riding on the biggest internal overhaul since the workspace split. AbySS now runs directly in the browser at [abyss-lang.dev/playground](https://abyss-lang.dev/playground) via a new Wasm adapter, while under the hood the compiler grew up: every AST node and runtime error carries a byte span (diagnostics underline the full offending range), the AST is split into `Expr` / `Stmt` / `Pattern`, `EvalError` gained structured variants, and `abyss align` finally preserves comments. Two off-theme names were hard-switched while the user base is small: `resume` → `revolve` and `trans` → `transmute`. Language semantics are otherwise unchanged — scripts that used neither renamed word run identically.

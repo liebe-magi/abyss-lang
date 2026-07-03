@@ -76,7 +76,7 @@
 			"patterns": [
 				{
 					"name": "support.function.abyss",
-					"match": "\\b(unveil|summon|trans)\\b"
+					"match": "\\b(unveil|summon|transmute)\\b"
 				}
 			]
 		},

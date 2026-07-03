@@ -6,6 +6,14 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-03
+
+The Web Playground release, riding on the biggest internal overhaul since the workspace split. AbySS now runs directly in the browser at [abyss-lang.dev/playground](https://abyss-lang.dev/playground) via a new Wasm adapter, while under the hood the compiler grew up: every AST node and runtime error carries a byte span (diagnostics underline the full offending range), the AST is split into `Expr` / `Stmt` / `Pattern`, `EvalError` gained structured variants, and `abyss align` finally preserves comments. Two off-theme names were hard-switched while the user base is small: `resume` → `revolve` and `trans` → `transmute`. Language semantics are otherwise unchanged — scripts that used neither renamed word run identically.
+
+### Added
+
+- **Web Playground** — `crates/abyss-wasm` exposes `evaluate(source)` over `wasm-bindgen`, and the docs site embeds an editor seeded with the `examples/` programs. Parser and runtime diagnostics render with the same ariadne formatting the CLI shows.
+
 ### Changed (breaking — language)
 
 - **`resume` → `revolve`** ([#525](https://github.com/liebe-magi/abyss-lang/issues/525)) — the loop-continue keyword inside `orbit` is renamed to the themed `revolve` ("another revolution of the orbit", pairing with `eject`'s orbital ejection). Hard switch with no alias: `resume` no longer parses. Migration is a find-and-replace; done now while the user base is small, ahead of a proper deprecation/warning channel planned with the LSP diagnostics work.
@@ -23,6 +31,8 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 ### Removed
 
 - **`abyss_core::semantic` module (`SymbolTable` / `SymbolInfo`)** ([#503](https://github.com/liebe-magi/abyss-lang/issues/503)) — the static-analysis scaffold had zero consumers anywhere in the workspace since its introduction. The roadmap's LSP milestone (v0.8.1) is preceded by the v0.8 span-tracking refactor, and a symbol table without span data would have been rewritten there anyway; git history preserves the removed code. Breaking for `abyss-core` per Cargo 0.x semver, so this ships with the next `0.x.0` bump.
+
+For the full diff including Renovate-driven dependency updates, see the [GitHub compare v0.5.0...v0.6.0](https://github.com/liebe-magi/abyss-lang/compare/v0.5.0...v0.6.0).
 
 ## [0.5.0] - 2026-05-06
 

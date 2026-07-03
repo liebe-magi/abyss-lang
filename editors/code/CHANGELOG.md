@@ -6,6 +6,14 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+## [v0.6.0] - 2026-07-03
+
+### Changed
+
+- **Breaking keyword rename followed from the language**: `resume` → `revolve`. The TextMate grammar's `keyword.control` group, the snippets, and the static keyword-completion provider all track the new name; `resume` is no longer highlighted or completed because it no longer parses.
+- The completion list's method vocabulary follows the `trans` → `transmute` stdlib rename.
+- Bumped the extension version to 0.6.0 to stay in lockstep with the `abyss-lang` crate. The 0.6.0 cycle is the Web Playground plus an internal compiler overhaul (spans, AST split, comment-preserving `align`); apart from the two renames above, the grammar surface is unchanged.
+
 ## [v0.5.0] - 2026-05-06
 
 ### Added

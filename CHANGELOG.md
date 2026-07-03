@@ -6,6 +6,10 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 
 ## [Unreleased]
 
+### Added
+
+- **`rune` methods** ([#533](https://github.com/liebe-magi/abyss-lang/issues/533)) — the first item of the v0.6.x Standard Library Essentials cycle. `upper()`, `lower()`, `trim()`, `tally()` (Unicode character count), `contains(needle)`, `replace(from, to)`, and `split(separator)`. All return new values; `replace` and `split` reject empty search/separator runes with a clear error.
+
 ### Fixed
 
 - **Comment scrubber corrupted string literals containing `//` or `/*`** ([#532](https://github.com/liebe-magi/abyss-lang/issues/532)) — the pre-lex comment scanner treated comment openers inside rune literals as comments, so any string containing them (every URL, for instance) failed to parse. The scanner is now string-aware, honouring the lexer's escape rules, and a single shared region scan backs both the scrubber and the formatter's comment collector so their views cannot diverge. Bonus fix: comments are now blanked byte-wise, so multi-byte characters in comments no longer shift the spans of everything after them.

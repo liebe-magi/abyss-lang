@@ -7,7 +7,7 @@ The "Brain" of the AbySS language. This crate provides the fundamental building 
 - **AST (Abstract Syntax Tree)**: Defines the structure of the language (`ast.rs`).
 - **Parser**: A `chumsky`-based parser that converts source code into AST (`parser/`).
 - **Type System**: Defines the `Type` enum and type checking primitives.
-- **SymbolTable**: Manages static scope information (variable names, types, mutability) for static analysis (`semantic.rs`).
+- **Formatter**: Canonical source formatting used by the `align` CLI subcommand (`format.rs`).
 
 ## Usage
 

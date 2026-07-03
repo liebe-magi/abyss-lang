@@ -1,56 +1,72 @@
-use std::sync::Arc;
-
 use chumsky::{error::Rich, extra, prelude::*, span::SimpleSpan as ChumskySpan, text};
 
-use crate::ast::LineInfo;
-
-use super::SimpleSpan;
-
-/// Represents a mapping between byte offsets and (line, column) positions.
-#[derive(Debug, Clone)]
-pub struct LineMap {
-    line_starts: Arc<Vec<usize>>,
-}
-
-impl LineMap {
-    pub fn new(source: &str) -> Self {
-        let mut starts = Vec::with_capacity(source.lines().count() + 1);
-        starts.push(0);
-        for (idx, ch) in source.char_indices() {
-            if ch == '\n' {
-                starts.push(idx + ch.len_utf8());
-            }
-        }
-        LineMap {
-            line_starts: Arc::new(starts),
-        }
-    }
-
-    pub fn line_col(&self, offset: usize) -> (usize, usize) {
-        let line_idx = match self.line_starts.binary_search(&offset) {
-            Ok(idx) => idx,
-            Err(idx) => idx.saturating_sub(1),
-        };
-        let line_start = self.line_starts[line_idx];
-        (line_idx + 1, offset - line_start + 1)
-    }
-
-    pub fn line_info(&self, span: SimpleSpan<usize>) -> Option<LineInfo> {
-        let (line, column) = self.line_col(span.start());
-        Some(LineInfo::new(line, column))
-    }
-}
+use crate::span::Span;
 
 type LexerExtra<'src> = extra::Err<Rich<'src, char, ChumskySpan<usize>>>;
+
+/// A comment lifted out of the original source, with the byte span it
+/// occupied. Produced by [`collect_comments`]; consumed by the formatter's
+/// comment-preserving `format_program` to re-emit comments alongside the
+/// statements they belonged to.
+#[derive(Debug, Clone)]
+pub struct SourceComment {
+    pub span: Span,
+    pub text: String,
+}
+
+/// Collect every comment in `source` with its byte span, in source order.
+///
+/// Uses the same scan as [`scrub_comments_preserve_layout`], so the spans
+/// line up exactly with the regions the scrubber blanks out before lexing.
+pub fn collect_comments(source: &str) -> Vec<SourceComment> {
+    let mut comments = Vec::new();
+    let mut chars = source.char_indices().peekable();
+
+    while let Some((idx, ch)) = chars.next() {
+        if ch == '/'
+            && let Some(&(_, next)) = chars.peek()
+        {
+            if next == '/' {
+                chars.next(); // consume second '/'
+                let mut end = source.len();
+                while let Some(&(c_idx, c)) = chars.peek() {
+                    if c == '\n' {
+                        end = c_idx;
+                        break;
+                    }
+                    chars.next();
+                }
+                comments.push(SourceComment {
+                    span: Span::new(idx, end),
+                    text: source[idx..end].trim_end().to_string(),
+                });
+                continue;
+            } else if next == '*' {
+                chars.next(); // consume '*'
+                let mut end = source.len();
+                let mut prev = '\0';
+                for (c_idx, c) in chars.by_ref() {
+                    if prev == '*' && c == '/' {
+                        end = c_idx + c.len_utf8();
+                        break;
+                    }
+                    prev = c;
+                }
+                comments.push(SourceComment {
+                    span: Span::new(idx, end),
+                    text: source[idx..end].to_string(),
+                });
+                continue;
+            }
+        }
+    }
+
+    comments
+}
 
 /// Produces a parser that skips AbySS whitespace.
 pub fn abyss_whitespace<'src>() -> impl Parser<'src, &'src str, (), LexerExtra<'src>> + Clone {
     text::whitespace::<_, LexerExtra<'src>>().to(())
-}
-
-/// Helper to attach line info to AST nodes.
-pub fn attach_line_info(map: &LineMap, span: SimpleSpan<usize>) -> Option<LineInfo> {
-    map.line_info(span)
 }
 
 /// Replace comments with whitespace of equal length so token spans align with the original source.

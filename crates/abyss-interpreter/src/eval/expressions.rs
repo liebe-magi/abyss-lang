@@ -5,7 +5,7 @@ use std::rc::Rc;
 use crate::diagnostics::did_you_mean_hint;
 use crate::env::{CallArg, Callable, EngravedFunction, RuntimeEnv, Value};
 use crate::stdlib::methods;
-use abyss_core::ast::{AST, LineInfo, Type};
+use abyss_core::ast::{Expr, Span, Type};
 
 use super::artifacts::{
     collect_field_chain, compare_artifacts, ensure_field_exists, expect_artifact_from_eval,
@@ -19,61 +19,60 @@ use super::values::{
     convert_to_typed_value, describe_value, eval_result_to_value_checked, value_to_eval_result,
 };
 
-pub(crate) fn try_evaluate_expression(
-    ast: &AST,
-    env: &mut RuntimeEnv,
-) -> Result<Option<EvalResult>, EvalError> {
-    let result = match ast {
-        AST::Omen(value, _) => return Ok(Some(EvalResult::data(Value::Omen(*value)))),
-        AST::Arcana(value, _) => return Ok(Some(EvalResult::data(Value::Arcana(*value)))),
-        AST::Aether(value, _) => return Ok(Some(EvalResult::data(Value::Aether(*value)))),
-        AST::Rune(value, _) => {
-            return Ok(Some(EvalResult::data(Value::Rune(Rc::new(value.clone())))));
+/// Evaluates an expression in the given environment.
+///
+/// Returns an [`EvalResult`] rather than a bare [`Value`] because an
+/// expression may contain an `oracle` whose arm body triggers control
+/// flow (`reveal` / `revolve` / `eject`) that must propagate outward.
+pub(crate) fn evaluate_expr(expr: &Expr, env: &mut RuntimeEnv) -> Result<EvalResult, EvalError> {
+    let result = match expr {
+        Expr::Omen(value, _) => return Ok(EvalResult::data(Value::Omen(*value))),
+        Expr::Arcana(value, _) => return Ok(EvalResult::data(Value::Arcana(*value))),
+        Expr::Aether(value, _) => return Ok(EvalResult::data(Value::Aether(*value))),
+        Expr::Rune(value, _) => {
+            return Ok(EvalResult::data(Value::Rune(Rc::new(value.clone()))));
         }
-        AST::Abyss(_) => return Ok(Some(EvalResult::abyss())),
-        AST::ListLiteral {
+        Expr::Abyss(_) => return Ok(EvalResult::abyss()),
+        Expr::ListLiteral {
             elements,
-            line_info,
+            span: line_info,
         } => {
             let mut evaluated = Vec::with_capacity(elements.len());
             for element in elements {
                 evaluated.push(eval_result_to_value_checked(
-                    statements::evaluate(element, env)?,
-                    line_info.clone(),
+                    evaluate_expr(element, env)?,
+                    *line_info,
                 )?);
             }
             EvalResult::data(Value::Scroll(Rc::new(RefCell::new(evaluated))))
         }
-        AST::MapLiteral { entries, line_info } => {
+        Expr::MapLiteral {
+            entries,
+            span: line_info,
+        } => {
             let mut map = HashMap::new();
             for (key, expr) in entries {
-                let value = eval_result_to_value_checked(
-                    statements::evaluate(expr, env)?,
-                    line_info.clone(),
-                )?;
+                let value = eval_result_to_value_checked(evaluate_expr(expr, env)?, *line_info)?;
                 map.insert(key.clone(), value);
             }
             EvalResult::data(Value::Lexicon(Rc::new(RefCell::new(map))))
         }
-        AST::ArtifactLiteral {
+        Expr::ArtifactLiteral {
             type_name,
             fields,
-            line_info,
+            span: line_info,
         } => instantiate_artifact_literal(env, type_name, fields, line_info)?,
-        AST::FieldAccess {
+        Expr::FieldAccess {
             target,
             field,
-            line_info,
+            span: line_info,
         } => {
-            let value = statements::evaluate(target, env)?;
+            let value = evaluate_expr(target, env)?;
             let handle = expect_artifact_from_eval(value, line_info)?;
             let field_value = read_artifact_field(env, &handle, field, line_info)?;
-            match field_value {
-                Value::Artifact(inner) => EvalResult::Artifact(inner),
-                other => EvalResult::data(other),
-            }
+            EvalResult::data(field_value)
         }
-        AST::Add(left, right, line_info) => binary_numeric_op(
+        Expr::Add(left, right, line_info) => binary_numeric_op(
             env,
             left,
             right,
@@ -82,7 +81,7 @@ pub(crate) fn try_evaluate_expression(
             |l, r| l + r,
             Some(|l: String, r: String| format!("{}{}", l, r)),
         )?,
-        AST::Sub(left, right, line_info) => binary_numeric_op(
+        Expr::Sub(left, right, line_info) => binary_numeric_op(
             env,
             left,
             right,
@@ -91,7 +90,7 @@ pub(crate) fn try_evaluate_expression(
             |l, r| l - r,
             None,
         )?,
-        AST::Mul(left, right, line_info) => binary_numeric_op(
+        Expr::Mul(left, right, line_info) => binary_numeric_op(
             env,
             left,
             right,
@@ -100,7 +99,7 @@ pub(crate) fn try_evaluate_expression(
             |l, r| l * r,
             None,
         )?,
-        AST::Div(left, right, line_info) => binary_numeric_op(
+        Expr::Div(left, right, line_info) => binary_numeric_op(
             env,
             left,
             right,
@@ -109,7 +108,7 @@ pub(crate) fn try_evaluate_expression(
             |l, r| l / r,
             None,
         )?,
-        AST::Mod(left, right, line_info) => binary_numeric_op(
+        Expr::Mod(left, right, line_info) => binary_numeric_op(
             env,
             left,
             right,
@@ -118,138 +117,146 @@ pub(crate) fn try_evaluate_expression(
             |l, r| l % r,
             None,
         )?,
-        AST::PowArcana(left, right, line_info) => match (
-            statements::evaluate(left, env)?,
-            statements::evaluate(right, env)?,
-        ) {
-            (EvalResult::Data(Value::Arcana(l)), EvalResult::Data(Value::Arcana(r))) => {
-                if r < 0 {
-                    return Err(EvalError::NegativeExponent(line_info.clone()));
+        Expr::PowArcana(left, right, line_info) => {
+            match (evaluate_expr(left, env)?, evaluate_expr(right, env)?) {
+                (EvalResult::Data(Value::Arcana(l)), EvalResult::Data(Value::Arcana(r))) => {
+                    if r < 0 {
+                        return Err(EvalError::NegativeExponent(*line_info));
+                    }
+                    EvalResult::data(Value::Arcana(l.pow(r as u32)))
                 }
-                EvalResult::data(Value::Arcana(l.pow(r as u32)))
+                _ => {
+                    return Err(EvalError::InvalidOperation(
+                        "PowArcana operation requires two Arcana!".to_string(),
+                        *line_info,
+                    ));
+                }
             }
-            _ => {
-                return Err(EvalError::InvalidOperation(
-                    "PowArcana operation requires two Arcana!".to_string(),
-                    line_info.clone(),
-                ));
+        }
+        Expr::PowAether(left, right, line_info) => {
+            match (evaluate_expr(left, env)?, evaluate_expr(right, env)?) {
+                (EvalResult::Data(Value::Aether(l)), EvalResult::Data(Value::Aether(r))) => {
+                    EvalResult::data(Value::Aether(l.powf(r)))
+                }
+                _ => {
+                    return Err(EvalError::InvalidOperation(
+                        "PowAether operation requires two Aether!".to_string(),
+                        *line_info,
+                    ));
+                }
             }
-        },
-        AST::PowAether(left, right, line_info) => match (
-            statements::evaluate(left, env)?,
-            statements::evaluate(right, env)?,
-        ) {
-            (EvalResult::Data(Value::Aether(l)), EvalResult::Data(Value::Aether(r))) => {
-                EvalResult::data(Value::Aether(l.powf(r)))
-            }
-            _ => {
-                return Err(EvalError::InvalidOperation(
-                    "PowAether operation requires two Aether!".to_string(),
-                    line_info.clone(),
-                ));
-            }
-        },
-        AST::Equal(left, right, line_info) => compare_values(env, left, right, line_info, true)?,
-        AST::NotEqual(left, right, line_info) => {
+        }
+        Expr::Equal(left, right, line_info) => compare_values(env, left, right, line_info, true)?,
+        Expr::NotEqual(left, right, line_info) => {
             compare_values(env, left, right, line_info, false)?
         }
-        AST::LessThan(left, right, line_info) => {
+        Expr::LessThan(left, right, line_info) => {
             order_values(env, left, right, line_info, |l, r| l < r)?
         }
-        AST::LessThanOrEqual(left, right, line_info) => {
+        Expr::LessThanOrEqual(left, right, line_info) => {
             order_values(env, left, right, line_info, |l, r| l <= r)?
         }
-        AST::GreaterThan(left, right, line_info) => {
+        Expr::GreaterThan(left, right, line_info) => {
             order_values(env, left, right, line_info, |l, r| l > r)?
         }
-        AST::GreaterThanOrEqual(left, right, line_info) => {
+        Expr::GreaterThanOrEqual(left, right, line_info) => {
             order_values(env, left, right, line_info, |l, r| l >= r)?
         }
-        AST::LogicalAnd(left, right, line_info) => {
+        Expr::LogicalAnd(left, right, line_info) => {
             logical_op(env, left, right, line_info, |l, r| l && r)?
         }
-        AST::LogicalOr(left, right, line_info) => {
+        Expr::LogicalOr(left, right, line_info) => {
             logical_op(env, left, right, line_info, |l, r| l || r)?
         }
-        AST::LogicalNot(expr, line_info) => {
-            let result = statements::evaluate(expr, env)?;
+        Expr::LogicalNot(expr, line_info) => {
+            let result = evaluate_expr(expr, env)?;
             match result {
                 EvalResult::Data(Value::Omen(value)) => EvalResult::data(Value::Omen(!value)),
                 _ => {
                     return Err(EvalError::InvalidOperation(
                         "LogicalNot operation requires Omen!".to_string(),
-                        line_info.clone(),
+                        *line_info,
                     ));
                 }
             }
         }
-        AST::Var(name, line_info) => match env.get_var(name) {
+        Expr::Var(name, line_info) => match env.get_var(name) {
             Some(var_info) => value_to_eval_result(&var_info.value),
             None => {
-                return Err(env.undefined_variable_error(name, line_info.clone()));
+                return Err(env.undefined_variable_error(name, *line_info));
             }
         },
-        AST::IndexAccess {
+        Expr::IndexAccess {
             target,
             index,
-            line_info,
+            span: line_info,
         } => {
-            let collection = statements::evaluate(target, env)?;
-            let idx_value = statements::evaluate(index, env)?;
+            let collection = evaluate_expr(target, env)?;
+            let idx_value = evaluate_expr(index, env)?;
             match collection {
                 EvalResult::Data(Value::Scroll(items)) => {
                     let idx = expect_arcana_index(&idx_value, line_info)?;
                     let borrowed = items.borrow();
-                    let value = borrowed.get(idx).cloned().ok_or_else(|| {
-                        EvalError::InvalidOperation(
-                            format!("Index {} is out of bounds for scroll", idx),
-                            line_info.clone(),
-                        )
-                    })?;
+                    let value = borrowed
+                        .get(idx)
+                        .cloned()
+                        .ok_or(EvalError::ScrollIndexOutOfBounds(idx, *line_info))?;
                     EvalResult::data(value)
                 }
                 EvalResult::Data(Value::Lexicon(entries)) => {
                     let key = expect_rune_key(&idx_value, line_info)?;
                     let borrowed = entries.borrow();
-                    let value = borrowed.get(&key).cloned().ok_or_else(|| {
-                        EvalError::InvalidOperation(
-                            format!("Lexicon key '{}' does not exist", key),
-                            line_info.clone(),
-                        )
-                    })?;
+                    let value = borrowed
+                        .get(&key)
+                        .cloned()
+                        .ok_or_else(|| EvalError::MissingLexiconKey(key.clone(), *line_info))?;
                     EvalResult::data(value)
                 }
                 _ => {
                     return Err(EvalError::InvalidOperation(
                         "Indexing is only supported for scroll or lexicon".to_string(),
-                        line_info.clone(),
+                        *line_info,
                     ));
                 }
             }
         }
-        AST::FuncCall {
+        Expr::FuncCall {
             name,
             args,
-            line_info,
+            span: line_info,
         } => evaluate_function_call(env, name, args, line_info)?,
-        AST::MethodCall {
+        Expr::MethodCall {
             receiver,
             method,
             args,
-            line_info,
+            span: line_info,
         } => evaluate_method_call(env, receiver, method, args, line_info)?,
-        AST::OracleDontCareItem(_) => EvalResult::data(Value::Omen(true)),
-        _ => return Ok(None),
+        Expr::Oracle {
+            is_match,
+            conditionals,
+            branches,
+            span: line_info,
+        } => {
+            // Push the oracle's local scope, run the body, and unconditionally
+            // pop on the way out — including error paths — so a failing
+            // scrutinee, pattern, ward, or body cannot leak a scope back into
+            // the REPL. The helper itself uses `?` freely.
+            env.push_scope();
+            let result =
+                super::patterns::evaluate_oracle(*is_match, conditionals, branches, line_info, env);
+            env.pop_scope();
+            result?
+        }
     };
 
-    Ok(Some(result))
+    Ok(result)
 }
 
 fn binary_numeric_op<TArc, TAether>(
     env: &mut RuntimeEnv,
-    left: &AST,
-    right: &AST,
-    line_info: &Option<LineInfo>,
+    left: &Expr,
+    right: &Expr,
+    line_info: &Option<Span>,
     arcana_op: TArc,
     aether_op: TAether,
     rune_op: Option<fn(String, String) -> String>,
@@ -258,8 +265,8 @@ where
     TArc: FnOnce(i64, i64) -> i64,
     TAether: FnOnce(f64, f64) -> f64,
 {
-    let left_result = statements::evaluate(left, env)?;
-    let right_result = statements::evaluate(right, env)?;
+    let left_result = evaluate_expr(left, env)?;
+    let right_result = evaluate_expr(right, env)?;
 
     match (left_result, right_result) {
         (EvalResult::Data(Value::Arcana(l)), EvalResult::Data(Value::Arcana(r))) => {
@@ -279,7 +286,7 @@ where
         }
         _ => Err(EvalError::InvalidOperation(
             "Operation requires compatible types".to_string(),
-            line_info.clone(),
+            *line_info,
         )),
     }
 }
@@ -287,8 +294,8 @@ where
 fn instantiate_artifact_literal(
     env: &mut RuntimeEnv,
     type_name: &str,
-    fields: &[(String, AST)],
-    line_info: &Option<LineInfo>,
+    fields: &[(String, Expr)],
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let schema = lookup_schema_by_name(env, type_name, line_info)?.clone();
     let mut provided = HashSet::new();
@@ -298,12 +305,12 @@ fn instantiate_artifact_literal(
         if !provided.insert(field_name.clone()) {
             return Err(EvalError::InvalidOperation(
                 format!("Field '{}' is provided multiple times", field_name),
-                line_info.clone(),
+                *line_info,
             ));
         }
 
         let field_schema = ensure_field_exists(&schema, field_name, line_info)?;
-        let evaluated = statements::evaluate(expr, env)?;
+        let evaluated = evaluate_expr(expr, env)?;
         let typed_value = convert_to_typed_value(evaluated, &field_schema.field_type, line_info)?;
         values.insert(field_name.clone(), typed_value);
     }
@@ -321,11 +328,11 @@ fn instantiate_artifact_literal(
                 type_name,
                 missing.join(", ")
             ),
-            line_info.clone(),
+            *line_info,
         ));
     }
 
-    Ok(EvalResult::Artifact(instantiate_artifact_handle(
+    Ok(EvalResult::artifact(instantiate_artifact_handle(
         type_name,
         field_order,
         values,
@@ -334,13 +341,13 @@ fn instantiate_artifact_literal(
 
 fn compare_values(
     env: &mut RuntimeEnv,
-    left: &AST,
-    right: &AST,
-    line_info: &Option<LineInfo>,
+    left: &Expr,
+    right: &Expr,
+    line_info: &Option<Span>,
     equality: bool,
 ) -> Result<EvalResult, EvalError> {
-    let left_result = statements::evaluate(left, env)?;
-    let right_result = statements::evaluate(right, env)?;
+    let left_result = evaluate_expr(left, env)?;
+    let right_result = evaluate_expr(right, env)?;
 
     let comparison = match (left_result, right_result) {
         (EvalResult::Data(Value::Arcana(l)), EvalResult::Data(Value::Arcana(r))) => l == r,
@@ -348,16 +355,13 @@ fn compare_values(
             (l - r).abs() < f64::EPSILON
         }
         (EvalResult::Data(Value::Rune(l)), EvalResult::Data(Value::Rune(r))) => l == r,
-        (EvalResult::Artifact(left), EvalResult::Artifact(right))
-        | (EvalResult::Artifact(left), EvalResult::Data(Value::Artifact(right)))
-        | (EvalResult::Data(Value::Artifact(left)), EvalResult::Artifact(right))
-        | (EvalResult::Data(Value::Artifact(left)), EvalResult::Data(Value::Artifact(right))) => {
+        (EvalResult::Data(Value::Artifact(left)), EvalResult::Data(Value::Artifact(right))) => {
             compare_artifacts(env, &left, &right, line_info)?
         }
         _ => {
             return Err(EvalError::InvalidOperation(
                 "Comparison requires compatible types!".to_string(),
-                line_info.clone(),
+                *line_info,
             ));
         }
     };
@@ -368,16 +372,16 @@ fn compare_values(
 
 fn order_values<F>(
     env: &mut RuntimeEnv,
-    left: &AST,
-    right: &AST,
-    line_info: &Option<LineInfo>,
+    left: &Expr,
+    right: &Expr,
+    line_info: &Option<Span>,
     comparator: F,
 ) -> Result<EvalResult, EvalError>
 where
     F: FnOnce(f64, f64) -> bool,
 {
-    let left_result = statements::evaluate(left, env)?;
-    let right_result = statements::evaluate(right, env)?;
+    let left_result = evaluate_expr(left, env)?;
+    let right_result = evaluate_expr(right, env)?;
 
     match (left_result, right_result) {
         (EvalResult::Data(Value::Arcana(l)), EvalResult::Data(Value::Arcana(r))) => Ok(
@@ -388,23 +392,23 @@ where
         }
         _ => Err(EvalError::InvalidOperation(
             "Comparison requires numeric types!".to_string(),
-            line_info.clone(),
+            *line_info,
         )),
     }
 }
 
 fn logical_op<F>(
     env: &mut RuntimeEnv,
-    left: &AST,
-    right: &AST,
-    line_info: &Option<LineInfo>,
+    left: &Expr,
+    right: &Expr,
+    line_info: &Option<Span>,
     op: F,
 ) -> Result<EvalResult, EvalError>
 where
     F: FnOnce(bool, bool) -> bool,
 {
-    let left_result = statements::evaluate(left, env)?;
-    let right_result = statements::evaluate(right, env)?;
+    let left_result = evaluate_expr(left, env)?;
+    let right_result = evaluate_expr(right, env)?;
 
     match (left_result, right_result) {
         (EvalResult::Data(Value::Omen(l)), EvalResult::Data(Value::Omen(r))) => {
@@ -412,20 +416,20 @@ where
         }
         _ => Err(EvalError::InvalidOperation(
             "Logical operation requires two Omen!".to_string(),
-            line_info.clone(),
+            *line_info,
         )),
     }
 }
 
 fn evaluate_method_call(
     env: &mut RuntimeEnv,
-    receiver: &AST,
+    receiver: &Expr,
     method_name: &str,
-    args: &[AST],
-    line_info: &Option<LineInfo>,
+    args: &[Expr],
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
-    let receiver_result = statements::evaluate(receiver, env)?;
-    let receiver_var_name = if let AST::Var(var_name, _) = receiver {
+    let receiver_result = evaluate_expr(receiver, env)?;
+    let receiver_var_name = if let Expr::Var(var_name, _) = receiver {
         Some(var_name.clone())
     } else {
         None
@@ -433,8 +437,8 @@ fn evaluate_method_call(
 
     let mut evaluated_args = Vec::with_capacity(args.len());
     for arg in args {
-        let evaluated_arg = statements::evaluate(arg, env)?;
-        let var_name = if let AST::Var(var_name, _) = arg {
+        let evaluated_arg = evaluate_expr(arg, env)?;
+        let var_name = if let Expr::Var(var_name, _) = arg {
             Some(var_name.clone())
         } else {
             None
@@ -446,15 +450,6 @@ fn evaluate_method_call(
     }
 
     match receiver_result {
-        EvalResult::Artifact(handle) => evaluate_artifact_method_call(
-            env,
-            receiver,
-            receiver_var_name,
-            handle,
-            method_name,
-            evaluated_args,
-            line_info,
-        ),
         EvalResult::Data(Value::Artifact(handle)) => evaluate_artifact_method_call(
             env,
             receiver,
@@ -478,17 +473,17 @@ fn evaluate_method_call(
                 "Cannot invoke method {} on control-flow result {:?}",
                 method_name, control
             ),
-            line_info.clone(),
+            *line_info,
         )),
     }
 }
 
 fn ensure_method_receiver_mutability(
     env: &RuntimeEnv,
-    receiver: &AST,
+    receiver: &Expr,
     artifact_name: &str,
     method_name: &str,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<(), EvalError> {
     if let Some((base_name, _)) = collect_field_chain(receiver) {
         if let Some(var_info) = env.get_var(&base_name) {
@@ -500,10 +495,10 @@ fn ensure_method_receiver_mutability(
                     "Cannot call {}::{} with immutable receiver '{}'",
                     artifact_name, method_name, base_name
                 ),
-                line_info.clone(),
+                *line_info,
             ));
         } else {
-            return Err(env.undefined_variable_error(&base_name, line_info.clone()));
+            return Err(env.undefined_variable_error(&base_name, *line_info));
         }
     }
 
@@ -512,18 +507,18 @@ fn ensure_method_receiver_mutability(
             "Method {}::{} requires a morph receiver, but the expression is not tied to a mutable variable",
             artifact_name, method_name
         ),
-        line_info.clone(),
+        *line_info,
     ))
 }
 
 fn evaluate_artifact_method_call(
     env: &mut RuntimeEnv,
-    receiver_ast: &AST,
+    receiver_ast: &Expr,
     receiver_var_name: Option<String>,
     receiver_handle: crate::env::ArtifactHandle,
     method_name: &str,
     arg_values: Vec<CallArg>,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let schema = lookup_schema_from_handle(env, &receiver_handle, line_info)?;
     let artifact_name = schema.name.clone();
@@ -540,7 +535,7 @@ fn evaluate_artifact_method_call(
                     "Method {}::{} is not defined{}",
                     artifact_name, method_name, hint
                 ),
-                line_info.clone(),
+                *line_info,
             )
         })?;
 
@@ -556,7 +551,7 @@ fn evaluate_artifact_method_call(
 
     let mut evaluated_args = Vec::with_capacity(arg_values.len() + 1);
     evaluated_args.push(CallArg {
-        value: EvalResult::Artifact(receiver_handle),
+        value: EvalResult::artifact(receiver_handle),
         var_name: receiver_var_name,
     });
     evaluated_args.extend(arg_values);
@@ -572,20 +567,20 @@ fn evaluate_artifact_method_call(
 fn evaluate_function_call(
     env: &mut RuntimeEnv,
     name: &str,
-    args: &[AST],
-    line_info: &Option<LineInfo>,
+    args: &[Expr],
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let callable = match env.get_function(name) {
         Some(func) => func.clone(),
         None => {
-            return Err(env.undefined_function_error(name, line_info.clone()));
+            return Err(env.undefined_function_error(name, *line_info));
         }
     };
 
     let mut evaluated_args = Vec::new();
     for arg in args {
-        let evaluated_arg = statements::evaluate(arg, env)?;
-        let var_name = if let AST::Var(var_name, _) = arg {
+        let evaluated_arg = evaluate_expr(arg, env)?;
+        let var_name = if let Expr::Var(var_name, _) = arg {
             Some(var_name.clone())
         } else {
             None
@@ -600,7 +595,7 @@ fn evaluate_function_call(
         Callable::Engraved(function) => {
             evaluate_engraved_function(env, evaluated_args, function, line_info)
         }
-        Callable::Builtin(function) => (function.func)(env, evaluated_args, line_info.clone()),
+        Callable::Builtin(function) => (function.func)(env, evaluated_args, *line_info),
     }
 }
 
@@ -608,7 +603,7 @@ fn evaluate_engraved_function(
     env: &mut RuntimeEnv,
     evaluated_args: Vec<CallArg>,
     function: EngravedFunction,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let eval_args: Vec<EvalResult> = evaluated_args.into_iter().map(|arg| arg.value).collect();
     let params = function.params.clone();
@@ -622,28 +617,13 @@ fn evaluate_engraved_function(
                 params.len(),
                 eval_args.len()
             ),
-            line_info.clone(),
+            *line_info,
         ));
     }
 
     for (evaluated_arg, param) in eval_args.into_iter().zip(params.iter()) {
-        let (param_name, param_type, is_morph_param) = match param {
-            AST::EngraveParam {
-                name,
-                param_type,
-                is_morph,
-                ..
-            } => (name, param_type, *is_morph),
-            _ => {
-                return Err(EvalError::InvalidOperation(
-                    format!(
-                        "Expected EngraveParam in function definition: {}",
-                        function.name
-                    ),
-                    line_info.clone(),
-                ));
-            }
-        };
+        let (param_name, param_type, is_morph_param) =
+            (&param.name, &param.param_type, param.is_morph);
         let value = if is_morph_param {
             convert_morph_param_value(evaluated_arg, param_type, line_info)?
         } else {
@@ -654,7 +634,7 @@ fn evaluate_engraved_function(
             value,
             param_type.clone(),
             is_morph_param,
-            line_info.clone(),
+            *line_info,
         );
     }
 
@@ -664,7 +644,7 @@ fn evaluate_engraved_function(
         evaluated?
     };
 
-    let value = eval_result_to_value_checked(result, function.line_info.clone())?;
+    let value = eval_result_to_value_checked(result, function.line_info)?;
 
     match (function.return_type.clone(), value) {
         (Type::Arcana, Value::Arcana(v)) => Ok(EvalResult::data(Value::Arcana(v))),
@@ -678,14 +658,14 @@ fn evaluate_engraved_function(
         (Type::Artifact(expected), Value::Artifact(handle)) => {
             let type_name = handle.borrow().type_name.clone();
             if type_name == expected {
-                Ok(EvalResult::Artifact(handle))
+                Ok(EvalResult::artifact(handle))
             } else {
                 Err(EvalError::TypeError(
                     format!(
                         "Type mismatch for return value of function {} (expected artifact {}, got {})",
                         function.name, expected, type_name
                     ),
-                    function.line_info.clone(),
+                    function.line_info,
                 ))
             }
         }
@@ -696,7 +676,7 @@ fn evaluate_engraved_function(
                 expected,
                 describe_value(&actual)
             ),
-            function.line_info.clone(),
+            function.line_info,
         )),
     }
 }
@@ -704,37 +684,35 @@ fn evaluate_engraved_function(
 fn validate_artifact_type(
     handle: Rc<RefCell<crate::env::ArtifactValue>>,
     expected: &str,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<Value, EvalError> {
     let actual = handle.borrow().type_name.clone();
     if actual == expected {
         Ok(Value::Artifact(handle))
     } else {
-        Err(EvalError::TypeError(
-            format!(
-                "Expected artifact of type {} but received {}",
-                expected, actual
-            ),
-            line_info.clone(),
-        ))
+        Err(EvalError::ArtifactTypeMismatch {
+            expected: expected.to_string(),
+            found: actual,
+            line_info: *line_info,
+        })
     }
 }
 
 fn convert_morph_param_value(
     evaluated_arg: EvalResult,
     param_type: &Type,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<Value, EvalError> {
     match param_type {
         Type::Artifact(expected) => match evaluated_arg {
-            EvalResult::Artifact(handle) | EvalResult::Data(Value::Artifact(handle)) => {
+            EvalResult::Data(Value::Artifact(handle)) => {
                 validate_artifact_type(handle, expected, line_info)
             }
             other => convert_to_typed_value(other, param_type, line_info),
         },
         _ => Err(EvalError::InvalidOperation(
             "`morph` parameters are only supported for artifact receivers".to_string(),
-            line_info.clone(),
+            *line_info,
         )),
     }
 }
@@ -743,29 +721,29 @@ fn convert_morph_param_value(
 mod tests {
     use super::*;
 
-    fn dummy_line_info() -> Option<LineInfo> {
+    fn dummy_line_info() -> Option<Span> {
         None
     }
 
     #[test]
     fn test_pow_arcana_negative_exponent() {
         let mut env = RuntimeEnv::new();
-        let left = AST::Arcana(2, dummy_line_info());
-        let right = AST::Arcana(-1, dummy_line_info());
-        let expr = AST::PowArcana(Box::new(left), Box::new(right), dummy_line_info());
+        let left = Expr::Arcana(2, dummy_line_info());
+        let right = Expr::Arcana(-1, dummy_line_info());
+        let expr = Expr::PowArcana(Box::new(left), Box::new(right), dummy_line_info());
 
-        let result = try_evaluate_expression(&expr, &mut env);
+        let result = evaluate_expr(&expr, &mut env);
         assert!(matches!(result, Err(EvalError::NegativeExponent(_))));
     }
 
     #[test]
     fn test_pow_aether_invalid_types() {
         let mut env = RuntimeEnv::new();
-        let left = AST::Arcana(2, dummy_line_info()); // Should be Aether
-        let right = AST::Aether(2.0, dummy_line_info());
-        let expr = AST::PowAether(Box::new(left), Box::new(right), dummy_line_info());
+        let left = Expr::Arcana(2, dummy_line_info()); // Should be Aether
+        let right = Expr::Aether(2.0, dummy_line_info());
+        let expr = Expr::PowAether(Box::new(left), Box::new(right), dummy_line_info());
 
-        let result = try_evaluate_expression(&expr, &mut env);
+        let result = evaluate_expr(&expr, &mut env);
         assert!(matches!(
             result,
             Err(EvalError::InvalidOperation(msg, _)) if msg.contains("requires two Aether")
@@ -775,10 +753,10 @@ mod tests {
     #[test]
     fn test_logical_not_invalid_type() {
         let mut env = RuntimeEnv::new();
-        let operand = AST::Arcana(1, dummy_line_info()); // Should be Omen
-        let expr = AST::LogicalNot(Box::new(operand), dummy_line_info());
+        let operand = Expr::Arcana(1, dummy_line_info()); // Should be Omen
+        let expr = Expr::LogicalNot(Box::new(operand), dummy_line_info());
 
-        let result = try_evaluate_expression(&expr, &mut env);
+        let result = evaluate_expr(&expr, &mut env);
         assert!(matches!(
             result,
             Err(EvalError::InvalidOperation(msg, _)) if msg.contains("requires Omen")
@@ -788,36 +766,62 @@ mod tests {
     #[test]
     fn test_index_access_out_of_bounds() {
         let mut env = RuntimeEnv::new();
-        let scroll = AST::ListLiteral {
+        let scroll = Expr::ListLiteral {
             elements: vec![],
-            line_info: dummy_line_info(),
+            span: dummy_line_info(),
         };
-        let index = AST::Arcana(0, dummy_line_info());
-        let expr = AST::IndexAccess {
+        let index = Expr::Arcana(0, dummy_line_info());
+        let expr = Expr::IndexAccess {
             target: Box::new(scroll),
             index: Box::new(index),
-            line_info: dummy_line_info(),
+            span: dummy_line_info(),
         };
 
-        let result = try_evaluate_expression(&expr, &mut env);
+        let result = evaluate_expr(&expr, &mut env);
         assert!(matches!(
             result,
-            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("out of bounds")
+            Err(EvalError::ScrollIndexOutOfBounds(_, _))
+        ));
+    }
+
+    #[test]
+    fn test_index_access_missing_lexicon_key() {
+        let mut env = RuntimeEnv::new();
+        let mut entries = HashMap::new();
+        entries.insert("known".to_string(), Value::Arcana(1));
+        env.set_var(
+            "lex".to_string(),
+            Value::Lexicon(Rc::new(RefCell::new(entries))),
+            Type::Lexicon,
+            false,
+            None,
+        );
+
+        let expr = Expr::IndexAccess {
+            target: Box::new(Expr::Var("lex".to_string(), dummy_line_info())),
+            index: Box::new(Expr::Rune("missing".to_string(), dummy_line_info())),
+            span: dummy_line_info(),
+        };
+
+        let result = evaluate_expr(&expr, &mut env);
+        assert!(matches!(
+            result,
+            Err(EvalError::MissingLexiconKey(key, _)) if key == "missing"
         ));
     }
 
     #[test]
     fn test_index_access_invalid_target() {
         let mut env = RuntimeEnv::new();
-        let target = AST::Arcana(1, dummy_line_info()); // Not a collection
-        let index = AST::Arcana(0, dummy_line_info());
-        let expr = AST::IndexAccess {
+        let target = Expr::Arcana(1, dummy_line_info()); // Not a collection
+        let index = Expr::Arcana(0, dummy_line_info());
+        let expr = Expr::IndexAccess {
             target: Box::new(target),
             index: Box::new(index),
-            line_info: dummy_line_info(),
+            span: dummy_line_info(),
         };
 
-        let result = try_evaluate_expression(&expr, &mut env);
+        let result = evaluate_expr(&expr, &mut env);
         assert!(matches!(
             result,
             Err(EvalError::InvalidOperation(msg, _)) if msg.contains("only supported for scroll or lexicon")

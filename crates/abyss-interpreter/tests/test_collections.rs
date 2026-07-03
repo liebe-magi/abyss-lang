@@ -1,7 +1,8 @@
-mod test_base;
+mod common;
 
+use abyss_interpreter::env::Value;
 use abyss_interpreter::eval::{EvalError, EvalResult};
-use test_base::{Value, test_base};
+use common::test_base;
 
 #[test]
 fn tally_handles_scroll_and_lexicon() {

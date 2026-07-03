@@ -1,7 +1,8 @@
-mod test_base;
+mod common;
 
+use abyss_interpreter::env::Value;
 use abyss_interpreter::eval::{EvalError, EvalResult};
-use test_base::{Value, test_base};
+use common::test_base;
 
 #[test]
 fn artifact_instantiation_and_access() {
@@ -30,14 +31,10 @@ hero.health = 75;
     match test_base(input) {
         Ok(_) => panic!("expected immutability error"),
         Err(err) => match err.downcast_ref::<EvalError>() {
-            Some(EvalError::InvalidOperation(message, _)) => {
-                assert!(
-                    message.contains("immutable"),
-                    "unexpected message: {}",
-                    message
-                );
+            Some(EvalError::ImmutableAssignment(name, _)) => {
+                assert_eq!(name, "hero");
             }
-            other => panic!("expected invalid operation error, found {:?}", other),
+            other => panic!("expected immutable-assignment error, found {:?}", other),
         },
     }
 }
@@ -92,12 +89,11 @@ forge hero: Player = Enemy { name: "Goblin", damage: 7 };
     match test_base(input) {
         Ok(_) => panic!("expected type mismatch error"),
         Err(err) => match err.downcast_ref::<EvalError>() {
-            Some(EvalError::TypeError(message, _)) => {
-                assert!(
-                    message.contains("Expected artifact of type"),
-                    "unexpected message: {}",
-                    message
-                );
+            Some(EvalError::ArtifactTypeMismatch {
+                expected, found, ..
+            }) => {
+                assert_eq!(expected, "Player");
+                assert_eq!(found, "Enemy");
             }
             other => panic!("expected type error, found {:?}", other),
         },
@@ -136,12 +132,11 @@ describe(foe);
     match test_base(input) {
         Ok(_) => panic!("expected parameter type error"),
         Err(err) => match err.downcast_ref::<EvalError>() {
-            Some(EvalError::TypeError(message, _)) => {
-                assert!(
-                    message.contains("Expected artifact of type Player"),
-                    "unexpected message: {}",
-                    message
-                );
+            Some(EvalError::ArtifactTypeMismatch {
+                expected, found, ..
+            }) => {
+                assert_eq!(expected, "Player");
+                assert_eq!(found, "Enemy");
             }
             other => panic!("expected type error, found {:?}", other),
         },
@@ -161,7 +156,7 @@ create_player("Nova");
     let results = test_base(input).expect("artifact return failed");
     assert_eq!(results.len(), 3);
     match &results[2] {
-        EvalResult::Artifact(handle) => {
+        EvalResult::Data(Value::Artifact(handle)) => {
             let borrowed = handle.borrow();
             assert_eq!(borrowed.type_name, "Player");
             match borrowed.fields.get("name") {

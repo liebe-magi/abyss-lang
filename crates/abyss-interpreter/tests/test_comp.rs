@@ -1,7 +1,8 @@
-mod test_base;
+mod common;
 
+use abyss_interpreter::env::Value;
 use abyss_interpreter::eval::{EvalError, EvalResult};
-use test_base::{Value, test_base};
+use common::test_base;
 
 #[test]
 fn test_arcana_comparison_equal() {

@@ -1,20 +1,26 @@
 use crate::diagnostics::{did_you_mean, label_with_suggestions};
 use crate::eval::{EvalError, EvalResult};
-use abyss_core::ast::{AST, LineInfo, Type};
-use std::cell::RefCell;
+use abyss_core::ast::{EngraveParam, Expr, Span, Stmt, Type};
 use std::collections::HashMap;
-use std::rc::Rc;
+
+// Value and artifact types moved to dedicated modules; re-exported here so
+// pre-split paths (`crate::env::Value`, `abyss_interpreter::env::Value`, …)
+// keep working.
+pub use crate::artifact::{
+    ArtifactFieldSchema, ArtifactHandle, ArtifactMethod, ArtifactSchema, ArtifactValue,
+};
+pub use crate::value::Value;
 
 pub type BuiltinFunc =
-    fn(&mut RuntimeEnv, Vec<CallArg>, Option<LineInfo>) -> Result<EvalResult, EvalError>;
+    fn(&mut RuntimeEnv, Vec<CallArg>, Option<Span>) -> Result<EvalResult, EvalError>;
 
 pub type BuiltinMethodHandler = fn(
     &mut RuntimeEnv,
-    &AST,
+    &Expr,
     Option<&str>,
     Value,
     Vec<CallArg>,
-    &Option<LineInfo>,
+    &Option<Span>,
 ) -> Result<EvalResult, EvalError>;
 
 pub type BuiltinMethodRegistry = HashMap<Type, HashMap<String, BuiltinMethodHandler>>;
@@ -34,10 +40,10 @@ pub enum Callable {
 #[derive(Debug, Clone)]
 pub struct EngravedFunction {
     pub name: String,
-    pub params: Vec<AST>,
+    pub params: Vec<EngraveParam>,
     pub return_type: Type,
-    pub body: Box<AST>,
-    pub line_info: Option<LineInfo>,
+    pub body: Box<Stmt>,
+    pub line_info: Option<Span>,
 }
 
 #[derive(Debug, Clone)]
@@ -46,40 +52,58 @@ pub struct BuiltinFunction {
     pub func: BuiltinFunc,
 }
 
-#[derive(Debug, Clone)]
-pub struct ArtifactMethod {
-    pub function: EngravedFunction,
-    pub requires_mutable_receiver: bool,
-}
-
 /// Stores information about a variable, including its value, type, and mutability.
 #[derive(Debug, Clone)]
 pub struct VarInfo {
     pub value: Value,
     pub var_type: Type,
     pub is_morph: bool,
-    pub line_info: Option<LineInfo>,
+    pub line_info: Option<Span>,
 }
 
 /// Manages variable and function scopes in the execution environment, including
-/// both the global scope and any nested local scopes.
-#[derive(Debug, Clone)]
+/// both the global scope and any nested local scopes. Carries the
+/// [`IoBridge`](crate::io_bridge::IoBridge) used by `unveil` / `summon`,
+/// so non-CLI hosts (Wasm playground, future LSP) can swap in a custom
+/// implementation that captures output instead of touching `stdout`.
 pub struct RuntimeEnv {
     scopes: Vec<HashMap<String, VarInfo>>, // Variable scopes
     function_scopes: Vec<HashMap<String, Callable>>, // Function scopes
     artifact_scopes: Vec<HashMap<String, ArtifactSchema>>, // Artifact schemas per scope
     builtin_methods: BuiltinMethodRegistry,
+    io_bridge: Box<dyn crate::io_bridge::IoBridge>,
 }
 
 impl RuntimeEnv {
-    /// Creates a new environment with an initial global scope.
+    /// Creates a new environment with an initial global scope and the
+    /// default [`StdIoBridge`](crate::io_bridge::StdIoBridge), so CLI /
+    /// REPL paths get the same `stdout` / `stdin` behaviour they had
+    /// before the bridge abstraction landed. Non-CLI hosts call
+    /// [`set_io_bridge`](Self::set_io_bridge) afterwards to swap in
+    /// their own implementation.
     pub fn new() -> Self {
         RuntimeEnv {
             scopes: vec![HashMap::new()],
             function_scopes: vec![HashMap::new()],
             artifact_scopes: vec![HashMap::new()],
             builtin_methods: HashMap::new(),
+            io_bridge: Box::new(crate::io_bridge::StdIoBridge),
         }
+    }
+
+    /// Replace the I/O bridge used by `unveil` / `summon`. Wasm callers
+    /// install a `String`-backed implementation here so output the
+    /// playground would otherwise drop to `stdout` is captured into a
+    /// buffer the host can hand back to JavaScript.
+    pub fn set_io_bridge(&mut self, bridge: Box<dyn crate::io_bridge::IoBridge>) {
+        self.io_bridge = bridge;
+    }
+
+    /// Mutable access to the installed I/O bridge. Used by
+    /// `stdlib::functions::io` to route `unveil` writes and `summon`
+    /// reads through the bridge the host provided.
+    pub fn io_bridge_mut(&mut self) -> &mut dyn crate::io_bridge::IoBridge {
+        self.io_bridge.as_mut()
     }
 
     /// Pushes a new scope onto the stack, creating a new local environment for variables and functions.
@@ -114,7 +138,7 @@ impl RuntimeEnv {
         value: Value,
         var_type: Type,
         is_morph: bool,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     ) {
         if let Some(current_scope) = self.scopes.last_mut() {
             current_scope.insert(
@@ -153,7 +177,7 @@ impl RuntimeEnv {
     /// Falls back to the bare name when no plausible suggestion is available,
     /// so the message shape remains identical to the pre-suggestion era for
     /// truly unknown identifiers.
-    pub fn undefined_variable_error(&self, name: &str, line_info: Option<LineInfo>) -> EvalError {
+    pub fn undefined_variable_error(&self, name: &str, line_info: Option<Span>) -> EvalError {
         let candidates: Vec<&str> = self
             .scopes
             .iter()
@@ -167,7 +191,7 @@ impl RuntimeEnv {
     /// Same shape as [`undefined_variable_error`] but suggestions are drawn
     /// from the function scopes — used when an identifier appearing in a call
     /// position cannot be resolved to a `Callable`.
-    pub fn undefined_function_error(&self, name: &str, line_info: Option<LineInfo>) -> EvalError {
+    pub fn undefined_function_error(&self, name: &str, line_info: Option<Span>) -> EvalError {
         let candidates: Vec<&str> = self
             .function_scopes
             .iter()
@@ -185,15 +209,12 @@ impl RuntimeEnv {
         name: &str,
         value: Value,
         var_type: Type,
-        line_info: Option<LineInfo>,
+        line_info: Option<Span>,
     ) -> Result<(), EvalError> {
         for scope in self.scopes.iter_mut().rev() {
             if let Some(var_info) = scope.get_mut(name) {
                 if !var_info.is_morph {
-                    return Err(EvalError::InvalidOperation(
-                        format!("Cannot reassign to immutable variable {}", name),
-                        line_info,
-                    ));
+                    return Err(EvalError::ImmutableAssignment(name.to_string(), line_info));
                 }
 
                 if var_info.var_type != var_type
@@ -253,7 +274,7 @@ impl RuntimeEnv {
             if scope.contains_key(&schema.name) {
                 return Err(EvalError::InvalidOperation(
                     format!("Artifact {} is already defined in this scope", schema.name),
-                    schema.line_info.clone(),
+                    schema.line_info,
                 ));
             }
             scope.insert(schema.name.clone(), schema);
@@ -291,13 +312,13 @@ impl RuntimeEnv {
         artifact: &str,
         method_name: &str,
         method: ArtifactMethod,
-        line_info: &Option<LineInfo>,
+        line_info: &Option<Span>,
     ) -> Result<(), EvalError> {
         if let Some(schema) = self.get_artifact_mut(artifact) {
             if schema.methods.contains_key(method_name) {
                 return Err(EvalError::InvalidOperation(
                     format!("Method {}::{} is already defined", artifact, method_name),
-                    line_info.clone(),
+                    *line_info,
                 ));
             }
             schema.methods.insert(method_name.to_string(), method);
@@ -305,7 +326,7 @@ impl RuntimeEnv {
         } else {
             Err(EvalError::InvalidOperation(
                 format!("Artifact {} is not defined", artifact),
-                line_info.clone(),
+                *line_info,
             ))
         }
     }
@@ -331,65 +352,10 @@ impl Default for RuntimeEnv {
     }
 }
 
-/// Represents the value stored in a variable, including primitive scalars, collections,
-/// glyphs (type handles), and artifact instances.
-#[derive(Debug, Clone)]
-pub enum Value {
-    Omen(bool),
-    Arcana(i64),
-    Aether(f64),
-    Rune(Rc<String>),
-    Abyss,
-    Scroll(Rc<RefCell<Vec<Value>>>),
-    Lexicon(Rc<RefCell<HashMap<String, Value>>>),
-    Glyph(Type),
-    Artifact(ArtifactHandle),
-}
-
-#[derive(Debug, Clone)]
-pub struct ArtifactSchema {
-    pub name: String,
-    pub fields: Vec<ArtifactFieldSchema>,
-    pub methods: HashMap<String, ArtifactMethod>,
-    pub line_info: Option<LineInfo>,
-}
-
-impl ArtifactSchema {
-    pub fn field(&self, name: &str) -> Option<&ArtifactFieldSchema> {
-        self.fields.iter().find(|field| field.name == name)
-    }
-
-    pub fn field_names(&self) -> Vec<String> {
-        self.fields.iter().map(|field| field.name.clone()).collect()
-    }
-
-    pub fn method(&self, name: &str) -> Option<&ArtifactMethod> {
-        self.methods.get(name)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ArtifactFieldSchema {
-    pub name: String,
-    pub field_type: Type,
-}
-
-#[derive(Debug, Clone)]
-pub struct ArtifactValue {
-    pub type_name: String,
-    pub fields: HashMap<String, Value>,
-    pub field_order: Vec<String>,
-}
-
-pub type ArtifactHandle = Rc<RefCell<ArtifactValue>>;
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn rune(text: &str) -> Value {
-        Value::Rune(Rc::new(text.to_string()))
-    }
+    use crate::eval::test_support::rune;
 
     fn artifact_schema(name: &str) -> ArtifactSchema {
         ArtifactSchema {
@@ -405,7 +371,7 @@ mod tests {
             name: name.to_string(),
             params: Vec::new(),
             return_type: Type::Abyss,
-            body: Box::new(AST::Abyss(None)),
+            body: Box::new(Stmt::Expr(Expr::Abyss(None), None)),
             line_info: None,
         }
     }
@@ -413,7 +379,7 @@ mod tests {
     fn builtin(
         _: &mut RuntimeEnv,
         _: Vec<CallArg>,
-        _: Option<LineInfo>,
+        _: Option<Span>,
     ) -> Result<EvalResult, EvalError> {
         Ok(EvalResult::abyss())
     }
@@ -445,7 +411,9 @@ mod tests {
         let immutable_err = env
             .update_var("sigil", Value::Arcana(2), Type::Arcana, None)
             .unwrap_err();
-        assert!(matches!(immutable_err, EvalError::InvalidOperation(_, _)));
+        assert!(
+            matches!(immutable_err, EvalError::ImmutableAssignment(name, _) if name == "sigil")
+        );
 
         env.set_var("hex".into(), Value::Arcana(0), Type::Arcana, true, None);
         let type_err = env
@@ -556,7 +524,7 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("Cannot reassign to immutable variable")
+            Err(EvalError::ImmutableAssignment(name, _)) if name == "x"
         ));
     }
 

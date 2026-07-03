@@ -1,38 +1,35 @@
-pub use helpers::{LineMap, abyss_whitespace, attach_line_info, scrub_comments_preserve_layout};
-pub use span::SimpleSpan;
+pub use crate::span::SimpleSpan;
+pub use helpers::{
+    SourceComment, abyss_whitespace, collect_comments, scrub_comments_preserve_layout,
+};
 pub use tokens::{SpannedToken, Token, lexer};
 mod diagnostics;
 mod grammar;
 mod helpers;
-mod span;
 mod tokens;
 
-pub use diagnostics::{ParserDiagnostic, emit_diagnostics};
-
-use std::sync::Arc;
+pub use diagnostics::{ParserDiagnostic, emit_diagnostics, render_diagnostics};
 
 use chumsky::{Parser, input::IterInput};
 use ordered_float::OrderedFloat;
 
-use crate::ast::AST;
+use crate::ast::Stmt;
 
 use diagnostics::convert_rich_error;
 use grammar::build_parser;
 pub struct ParseOutcome {
-    pub ast: Vec<AST>,
+    pub ast: Vec<Stmt>,
     pub diagnostics: Vec<ParserDiagnostic>,
 }
 
 pub fn parse(source: &str) -> ParseOutcome {
-    let map = Arc::new(LineMap::new(source));
-
     let scrubbed_source = scrub_comments_preserve_layout(source);
 
     let (maybe_tokens, lex_errors) = lexer().parse(scrubbed_source.as_str()).into_output_errors();
 
     let mut diagnostics: Vec<ParserDiagnostic> = lex_errors
         .into_iter()
-        .map(|err| convert_rich_error(err, &map, "Incantation unravelled at lexing stage"))
+        .map(|err| convert_rich_error(err, "Incantation unravelled at lexing stage"))
         .collect();
 
     let tokens = match maybe_tokens {
@@ -48,13 +45,13 @@ pub fn parse(source: &str) -> ParseOutcome {
     let len = source.len();
     let token_input = IterInput::new(tokens.into_iter(), SimpleSpan::new(len, len));
 
-    let parser = build_parser(map.clone());
+    let parser = build_parser();
     let (maybe_ast, parse_errors) = parser.parse(token_input).into_output_errors();
 
     diagnostics.extend(
         parse_errors
             .into_iter()
-            .map(|err| convert_rich_error(err, &map, "Spell error: Incantation failed")),
+            .map(|err| convert_rich_error(err, "Spell error: Incantation failed")),
     );
 
     let ast = maybe_ast.unwrap_or_default();

@@ -1,472 +1,508 @@
-use abyss_core::ast::{AST, ArtifactField, ArtifactMethodTarget, AssignmentOp, Type};
-use abyss_core::format::format_ast;
+use abyss_core::ast::{
+    ArtifactField, ArtifactMethodTarget, AssignmentOp, ConditionalAssignment, EngraveParam, Expr,
+    OracleBranch, OrbitParam, Pattern, Stmt, Type,
+};
+use abyss_core::format::{format_expr, format_pattern, format_program, format_stmt};
+use abyss_core::parser::{collect_comments, parse};
 
-fn arcana(value: i64) -> Box<AST> {
-    Box::new(AST::Arcana(value, None))
+fn arcana(value: i64) -> Box<Expr> {
+    Box::new(Expr::Arcana(value, None))
 }
 
-fn rune(value: &str) -> Box<AST> {
-    Box::new(AST::Rune(value.to_string(), None))
+fn rune(value: &str) -> Expr {
+    Expr::Rune(value.to_string(), None)
 }
 
-fn omen(value: bool) -> Box<AST> {
-    Box::new(AST::Omen(value, None))
+fn omen(value: bool) -> Box<Expr> {
+    Box::new(Expr::Omen(value, None))
 }
 
-fn var(name: &str) -> Box<AST> {
-    Box::new(AST::Var(name.to_string(), None))
+fn var(name: &str) -> Expr {
+    Expr::Var(name.to_string(), None)
 }
 
-fn abyss() -> Box<AST> {
-    Box::new(AST::Abyss(None))
+fn reveal(value: Expr) -> Stmt {
+    Stmt::Reveal(value, None)
 }
 
 #[test]
 fn format_basic_expressions_and_assignments() {
-    let expr_stmt = AST::Statement(
-        Box::new(AST::Mul(
-            Box::new(AST::Add(arcana(1), arcana(2), None)),
+    let expr_stmt = Stmt::Expr(
+        Expr::Mul(
+            Box::new(Expr::Add(arcana(1), arcana(2), None)),
             arcana(3),
             None,
-        )),
+        ),
         None,
     );
-    assert_eq!(format_ast(&expr_stmt, 1), "    (1 + 2) * 3;");
+    assert_eq!(format_stmt(&expr_stmt, 1), "    (1 + 2) * 3;");
 
-    let logical = AST::LogicalNot(omen(false), None);
-    assert_eq!(format_ast(&logical, 0), "!hex");
+    let logical = Expr::LogicalNot(omen(false), None);
+    assert_eq!(format_expr(&logical, 0), "!hex");
 
-    let var_assign = AST::VarAssign {
+    let var_assign = Stmt::VarAssign {
         name: "sigil".into(),
         value: rune("alpha"),
         var_type: Type::Rune,
         is_morph: true,
-        line_info: None,
+        span: None,
     };
     assert_eq!(
-        format_ast(&var_assign, 0),
-        "forge morph sigil: rune = \"alpha\""
+        format_stmt(&var_assign, 0),
+        "forge morph sigil: rune = \"alpha\";"
     );
 
-    let assign = AST::Assignment {
+    let assign = Stmt::Assignment {
         name: "sigil".into(),
         value: var("base"),
         op: AssignmentOp::PowAetherAssign,
-        line_info: None,
+        span: None,
     };
-    assert_eq!(format_ast(&assign, 0), "sigil **= base");
+    assert_eq!(format_stmt(&assign, 0), "sigil **= base;");
 
-    assert_eq!(format_ast(&AST::Arcana(7, None), 0), "7");
-    assert_eq!(format_ast(&AST::Aether(7.0, None), 0), "7.0");
-    assert_eq!(format_ast(&AST::Aether(7.25, None), 0), "7.25");
-    assert_eq!(format_ast(&AST::Rune("echo".into(), None), 0), "\"echo\"");
-    assert_eq!(format_ast(&AST::Omen(true, None), 0), "boon");
-    assert_eq!(format_ast(&AST::Abyss(None), 0), "abyss");
+    assert_eq!(format_expr(&Expr::Arcana(7, None), 0), "7");
+    assert_eq!(format_expr(&Expr::Aether(7.0, None), 0), "7.0");
+    assert_eq!(format_expr(&Expr::Aether(7.25, None), 0), "7.25");
+    assert_eq!(format_expr(&Expr::Rune("echo".into(), None), 0), "\"echo\"");
+    assert_eq!(format_expr(&Expr::Omen(true, None), 0), "boon");
+    assert_eq!(format_expr(&Expr::Abyss(None), 0), "abyss");
 
-    let reveal_core = AST::Reveal(var("sigil"), None);
-    assert_eq!(format_ast(&reveal_core, 0), "reveal sigil");
+    let reveal_core = reveal(var("sigil"));
+    assert_eq!(format_stmt(&reveal_core, 0), "reveal sigil;");
 
-    let reveal_abyss = AST::Reveal(abyss(), None);
-    assert_eq!(format_ast(&reveal_abyss, 0), "reveal");
+    let reveal_abyss = reveal(Expr::Abyss(None));
+    assert_eq!(format_stmt(&reveal_abyss, 0), "reveal;");
 
-    let field_access = AST::FieldAccess {
+    let field_access = Expr::FieldAccess {
+        target: Box::new(var("relic")),
+        field: "core".into(),
+        span: None,
+    };
+    assert_eq!(format_expr(&field_access, 0), "relic.core");
+
+    let field_assignment = Stmt::FieldAssignment {
         target: var("relic"),
         field: "core".into(),
-        line_info: None,
+        value: *arcana(5),
+        span: None,
     };
-    assert_eq!(format_ast(&field_access, 0), "relic.core");
+    assert_eq!(format_stmt(&field_assignment, 0), "relic.core = 5;");
 
-    let field_assignment = AST::FieldAssignment {
-        target: var("relic"),
-        field: "core".into(),
-        value: arcana(5),
-        line_info: None,
-    };
-    assert_eq!(format_ast(&field_assignment, 0), "relic.core = 5");
-
-    let index_assignment = AST::IndexAssignment {
+    let index_assignment = Stmt::IndexAssignment {
         target: var("sigils"),
-        index: arcana(2),
+        index: *arcana(2),
         value: rune("beta"),
-        line_info: None,
+        span: None,
     };
-    assert_eq!(format_ast(&index_assignment, 0), "sigils[2] = \"beta\"");
+    assert_eq!(format_stmt(&index_assignment, 0), "sigils[2] = \"beta\";");
 
-    let method_call = AST::MethodCall {
-        receiver: var("relic"),
+    let method_call = Expr::MethodCall {
+        receiver: Box::new(var("relic")),
         method: "ignite".into(),
-        args: vec![*rune("spark")],
-        line_info: None,
+        args: vec![rune("spark")],
+        span: None,
     };
-    assert_eq!(format_ast(&method_call, 0), "relic.ignite(\"spark\")");
+    assert_eq!(format_expr(&method_call, 0), "relic.ignite(\"spark\")");
 }
 
 #[test]
 fn format_collections_and_literals() {
-    let list = AST::ListLiteral {
+    let list = Expr::ListLiteral {
         elements: vec![
-            AST::Arcana(1, None),
-            AST::Arcana(2, None),
-            AST::Arcana(3, None),
+            Expr::Arcana(1, None),
+            Expr::Arcana(2, None),
+            Expr::Arcana(3, None),
         ],
-        line_info: None,
+        span: None,
     };
-    assert_eq!(format_ast(&list, 0), "[1, 2, 3]");
+    assert_eq!(format_expr(&list, 0), "[1, 2, 3]");
 
-    let map = AST::MapLiteral {
+    let map = Expr::MapLiteral {
         entries: vec![
-            ("name".into(), AST::Rune("abyss".into(), None)),
-            ("value".into(), AST::Arcana(3, None)),
+            ("name".into(), Expr::Rune("abyss".into(), None)),
+            ("value".into(), Expr::Arcana(3, None)),
         ],
-        line_info: None,
+        span: None,
     };
-    assert_eq!(format_ast(&map, 0), "{\"name\": \"abyss\", \"value\": 3}");
+    assert_eq!(format_expr(&map, 0), "{\"name\": \"abyss\", \"value\": 3}");
 
-    let artifact_literal = AST::ArtifactLiteral {
+    let artifact_literal = Expr::ArtifactLiteral {
         type_name: "Relic".into(),
         fields: vec![
-            ("sigil".into(), AST::Rune("alpha".into(), None)),
-            ("power".into(), AST::Arcana(9, None)),
+            ("sigil".into(), Expr::Rune("alpha".into(), None)),
+            ("power".into(), Expr::Arcana(9, None)),
         ],
-        line_info: None,
+        span: None,
     };
     assert_eq!(
-        format_ast(&artifact_literal, 0),
+        format_expr(&artifact_literal, 0),
         "Relic { sigil: \"alpha\", power: 9 }"
     );
 
-    let artifact_empty = AST::ArtifactLiteral {
+    let artifact_empty = Expr::ArtifactLiteral {
         type_name: "Relic".into(),
         fields: vec![],
-        line_info: None,
+        span: None,
     };
-    assert_eq!(format_ast(&artifact_empty, 0), "Relic {}");
+    assert_eq!(format_expr(&artifact_empty, 0), "Relic {}");
 
-    let artifact_def = AST::ArtifactDef {
+    let artifact_def = Stmt::ArtifactDef {
         name: "Relic".into(),
         fields: vec![
             ArtifactField {
                 name: "sigil".into(),
                 field_type: Type::Rune,
-                line_info: None,
+                span: None,
             },
             ArtifactField {
                 name: "power".into(),
                 field_type: Type::Arcana,
-                line_info: None,
+                span: None,
             },
         ],
-        line_info: None,
+        span: None,
     };
     let expected = concat!(
         "artifact Relic {\n",
         "    sigil: rune;\n",
         "    power: arcana;\n",
-        "}"
+        "};"
     );
-    assert_eq!(format_ast(&artifact_def, 0), expected);
+    assert_eq!(format_stmt(&artifact_def, 0), expected);
 
-    let list_access = AST::IndexAccess {
-        target: var("sigils"),
+    let list_access = Expr::IndexAccess {
+        target: Box::new(var("sigils")),
         index: arcana(0),
-        line_info: None,
+        span: None,
     };
-    assert_eq!(format_ast(&list_access, 0), "sigils[0]");
+    assert_eq!(format_expr(&list_access, 0), "sigils[0]");
 
-    let func_call = AST::FuncCall {
+    let func_call = Expr::FuncCall {
         name: "summon".into(),
-        args: vec![AST::Rune("echo".into(), None), AST::Arcana(1, None)],
-        line_info: None,
+        args: vec![Expr::Rune("echo".into(), None), Expr::Arcana(1, None)],
+        span: None,
     };
-    assert_eq!(format_ast(&func_call, 0), "summon(\"echo\", 1)");
+    assert_eq!(format_expr(&func_call, 0), "summon(\"echo\", 1)");
 }
 
 #[test]
 fn format_control_flow_and_functions() {
-    let block = AST::Block(
-        vec![AST::Statement(
-            Box::new(AST::Reveal(var("sigil"), None)),
-            None,
-        )],
-        None,
-    );
-    assert_eq!(format_ast(&block, 0), "{\n    reveal sigil;\n}");
+    let block = Stmt::Block(vec![reveal(var("sigil"))], None);
+    assert_eq!(format_stmt(&block, 0), "{\n    reveal sigil;\n};");
 
-    let oracle = AST::Oracle {
+    let oracle = Expr::Oracle {
         is_match: false,
         conditionals: Vec::new(),
         branches: vec![
-            AST::OracleBranch {
-                pattern: vec![AST::Arcana(1, None)],
+            OracleBranch {
+                pattern: vec![Pattern::Expr(Expr::Arcana(1, None))],
                 guard: None,
-                body: Box::new(AST::Reveal(var("spark"), None)),
-                line_info: None,
+                body: reveal(var("spark")),
+                span: None,
             },
-            AST::Comment("// fallback".into(), None),
-            AST::OracleBranch {
-                pattern: vec![AST::OracleDontCareItem(None)],
+            OracleBranch {
+                pattern: vec![Pattern::DontCare(None)],
                 guard: None,
-                body: Box::new(AST::Reveal(Box::new(AST::Rune("wild".into(), None)), None)),
-                line_info: None,
+                body: reveal(rune("wild")),
+                span: None,
             },
-            AST::OracleBranch {
+            OracleBranch {
                 pattern: vec![],
                 guard: None,
-                body: Box::new(AST::Reveal(abyss(), None)),
-                line_info: None,
+                body: reveal(Expr::Abyss(None)),
+                span: None,
             },
         ],
-        line_info: None,
+        span: None,
     };
     let oracle_expected = concat!(
         "oracle {\n",
-        "    (1) => reveal spark\n",
-        "    // fallback\n",
-        "    (_) => reveal \"wild\"\n",
-        "    _ => reveal\n",
+        "    (1) => reveal spark;\n",
+        "    (_) => reveal \"wild\";\n",
+        "    _ => reveal;\n",
         "}"
     );
-    assert_eq!(format_ast(&oracle, 0), oracle_expected);
+    assert_eq!(format_expr(&oracle, 0), oracle_expected);
 
-    let oracle_with_ward = AST::Oracle {
+    let oracle_with_ward = Expr::Oracle {
         is_match: true,
-        conditionals: vec![abyss_core::ast::ConditionalAssignment {
+        conditionals: vec![ConditionalAssignment {
             variable: "__match_0".into(),
-            expression: var("count"),
-            line_info: None,
+            expression: Box::new(var("count")),
+            span: None,
         }],
         branches: vec![
-            AST::OracleBranch {
-                pattern: vec![AST::Arcana(1, None)],
-                guard: Some(Box::new(AST::GreaterThan(var("count"), arcana(0), None))),
-                body: Box::new(AST::Reveal(Box::new(AST::Rune("ready".into(), None)), None)),
-                line_info: None,
+            OracleBranch {
+                pattern: vec![Pattern::Expr(Expr::Arcana(1, None))],
+                guard: Some(Expr::GreaterThan(Box::new(var("count")), arcana(0), None)),
+                body: reveal(rune("ready")),
+                span: None,
             },
-            AST::OracleBranch {
-                pattern: vec![AST::OracleDontCareItem(None)],
+            OracleBranch {
+                pattern: vec![Pattern::DontCare(None)],
                 guard: None,
-                body: Box::new(AST::Reveal(Box::new(AST::Rune("idle".into(), None)), None)),
-                line_info: None,
+                body: reveal(rune("idle")),
+                span: None,
             },
         ],
-        line_info: None,
+        span: None,
     };
     let oracle_with_ward_expected = concat!(
         "oracle (count) {\n",
-        "    (1) ward count > 0 => reveal \"ready\"\n",
-        "    (_) => reveal \"idle\"\n",
+        "    (1) ward count > 0 => reveal \"ready\";\n",
+        "    (_) => reveal \"idle\";\n",
         "}"
     );
-    assert_eq!(format_ast(&oracle_with_ward, 0), oracle_with_ward_expected);
+    assert_eq!(format_expr(&oracle_with_ward, 0), oracle_with_ward_expected);
 
-    let oracle_with_scroll_pattern = AST::Oracle {
+    let oracle_with_scroll_pattern = Expr::Oracle {
         is_match: true,
-        conditionals: vec![abyss_core::ast::ConditionalAssignment {
+        conditionals: vec![ConditionalAssignment {
             variable: "__match_0".into(),
-            expression: var("xs"),
-            line_info: None,
+            expression: Box::new(var("xs")),
+            span: None,
         }],
         branches: vec![
-            AST::OracleBranch {
-                pattern: vec![AST::OracleScrollPattern {
+            OracleBranch {
+                pattern: vec![Pattern::Scroll {
                     elements: vec![],
-                    line_info: None,
+                    span: None,
                 }],
                 guard: None,
-                body: Box::new(AST::Reveal(Box::new(AST::Rune("empty".into(), None)), None)),
-                line_info: None,
+                body: reveal(rune("empty")),
+                span: None,
             },
-            AST::OracleBranch {
-                pattern: vec![AST::OracleScrollPattern {
+            OracleBranch {
+                pattern: vec![Pattern::Scroll {
                     elements: vec![
-                        AST::Var("head".into(), None),
-                        AST::OracleScrollRest {
+                        Pattern::Expr(var("head")),
+                        Pattern::Rest {
                             name: Some("rest".into()),
-                            line_info: None,
+                            span: None,
                         },
                     ],
-                    line_info: None,
+                    span: None,
                 }],
                 guard: None,
-                body: Box::new(AST::Reveal(var("head"), None)),
-                line_info: None,
+                body: reveal(var("head")),
+                span: None,
             },
         ],
-        line_info: None,
+        span: None,
     };
     let oracle_with_scroll_pattern_expected = concat!(
         "oracle (xs) {\n",
-        "    [] => reveal \"empty\"\n",
-        "    [head, ..rest] => reveal head\n",
+        "    [] => reveal \"empty\";\n",
+        "    [head, ..rest] => reveal head;\n",
         "}"
     );
     assert_eq!(
-        format_ast(&oracle_with_scroll_pattern, 0),
+        format_expr(&oracle_with_scroll_pattern, 0),
         oracle_with_scroll_pattern_expected
     );
 
-    let oracle_with_artifact_pattern = AST::Oracle {
+    let oracle_with_artifact_pattern = Expr::Oracle {
         is_match: true,
-        conditionals: vec![abyss_core::ast::ConditionalAssignment {
+        conditionals: vec![ConditionalAssignment {
             variable: "__match_0".into(),
-            expression: var("hero"),
-            line_info: None,
+            expression: Box::new(var("hero")),
+            span: None,
         }],
         branches: vec![
             // Shorthand `Player { name }` (one binding, sub-pattern is
             // `Var(name)` matching the field name).
-            AST::OracleBranch {
-                pattern: vec![AST::OracleArtifactPattern {
+            OracleBranch {
+                pattern: vec![Pattern::Artifact {
                     type_name: "Player".into(),
-                    fields: vec![("name".into(), AST::Var("name".into(), None))],
-                    line_info: None,
+                    fields: vec![("name".into(), Pattern::Expr(var("name")))],
+                    span: None,
                 }],
                 guard: None,
-                body: Box::new(AST::Reveal(var("name"), None)),
-                line_info: None,
+                body: reveal(var("name")),
+                span: None,
             },
             // Explicit field with literal compare and a trailing binding.
-            AST::OracleBranch {
-                pattern: vec![AST::OracleArtifactPattern {
+            OracleBranch {
+                pattern: vec![Pattern::Artifact {
                     type_name: "Player".into(),
                     fields: vec![
-                        ("name".into(), AST::Rune("Ardyn".into(), None)),
-                        ("health".into(), AST::Var("health".into(), None)),
+                        ("name".into(), Pattern::Expr(rune("Ardyn"))),
+                        ("health".into(), Pattern::Expr(var("health"))),
                     ],
-                    line_info: None,
+                    span: None,
                 }],
                 guard: None,
-                body: Box::new(AST::Reveal(var("health"), None)),
-                line_info: None,
+                body: reveal(var("health")),
+                span: None,
             },
         ],
-        line_info: None,
+        span: None,
     };
     let oracle_with_artifact_pattern_expected = concat!(
         "oracle (hero) {\n",
-        "    Player { name } => reveal name\n",
-        "    Player { name: \"Ardyn\", health } => reveal health\n",
+        "    Player { name } => reveal name;\n",
+        "    Player { name: \"Ardyn\", health } => reveal health;\n",
         "}"
     );
     assert_eq!(
-        format_ast(&oracle_with_artifact_pattern, 0),
+        format_expr(&oracle_with_artifact_pattern, 0),
         oracle_with_artifact_pattern_expected
     );
 
-    let oracle_with_lexicon_pattern = AST::Oracle {
+    let oracle_with_lexicon_pattern = Expr::Oracle {
         is_match: true,
-        conditionals: vec![abyss_core::ast::ConditionalAssignment {
+        conditionals: vec![ConditionalAssignment {
             variable: "__match_0".into(),
-            expression: var("config"),
-            line_info: None,
+            expression: Box::new(var("config")),
+            span: None,
         }],
         branches: vec![
             // Empty `{}` — matches any lexicon.
-            AST::OracleBranch {
-                pattern: vec![AST::OracleLexiconPattern {
+            OracleBranch {
+                pattern: vec![Pattern::Lexicon {
                     entries: vec![],
-                    line_info: None,
+                    span: None,
                 }],
                 guard: None,
-                body: Box::new(AST::Reveal(rune("a lexicon"), None)),
-                line_info: None,
+                body: reveal(rune("a lexicon")),
+                span: None,
             },
             // Two-key shape with a binding and a literal compare.
-            AST::OracleBranch {
-                pattern: vec![AST::OracleLexiconPattern {
+            OracleBranch {
+                pattern: vec![Pattern::Lexicon {
                     entries: vec![
-                        ("name".into(), AST::Var("n".into(), None)),
-                        ("port".into(), AST::Arcana(8080, None)),
+                        ("name".into(), Pattern::Expr(var("n"))),
+                        ("port".into(), Pattern::Expr(Expr::Arcana(8080, None))),
                     ],
-                    line_info: None,
+                    span: None,
                 }],
                 guard: None,
-                body: Box::new(AST::Reveal(var("n"), None)),
-                line_info: None,
+                body: reveal(var("n")),
+                span: None,
             },
         ],
-        line_info: None,
+        span: None,
     };
     let oracle_with_lexicon_pattern_expected = concat!(
         "oracle (config) {\n",
-        "    {} => reveal \"a lexicon\"\n",
-        "    { \"name\": n, \"port\": 8080 } => reveal n\n",
+        "    {} => reveal \"a lexicon\";\n",
+        "    { \"name\": n, \"port\": 8080 } => reveal n;\n",
         "}"
     );
     assert_eq!(
-        format_ast(&oracle_with_lexicon_pattern, 0),
+        format_expr(&oracle_with_lexicon_pattern, 0),
         oracle_with_lexicon_pattern_expected
     );
 
-    let orbit = AST::Orbit {
-        params: vec![AST::OrbitParam {
+    let block_stmt = Stmt::Block(vec![reveal(var("sigil"))], None);
+    let orbit = Stmt::Orbit {
+        params: vec![OrbitParam {
             name: "i".into(),
-            start: arcana(0),
-            end: arcana(2),
+            start: *arcana(0),
+            end: *arcana(2),
             op: "..".into(),
-            line_info: None,
+            span: None,
         }],
-        body: Box::new(block.clone()),
-        line_info: None,
+        body: Box::new(block_stmt.clone()),
+        span: None,
     };
-    let orbit_expected = concat!("orbit (i = 0..2)", "{\n    reveal sigil;\n}");
-    assert_eq!(format_ast(&orbit, 0), orbit_expected);
+    let orbit_expected = concat!("orbit (i = 0..2)", "{\n    reveal sigil;\n};");
+    assert_eq!(format_stmt(&orbit, 0), orbit_expected);
 
-    let resume_named = AST::Resume(Some("outer".into()), None);
-    assert_eq!(format_ast(&resume_named, 0), "resume outer");
-    let resume_default = AST::Resume(None, None);
-    assert_eq!(format_ast(&resume_default, 0), "resume");
+    let resume_named = Stmt::Revolve(Some("outer".into()), None);
+    assert_eq!(format_stmt(&resume_named, 0), "revolve outer;");
+    let resume_default = Stmt::Revolve(None, None);
+    assert_eq!(format_stmt(&resume_default, 0), "revolve;");
 
-    let eject_named = AST::Eject(Some("inner".into()), None);
-    assert_eq!(format_ast(&eject_named, 0), "eject inner");
-    let eject_default = AST::Eject(None, None);
-    assert_eq!(format_ast(&eject_default, 0), "eject");
+    let eject_named = Stmt::Eject(Some("inner".into()), None);
+    assert_eq!(format_stmt(&eject_named, 0), "eject inner;");
+    let eject_default = Stmt::Eject(None, None);
+    assert_eq!(format_stmt(&eject_default, 0), "eject;");
 
-    let method = AST::Engrave {
+    let method = Stmt::Engrave {
         name: "ignite".into(),
         params: vec![
-            AST::EngraveParam {
+            EngraveParam {
                 name: "core".into(),
                 param_type: Type::Artifact("Pyre".into()),
                 is_morph: true,
-                line_info: None,
+                span: None,
             },
-            AST::EngraveParam {
+            EngraveParam {
                 name: "ember".into(),
                 param_type: Type::Arcana,
                 is_morph: false,
-                line_info: None,
+                span: None,
             },
         ],
         return_type: Type::Arcana,
-        body: Box::new(block.clone()),
+        body: Box::new(block_stmt.clone()),
         method_target: Some(ArtifactMethodTarget {
             artifact: "Pyre".into(),
             requires_morph: true,
         }),
-        line_info: None,
+        span: None,
     };
     let method_expected = concat!(
         "engrave Pyre::ignite(morph core, ember: arcana) -> arcana ",
-        "{\n    reveal sigil;\n}"
+        "{\n    reveal sigil;\n};"
     );
-    assert_eq!(format_ast(&method, 0), method_expected);
+    assert_eq!(format_stmt(&method, 0), method_expected);
 
-    let function = AST::Engrave {
+    let function = Stmt::Engrave {
         name: "summon".into(),
-        params: vec![AST::EngraveParam {
+        params: vec![EngraveParam {
             name: "target".into(),
             param_type: Type::Scroll,
             is_morph: false,
-            line_info: None,
+            span: None,
         }],
         return_type: Type::Abyss,
-        body: Box::new(block),
+        body: Box::new(block_stmt),
         method_target: None,
-        line_info: None,
+        span: None,
     };
-    let function_expected = concat!("engrave summon(target: scroll) ", "{\n    reveal sigil;\n}");
-    assert_eq!(format_ast(&function, 0), function_expected);
+    let function_expected = concat!(
+        "engrave summon(target: scroll) ",
+        "{\n    reveal sigil;\n};"
+    );
+    assert_eq!(format_stmt(&function, 0), function_expected);
+}
+
+#[test]
+fn format_pattern_shapes() {
+    assert_eq!(format_pattern(&Pattern::DontCare(None), 0), "_");
+    assert_eq!(
+        format_pattern(
+            &Pattern::Rest {
+                name: None,
+                span: None
+            },
+            0
+        ),
+        ".."
+    );
+    assert_eq!(
+        format_pattern(
+            &Pattern::Rest {
+                name: Some("tail".into()),
+                span: None
+            },
+            0
+        ),
+        "..tail"
+    );
+    assert_eq!(
+        format_pattern(
+            &Pattern::Artifact {
+                type_name: "Tag".into(),
+                fields: vec![],
+                span: None
+            },
+            0
+        ),
+        "Tag {}"
+    );
 }
 
 #[test]
@@ -485,14 +521,83 @@ fn format_type_keyword_variants() {
     ];
 
     for (index, (ty, expected)) in variants.into_iter().enumerate() {
-        let param = AST::EngraveParam {
+        let is_morph = index % 2 == 1;
+        let stmt = Stmt::VarAssign {
             name: format!("param{}", index),
-            param_type: ty,
-            is_morph: index % 2 == 1,
-            line_info: None,
+            value: *arcana(1),
+            var_type: ty,
+            is_morph,
+            span: None,
         };
-        let prefix = if index % 2 == 1 { "morph " } else { "" };
-        let expected_text = format!("{}param{}: {}", prefix, index, expected);
-        assert_eq!(format_ast(&param, 0), expected_text);
+        let prefix = if is_morph { "morph " } else { "" };
+        let expected_text = format!("forge {}param{}: {} = 1;", prefix, index, expected);
+        assert_eq!(format_stmt(&stmt, 0), expected_text);
     }
+}
+
+fn format_source(source: &str) -> String {
+    let outcome = parse(source);
+    assert!(
+        outcome.diagnostics.is_empty(),
+        "parser emitted diagnostics: {:?}",
+        outcome.diagnostics
+    );
+    format_program(source, &outcome.ast, &collect_comments(source))
+}
+
+#[test]
+fn format_program_preserves_comments() {
+    let source = concat!(
+        "// pick a sigil\n",
+        "forge x:arcana=1; // initial value\n",
+        "/* block comment\n   spanning lines */\n",
+        "engrave double(n:arcana)->arcana {\n",
+        "// twice the input\n",
+        "reveal n*2; // fast path\n",
+        "};\n",
+        "unveil(double(x));\n",
+        "// done\n",
+    );
+    let expected = concat!(
+        "// pick a sigil\n",
+        "forge x: arcana = 1; // initial value\n",
+        "/* block comment\n",
+        "   spanning lines */\n",
+        "engrave double(n: arcana) -> arcana {\n",
+        "    // twice the input\n",
+        "    reveal n * 2; // fast path\n",
+        "};\n",
+        "unveil(double(x));\n",
+        "// done\n",
+    );
+    assert_eq!(format_source(source), expected);
+}
+
+#[test]
+fn format_program_with_comments_is_idempotent() {
+    let source = concat!(
+        "// leading\n",
+        "forge x: arcana = 1; // trailing\n",
+        "orbit (i = 0..2){\n",
+        "    // loop body note\n",
+        "    unveil(i);\n",
+        "};\n",
+        "// end\n",
+    );
+    let once = format_source(source);
+    let twice = format_source(&once);
+    assert_eq!(once, twice, "formatting must be idempotent");
+}
+
+#[test]
+fn format_program_without_comments_matches_per_statement_output() {
+    let source = "forge x: arcana = 1;\nunveil(x);\n";
+    let outcome = parse(source);
+    assert!(outcome.diagnostics.is_empty());
+    let joined: String = outcome
+        .ast
+        .iter()
+        .map(|stmt| format!("{}\n", format_stmt(stmt, 0)))
+        .collect();
+    assert_eq!(format_program(source, &outcome.ast, &[]), joined);
 }

@@ -1,7 +1,7 @@
 use crate::env::{
     ArtifactFieldSchema, ArtifactHandle, ArtifactSchema, ArtifactValue, RuntimeEnv, Value,
 };
-use abyss_core::ast::{AST, ArtifactField, LineInfo, Type};
+use abyss_core::ast::{ArtifactField, Expr, Span, Type};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -13,14 +13,14 @@ use crate::diagnostics::did_you_mean_hint;
 pub(crate) fn ensure_type_known(
     ty: &Type,
     env: &RuntimeEnv,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<(), EvalError> {
     if let Type::Artifact(name) = ty
         && env.get_artifact(name).is_none()
     {
         return Err(EvalError::TypeError(
             format!("Artifact type {} is not defined", name),
-            line_info.clone(),
+            *line_info,
         ));
     }
     Ok(())
@@ -42,7 +42,7 @@ pub(crate) fn ensure_field_type_known(
                         "Artifact field {} references undefined type {}",
                         field.name, name
                     ),
-                    field.line_info.clone(),
+                    field.span,
                 ))
             }
         }
@@ -54,7 +54,7 @@ pub(crate) fn build_artifact_schema(
     name: &str,
     fields: &[ArtifactField],
     env: &RuntimeEnv,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<ArtifactSchema, EvalError> {
     let mut seen = HashSet::new();
     let mut compiled_fields = Vec::with_capacity(fields.len());
@@ -63,7 +63,7 @@ pub(crate) fn build_artifact_schema(
         if !seen.insert(field.name.clone()) {
             return Err(EvalError::InvalidOperation(
                 format!("Field '{}' is defined multiple times", field.name),
-                field.line_info.clone().or_else(|| line_info.clone()),
+                field.span.or(*line_info),
             ));
         }
         ensure_field_type_known(field, env, name)?;
@@ -77,40 +77,39 @@ pub(crate) fn build_artifact_schema(
         name: name.to_string(),
         fields: compiled_fields,
         methods: HashMap::new(),
-        line_info: line_info.clone(),
+        line_info: *line_info,
     })
 }
 
 pub(crate) fn expect_artifact_handle(
     value: &Value,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<ArtifactHandle, EvalError> {
     match value {
         Value::Artifact(handle) => Ok(handle.clone()),
         other => Err(EvalError::InvalidOperation(
             format!("Expected artifact value, found {}", describe_value(other)),
-            line_info.clone(),
+            *line_info,
         )),
     }
 }
 
 pub(crate) fn expect_artifact_from_eval(
     result: EvalResult,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<ArtifactHandle, EvalError> {
     match result {
-        EvalResult::Artifact(handle) => Ok(handle),
         EvalResult::Data(Value::Artifact(handle)) => Ok(handle),
         EvalResult::Data(other) => Err(EvalError::InvalidOperation(
             format!("Expected artifact value, found {}", describe_value(&other)),
-            line_info.clone(),
+            *line_info,
         )),
         control => Err(EvalError::InvalidOperation(
             format!(
                 "Expected artifact value but received control-flow result {:?}",
                 control
             ),
-            line_info.clone(),
+            *line_info,
         )),
     }
 }
@@ -118,12 +117,12 @@ pub(crate) fn expect_artifact_from_eval(
 pub(crate) fn lookup_schema_by_name<'a>(
     env: &'a RuntimeEnv,
     type_name: &str,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<&'a ArtifactSchema, EvalError> {
     env.get_artifact(type_name).ok_or_else(|| {
         EvalError::InvalidOperation(
             format!("Artifact type {} is not defined", type_name),
-            line_info.clone(),
+            *line_info,
         )
     })
 }
@@ -131,7 +130,7 @@ pub(crate) fn lookup_schema_by_name<'a>(
 pub(crate) fn lookup_schema_from_handle<'a>(
     env: &'a RuntimeEnv,
     handle: &ArtifactHandle,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<&'a ArtifactSchema, EvalError> {
     let type_name = handle.borrow().type_name.clone();
     lookup_schema_by_name(env, &type_name, line_info)
@@ -140,7 +139,7 @@ pub(crate) fn lookup_schema_from_handle<'a>(
 pub(crate) fn ensure_field_exists<'a>(
     schema: &'a ArtifactSchema,
     field: &str,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<&'a ArtifactFieldSchema, EvalError> {
     schema
         .field(field)
@@ -150,7 +149,7 @@ pub(crate) fn ensure_field_exists<'a>(
 pub(crate) fn missing_field_error(
     schema: &ArtifactSchema,
     field: &str,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> EvalError {
     let available_names = schema.field_names();
     let hint = did_you_mean_hint(field, available_names.iter().map(String::as_str), 3)
@@ -162,7 +161,7 @@ pub(crate) fn missing_field_error(
             "Field '{}'{} does not exist on artifact {} (available: [{}])",
             field, hint, schema.name, available
         ),
-        line_info.clone(),
+        *line_info,
     )
 }
 
@@ -170,7 +169,7 @@ pub(crate) fn read_artifact_field(
     env: &RuntimeEnv,
     handle: &ArtifactHandle,
     field: &str,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<Value, EvalError> {
     let schema = lookup_schema_from_handle(env, handle, line_info)?;
     ensure_field_exists(schema, field, line_info)?;
@@ -198,7 +197,7 @@ pub(crate) fn compare_artifacts(
     env: &RuntimeEnv,
     left: &ArtifactHandle,
     right: &ArtifactHandle,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<bool, EvalError> {
     let left_borrow = left.borrow();
     let right_borrow = right.borrow();
@@ -226,12 +225,12 @@ pub(crate) fn compare_artifacts(
     Ok(true)
 }
 
-/// Extracts the base variable name and field access chain from an AST expression.
+/// Extracts the base variable name and field access chain from an Expr expression.
 ///
-/// This function only handles direct variable access (`AST::Var`) and field access chains
-/// (`AST::FieldAccess`). It returns `None` for all other AST node types, including:
-/// - Method calls (`AST::MethodCall`)
-/// - Index access (`AST::IndexAccess`)
+/// This function only handles direct variable access (`Expr::Var`) and field access chains
+/// (`Expr::FieldAccess`). It returns `None` for all other Expr node types, including:
+/// - Method calls (`Expr::MethodCall`)
+/// - Index access (`Expr::IndexAccess`)
 /// - Other complex expressions
 ///
 /// This means that mutable method calls are only supported on direct variable/field access
@@ -240,10 +239,10 @@ pub(crate) fn compare_artifacts(
 ///
 /// Returns `Some((base_var_name, field_chain))` if the expression can be traced to a variable,
 /// or `None` if the expression type is not supported for mutability tracking.
-pub(crate) fn collect_field_chain(ast: &AST) -> Option<(String, Vec<String>)> {
+pub(crate) fn collect_field_chain(ast: &Expr) -> Option<(String, Vec<String>)> {
     match ast {
-        AST::Var(name, _) => Some((name.clone(), Vec::new())),
-        AST::FieldAccess { target, field, .. } => {
+        Expr::Var(name, _) => Some((name.clone(), Vec::new())),
+        Expr::FieldAccess { target, field, .. } => {
             let (base, mut chain) = collect_field_chain(target)?;
             chain.push(field.clone());
             Some((base, chain))
@@ -256,7 +255,7 @@ pub(crate) fn values_equal(
     env: &RuntimeEnv,
     left: &Value,
     right: &Value,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<bool, EvalError> {
     match (left, right) {
         (Value::Omen(l), Value::Omen(r)) => Ok(l == r),
@@ -370,14 +369,14 @@ mod tests {
         let valid = ArtifactField {
             name: "ally".into(),
             field_type: Type::Artifact("Glyph".into()),
-            line_info: None,
+            span: None,
         };
         ensure_field_type_known(&valid, &env, "Sigil").unwrap();
 
         let invalid = ArtifactField {
             name: "unknown".into(),
             field_type: Type::Artifact("Missing".into()),
-            line_info: None,
+            span: None,
         };
         let err = ensure_field_type_known(&invalid, &env, "Sigil").unwrap_err();
         match err {
@@ -393,12 +392,12 @@ mod tests {
             ArtifactField {
                 name: "power".into(),
                 field_type: Type::Arcana,
-                line_info: None,
+                span: None,
             },
             ArtifactField {
                 name: "power".into(),
                 field_type: Type::Arcana,
-                line_info: None,
+                span: None,
             },
         ];
 
@@ -413,7 +412,7 @@ mod tests {
     fn expect_artifact_from_eval_accepts_multiple_sources() {
         let handle = artifact_handle("Sigil", vec![]);
         let eval_handle =
-            expect_artifact_from_eval(EvalResult::Artifact(handle.clone()), &None).unwrap();
+            expect_artifact_from_eval(EvalResult::artifact(handle.clone()), &None).unwrap();
         assert!(Rc::ptr_eq(&handle, &eval_handle));
 
         let data_handle =
@@ -427,7 +426,7 @@ mod tests {
             other => panic!("expected invalid operation, got {:?}", other),
         }
 
-        let control_err = expect_artifact_from_eval(EvalResult::Resume(None), &None).unwrap_err();
+        let control_err = expect_artifact_from_eval(EvalResult::Revolve(None), &None).unwrap_err();
         match control_err {
             EvalError::InvalidOperation(_, _) => {}
             other => panic!("expected invalid operation, got {:?}", other),
@@ -481,21 +480,21 @@ mod tests {
 
     #[test]
     fn collect_field_chain_tracks_nested_field_access() {
-        let chain = AST::FieldAccess {
-            target: Box::new(AST::FieldAccess {
-                target: Box::new(AST::Var("sigil".into(), None)),
+        let chain = Expr::FieldAccess {
+            target: Box::new(Expr::FieldAccess {
+                target: Box::new(Expr::Var("sigil".into(), None)),
                 field: "inner".into(),
-                line_info: None,
+                span: None,
             }),
             field: "deep".into(),
-            line_info: None,
+            span: None,
         };
 
         let (base, fields) = collect_field_chain(&chain).expect("chain should resolve");
         assert_eq!(base, "sigil");
         assert_eq!(fields, vec!["inner".to_string(), "deep".to_string()]);
 
-        assert!(collect_field_chain(&AST::Abyss(None)).is_none());
+        assert!(collect_field_chain(&Expr::Abyss(None)).is_none());
     }
 
     #[test]

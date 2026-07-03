@@ -39,12 +39,12 @@
         ],
         "description": "Create an orbit loop."
     },
-    "Resume Flow": {
-        "prefix": "resume",
+    "Revolve Flow": {
+        "prefix": "revolve",
         "body": [
-            "resume ${1:identifier};"
+            "revolve ${1:identifier};"
         ],
-        "description": "Resume the loop from a specific point."
+        "description": "Revolve the loop from a specific point."
     },
     "Eject Flow": {
         "prefix": "eject",

@@ -1,7 +1,8 @@
-mod test_base;
+mod common;
 
+use abyss_interpreter::env::Value;
 use abyss_interpreter::eval::EvalResult;
-use test_base::{Value, test_base};
+use common::test_base;
 
 #[test]
 fn test_simple_orbit() {
@@ -69,7 +70,7 @@ fn test_orbit_with_resume() {
     forge morph sum: arcana = 0;
     orbit(i = 0..3, j = 0..3) {
         oracle(i == j) {
-            (boon) => resume j; // jのループをスキップ
+            (boon) => revolve j; // jのループをスキップ
         };
         sum += i * j;
     };
@@ -180,7 +181,7 @@ fn test_orbit_with_resume_outer_loop() {
     forge morph sum: arcana = 0;
     orbit(i = 0..3) {
         oracle(i == 1) {
-            (boon) => resume i; // 外側のループをスキップ
+            (boon) => revolve i; // 外側のループをスキップ
         };
         sum += i;
     };

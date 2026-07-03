@@ -6,9 +6,9 @@ Guidance for AI coding assistants (and humans) working in this repository.
 
 AbySS is a magic-themed scripting language with its own interpreter, formatter, and CLI tooling. The repo is a single Cargo workspace that also hosts the Starlight documentation site and the VS Code extension.
 
-- **`crates/abyss-core`** — AST (`ast.rs`), `chumsky`-based parser (`parser/`), static analysis (`semantic.rs`), and formatter (`format.rs`). Designed to stay lightweight so a future LSP or Wasm playground can depend on it without pulling in runtime code.
-- **`crates/abyss-interpreter`** — `RuntimeEnv` (`env.rs`), the `Value` enum, the evaluator (`eval/`), and the standard library (`stdlib/`, including the per-type method tables).
-- **`crates/abyss-cli`** — the user-facing binary `abyss` (crate name `abyss-lang`, published to crates.io). Hosts `main.rs` with `start_interpreter` (the REPL driver) and the `clap` subcommands `cast`, `invoke`, and `align`.
+- **`crates/abyss-core`** — the `Expr` / `Stmt` / `Pattern` AST (`ast.rs`, span-carrying), `chumsky`-based parser (`parser/`), and formatter (`format.rs`). Designed to stay lightweight so a future LSP or Wasm playground can depend on it without pulling in runtime code.
+- **`crates/abyss-interpreter`** — `RuntimeEnv` (`env.rs`), the `Value` enum (`value.rs`), artifact schemas/instances (`artifact.rs`), the evaluator (`eval/`), and the standard library (`stdlib/`, including the per-type method tables).
+- **`crates/abyss-cli`** — the user-facing binary `abyss` (crate name `abyss-lang`, published to crates.io). `main.rs` is `clap` wiring only; the REPL driver (`start_interpreter`) lives in `repl.rs` and the one-shot `invoke` / `align` implementations in `commands.rs`.
 - **`docs/`** — Starlight (Astro + bun) source for <https://abyss-lang.dev>.
 - **`editors/code/`** — the `abyss-codex-familiar` VS Code extension. Version is kept in lockstep with the `abyss-lang` crate (see `scripts/check_version_sync.py`).
 - **`examples/`** — canonical `.aby` programs referenced by both the docs and tests.
@@ -17,8 +17,8 @@ AbySS is a magic-themed scripting language with its own interpreter, formatter, 
 ## Tech Stack
 
 - Rust stable toolchain, edition 2024.
-- `chumsky` 0.12 for parser combinators and `ariadne` 0.6 for themed diagnostics (both in `abyss-core`).
-- `ordered-float` 5 for deterministic floating-point comparisons.
+- `chumsky` 0.13 for parser combinators and `ariadne` 0.6 for themed diagnostics (both in `abyss-core`).
+- `ordered-float` 5 for deterministic floating-point comparisons (in `abyss-core`; shared third-party versions are pinned once in the root `[workspace.dependencies]`).
 - `clap` 4, `rustyline` 18, `colored` 3, and `dirs` 6 in `abyss-cli` for the CLI, REPL, terminal styling, and OS config paths.
 
 ## Conventions
@@ -53,7 +53,7 @@ AbySS is a magic-themed scripting language with its own interpreter, formatter, 
 
 Language types map to magical concepts: `arcana` (integer), `aether` (float), `rune` (string), `omen` (boolean with `boon`/`hex`), `abyss` (unit), `scroll`/`lexicon` (collections), `materia` (untyped slot), and `glyph` (type token passed to conversion APIs).
 
-Control flow keywords: `oracle` (conditionals / patterns), `orbit` (loops with `resume`/`eject`), `engrave` (function definition), `summon` (input), `unveil` (output). Statements terminate with semicolons; block structure relies on braces, so formatter and REPL brace counting must stay accurate.
+Control flow keywords: `oracle` (conditionals / patterns), `orbit` (loops with `revolve`/`eject`), `engrave` (function definition), `summon` (input), `unveil` (output). Statements terminate with semicolons; block structure relies on braces, so formatter and REPL brace counting must stay accurate.
 
 Errors surface line info via `EvalError` variants and are rendered with `display_error_with_source` for coloured diagnostics.
 

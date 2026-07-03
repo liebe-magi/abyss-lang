@@ -1,7 +1,8 @@
-mod test_base;
+mod common;
 
+use abyss_interpreter::env::Value;
 use abyss_interpreter::eval::{EvalError, EvalResult};
-use test_base::{Value, test_base};
+use common::test_base;
 
 #[test]
 fn test_parse_rune() {
@@ -116,7 +117,7 @@ fn test_unveil_rune_3() {
 #[test]
 fn test_trans_in_string_concatenation() {
     let input = r#"
-    forge x: rune = "answer: " + 42.trans(rune);
+    forge x: rune = "answer: " + 42.transmute(rune);
     x;
     "#;
     match test_base(input) {
@@ -132,7 +133,7 @@ fn test_trans_in_string_concatenation() {
 #[test]
 fn test_trans_in_arithmetic_expression() {
     let input = r#"
-    forge y: arcana = "42".trans(arcana) + 8;
+    forge y: arcana = "42".transmute(arcana) + 8;
     y;
     "#;
     match test_base(input) {
@@ -147,7 +148,7 @@ fn test_trans_in_arithmetic_expression() {
 fn test_trans_with_assignment_operator() {
     let input = r#"
     forge morph z: rune = "answer: ";
-    z += 42.trans(rune);
+    z += 42.transmute(rune);
     z;
     "#;
     match test_base(input) {

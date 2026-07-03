@@ -6,6 +6,34 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-03
+
+The Web Playground release, riding on the biggest internal overhaul since the workspace split. AbySS now runs directly in the browser at [abyss-lang.dev/playground](https://abyss-lang.dev/playground) via a new Wasm adapter, while under the hood the compiler grew up: every AST node and runtime error carries a byte span (diagnostics underline the full offending range), the AST is split into `Expr` / `Stmt` / `Pattern`, `EvalError` gained structured variants, and `abyss align` finally preserves comments. Two off-theme names were hard-switched while the user base is small: `resume` → `revolve` and `trans` → `transmute`. Language semantics are otherwise unchanged — scripts that used neither renamed word run identically.
+
+### Added
+
+- **Web Playground** — `crates/abyss-wasm` exposes `evaluate(source)` over `wasm-bindgen`, and the docs site embeds an editor seeded with the `examples/` programs. Parser and runtime diagnostics render with the same ariadne formatting the CLI shows.
+
+### Changed (breaking — language)
+
+- **`resume` → `revolve`** ([#525](https://github.com/liebe-magi/abyss-lang/issues/525)) — the loop-continue keyword inside `orbit` is renamed to the themed `revolve` ("another revolution of the orbit", pairing with `eject`'s orbital ejection). Hard switch with no alias: `resume` no longer parses. Migration is a find-and-replace; done now while the user base is small, ahead of a proper deprecation/warning channel planned with the LSP diagnostics work.
+- **`trans` → `transmute`** ([#524](https://github.com/liebe-magi/abyss-lang/issues/524)) — the `materia` conversion method is renamed to the alchemical `transmute`. Hard switch: calling `trans` now raises the usual unknown-method error, with "did you mean: transmute?" surfacing via the existing suggestion machinery.
+
+### Added
+
+- **`abyss align` preserves comments** ([#521](https://github.com/liebe-magi/abyss-lang/issues/521)) — the formatter re-emits line and block comments next to the statements they accompanied: full-line comments stay above their statement (including inside `engrave` / `orbit` blocks), a comment trailing a statement on the same line is re-attached to the formatted line, and end-of-file comments are kept. Previously every comment was silently dropped. Powered by the new byte spans: comments are collected with their spans (`parser::collect_comments`) and interleaved by position (`format::format_program`). Comments in positions the formatter cannot represent (inside an expression, between oracle arms) move to the nearest preceding statement boundary.
+
+### Changed
+
+- **The single `AST` enum is split into `Expr` / `Stmt` / `Pattern`** ([#510](https://github.com/liebe-magi/abyss-lang/issues/510)) — expressions, statements, and oracle match-arm patterns are now distinct types, with `OracleBranch` / `OrbitParam` / `EngraveParam` as plain structs. The evaluator gains honest signatures (`evaluate(&Stmt)` / expression evaluation without the old `Option`-returning probe), the 27-arm `unreachable!()` guard is gone, and `parse` returns `Vec<Stmt>`. `format_ast` is replaced by `format_stmt` / `format_expr` / `format_pattern`. Breaking for `abyss-core` / `abyss-interpreter` consumers; no language-level change — every existing script parses and runs identically.
+- **AST nodes and `EvalError` now carry byte spans instead of point `LineInfo`** ([#510](https://github.com/liebe-magi/abyss-lang/issues/510)) — the parser stores each node's `start..end` byte span (`abyss_core::span::Span`) and diagnostics derive positions at render time, so runtime errors now underline the full offending range instead of a single caret. Pulled forward from the roadmap's v0.8 "Span-tracking Refactor" slot. Breaking for `abyss-core` / `abyss-interpreter` consumers: `LineInfo`, `LineMap`, and `attach_line_info` are gone, and `build_parser` no longer takes a line map. Error message texts are unchanged.
+
+### Removed
+
+- **`abyss_core::semantic` module (`SymbolTable` / `SymbolInfo`)** ([#503](https://github.com/liebe-magi/abyss-lang/issues/503)) — the static-analysis scaffold had zero consumers anywhere in the workspace since its introduction. The roadmap's LSP milestone (v0.8.1) is preceded by the v0.8 span-tracking refactor, and a symbol table without span data would have been rewritten there anyway; git history preserves the removed code. Breaking for `abyss-core` per Cargo 0.x semver, so this ships with the next `0.x.0` bump.
+
+For the full diff including Renovate-driven dependency updates, see the [GitHub compare v0.5.0...v0.6.0](https://github.com/liebe-magi/abyss-lang/compare/v0.5.0...v0.6.0).
+
 ## [0.5.0] - 2026-05-06
 
 A pattern-matching milestone. The `oracle` match-mode arms grew five new powers — guard clauses with `ward`, fresh bindings, and three destructuring shapes (`scroll`, `artifact`, `lexicon`) — composing freely so a single arm can pull values out of nested structured data without follow-up index access. The cycle is intentionally additive: every script that compiled on 0.4.1 keeps compiling.

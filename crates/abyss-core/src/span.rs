@@ -63,3 +63,8 @@ impl<T: Copy + Ord> ChumskySpan for SimpleSpan<T> {
         self.end
     }
 }
+
+/// Byte-offset span into the original source, attached to AST nodes and
+/// runtime errors. Rendering derives line/column (and range underlines)
+/// from this at display time.
+pub type Span = SimpleSpan<usize>;

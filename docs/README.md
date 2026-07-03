@@ -25,13 +25,16 @@ Every fenced code block tagged `abyss` on the site uses the same TextMate gramma
 
 All commands are run from `docs/` in a terminal.
 
-| Command         | Action                                       |
-| :-------------- | :------------------------------------------- |
-| `bun install`   | Install dependencies                         |
-| `bun dev`       | Start the local dev server at `localhost:4321` |
-| `bun build`     | Build the production site to `./dist/`      |
-| `bun preview`   | Preview the production build locally         |
-| `bun astro ...` | Run Astro CLI commands (e.g. `astro check`)  |
+| Command            | Action                                       |
+| :----------------- | :------------------------------------------- |
+| `bun install`      | Install dependencies                         |
+| `bun run build:wasm` | Compile `crates/abyss-wasm` for the Playground (output → `public/wasm/`) |
+| `bun dev`          | Start the local dev server at `localhost:4321` (rebuilds wasm first) |
+| `bun build`        | Build the production site to `./dist/` (rebuilds wasm first) |
+| `bun preview`      | Preview the production build locally         |
+| `bun astro ...`    | Run Astro CLI commands (e.g. `astro check`)  |
+
+The Playground page (`/playground/`) compiles `abyss-core` and `abyss-interpreter` to WebAssembly via `wasm-pack` and ships the artifact under `public/wasm/`. Running `bun dev` or `bun build` rebuilds it automatically; `bun install` does not. The `wasm-pack` binary must be on `$PATH` — install it once with `cargo install wasm-pack`.
 
 ## Contributing
 

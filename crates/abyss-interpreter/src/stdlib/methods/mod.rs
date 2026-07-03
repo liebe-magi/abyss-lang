@@ -8,7 +8,7 @@ use crate::eval::artifacts::collect_field_chain;
 use crate::eval::values::describe_value;
 use crate::eval::values::eval_result_to_value_checked;
 use crate::eval::{EvalError, EvalResult};
-use abyss_core::ast::{AST, LineInfo, Type};
+use abyss_core::ast::{Expr, Span, Type};
 use std::collections::HashMap;
 
 pub fn get_all_builtin_methods() -> BuiltinMethodRegistry {
@@ -21,12 +21,12 @@ pub fn get_all_builtin_methods() -> BuiltinMethodRegistry {
 
 pub fn dispatch_builtin_method(
     env: &mut RuntimeEnv,
-    receiver_ast: &AST,
+    receiver_ast: &Expr,
     receiver_var_name: Option<&str>,
     receiver_value: Value,
     method_name: &str,
     args: Vec<CallArg>,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let receiver_type = receiver_type(&receiver_value);
     let fallback_type = Type::Materia;
@@ -57,7 +57,7 @@ pub fn dispatch_builtin_method(
                     describe_value(&receiver_value),
                     hint
                 ),
-                line_info.clone(),
+                *line_info,
             )
         })?;
 
@@ -102,11 +102,11 @@ pub(super) fn method_table_for(
 
 pub(super) fn ensure_mutable_receiver(
     env: &RuntimeEnv,
-    receiver_ast: &AST,
+    receiver_ast: &Expr,
     receiver_var_name: Option<&str>,
     collection_kind: &str,
     method_name: &str,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<(), EvalError> {
     let base_name = receiver_var_name
         .map(|name| name.to_string())
@@ -118,13 +118,13 @@ pub(super) fn ensure_mutable_receiver(
                 "Method {}::{} requires a morph receiver, but the expression is not tied to a mutable variable",
                 collection_kind, method_name
             ),
-            line_info.clone(),
+            *line_info,
         ));
     };
 
     let var_info = env
         .get_var(&var_name)
-        .ok_or_else(|| EvalError::UndefinedVariable(var_name.clone(), line_info.clone()))?;
+        .ok_or_else(|| EvalError::UndefinedVariable(var_name.clone(), *line_info))?;
 
     if var_info.is_morph {
         Ok(())
@@ -134,7 +134,7 @@ pub(super) fn ensure_mutable_receiver(
                 "Cannot call {}::{} with immutable receiver '{}'",
                 collection_kind, method_name, var_name
             ),
-            line_info.clone(),
+            *line_info,
         ))
     }
 }
@@ -142,15 +142,14 @@ pub(super) fn ensure_mutable_receiver(
 pub(super) fn call_arg_to_value(
     arg: CallArg,
     context: &str,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<Value, EvalError> {
     match arg.value {
         EvalResult::Data(value) => Ok(value),
-        EvalResult::Artifact(handle) => Ok(Value::Artifact(handle)),
-        EvalResult::Revealed(_) | EvalResult::Resume(_) | EvalResult::Eject(_) => {
+        EvalResult::Revealed(_) | EvalResult::Revolve(_) | EvalResult::Eject(_) => {
             Err(EvalError::InvalidOperation(
                 format!("{} cannot accept control-flow results", context),
-                line_info.clone(),
+                *line_info,
             ))
         }
     }
@@ -159,17 +158,17 @@ pub(super) fn call_arg_to_value(
 pub(super) fn expect_glyph_argument(
     args: Vec<CallArg>,
     method_name: &str,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<Type, EvalError> {
     if args.len() != 1 {
         return Err(EvalError::InvalidOperation(
             format!("{} expects exactly one glyph argument", method_name),
-            line_info.clone(),
+            *line_info,
         ));
     }
 
     let glyph_arg = args.into_iter().next().expect("argument is present");
-    let glyph_value = eval_result_to_value_checked(glyph_arg.value, line_info.clone())?;
+    let glyph_value = eval_result_to_value_checked(glyph_arg.value, *line_info)?;
     match glyph_value {
         Value::Glyph(ty) => Ok(ty),
         other => Err(EvalError::InvalidOperation(
@@ -178,7 +177,7 @@ pub(super) fn expect_glyph_argument(
                 method_name,
                 describe_value(&other)
             ),
-            line_info.clone(),
+            *line_info,
         )),
     }
 }
@@ -199,7 +198,7 @@ mod tests {
         let mut env = RuntimeEnv::new();
         let result = dispatch_builtin_method(
             &mut env,
-            &AST::Abyss(None),
+            &Expr::Abyss(None),
             None,
             Value::Abyss,
             "unknown_method",
@@ -221,7 +220,7 @@ mod tests {
         let scroll_value = Value::Scroll(std::rc::Rc::new(std::cell::RefCell::new(vec![])));
         let err = dispatch_builtin_method(
             &mut env,
-            &AST::Abyss(None),
+            &Expr::Abyss(None),
             None,
             scroll_value,
             "scrieb",
@@ -241,16 +240,16 @@ mod tests {
 
     #[test]
     fn dispatch_unknown_method_falls_back_to_materia_table_for_suggestions() {
-        // `trans` lives on the Materia fallback table; a typo on a non-Materia
+        // `transmute` lives on the Materia fallback table; a typo on a non-Materia
         // receiver should still surface it as a suggestion.
         let mut env = env_with_builtin_methods();
         let scroll_value = Value::Scroll(std::rc::Rc::new(std::cell::RefCell::new(vec![])));
         let err = dispatch_builtin_method(
             &mut env,
-            &AST::Abyss(None),
+            &Expr::Abyss(None),
             None,
             scroll_value,
-            "tarns",
+            "transmet",
             vec![],
             &None,
         )
@@ -258,7 +257,7 @@ mod tests {
 
         match err {
             EvalError::InvalidOperation(msg, _) => {
-                assert!(msg.contains("did you mean: trans"), "msg: {msg}");
+                assert!(msg.contains("did you mean: transmute"), "msg: {msg}");
             }
             other => panic!("expected invalid operation, got {:?}", other),
         }
@@ -270,7 +269,7 @@ mod tests {
         let scroll_value = Value::Scroll(std::rc::Rc::new(std::cell::RefCell::new(vec![])));
         let err = dispatch_builtin_method(
             &mut env,
-            &AST::Abyss(None),
+            &Expr::Abyss(None),
             None,
             scroll_value,
             "completely_unrelated_method_name",

@@ -26,6 +26,7 @@ export default defineConfig({
                     items: [
                         { label: 'Welcome', slug: 'index' },
                         { label: 'Getting Started', slug: 'getting-started' },
+                        { label: 'Playground', slug: 'playground' },
                     ],
                 },
                 {
@@ -62,4 +63,17 @@ export default defineConfig({
     ],
 
     adapter: vercel(),
+
+    vite: {
+        build: {
+            rollupOptions: {
+                // The Playground component dynamically imports the
+                // wasm-pack output via `/wasm/abyss_wasm.js`. That URL is
+                // served as a static asset at runtime (the file lives
+                // under `docs/public/wasm/`), so Vite/Rollup must not try
+                // to resolve it during the docs-site bundle step.
+                external: [/^\/wasm\//],
+            },
+        },
+    },
 });

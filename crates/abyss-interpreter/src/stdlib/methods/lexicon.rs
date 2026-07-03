@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use crate::env::{BuiltinMethodRegistry, CallArg, RuntimeEnv, Value};
 use crate::eval::{EvalError, EvalResult};
-use abyss_core::ast::{AST, LineInfo, Type};
+use abyss_core::ast::{Expr, Span, Type};
 
 use super::{call_arg_to_value, ensure_mutable_receiver, method_table_for};
 
@@ -18,17 +18,17 @@ pub(super) fn register_methods(registry: &mut BuiltinMethodRegistry) {
 
 fn lexicon_tally(
     _env: &mut RuntimeEnv,
-    _receiver_ast: &AST,
+    _receiver_ast: &Expr,
     _receiver_var_name: Option<&str>,
     receiver_value: Value,
     args: Vec<CallArg>,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let entries = expect_lexicon(receiver_value);
     if !args.is_empty() {
         return Err(EvalError::InvalidOperation(
             "tally() does not take any arguments".to_string(),
-            line_info.clone(),
+            *line_info,
         ));
     }
     Ok(EvalResult::data(Value::Arcana(
@@ -38,11 +38,11 @@ fn lexicon_tally(
 
 fn lexicon_define(
     env: &mut RuntimeEnv,
-    receiver_ast: &AST,
+    receiver_ast: &Expr,
     receiver_var_name: Option<&str>,
     receiver_value: Value,
     args: Vec<CallArg>,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let entries = expect_lexicon(receiver_value);
     ensure_mutable_receiver(
@@ -56,7 +56,7 @@ fn lexicon_define(
     if args.len() != 2 {
         return Err(EvalError::InvalidOperation(
             "define() expects a rune key and a value".to_string(),
-            line_info.clone(),
+            *line_info,
         ));
     }
 
@@ -67,7 +67,7 @@ fn lexicon_define(
         _ => {
             return Err(EvalError::TypeError(
                 "define() key must be a rune".to_string(),
-                line_info.clone(),
+                *line_info,
             ));
         }
     };
@@ -78,11 +78,11 @@ fn lexicon_define(
 
 fn lexicon_expunge(
     env: &mut RuntimeEnv,
-    receiver_ast: &AST,
+    receiver_ast: &Expr,
     receiver_var_name: Option<&str>,
     receiver_value: Value,
     args: Vec<CallArg>,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let entries = expect_lexicon(receiver_value);
     ensure_mutable_receiver(
@@ -96,7 +96,7 @@ fn lexicon_expunge(
     if args.len() != 1 {
         return Err(EvalError::InvalidOperation(
             "expunge() expects exactly one rune key".to_string(),
-            line_info.clone(),
+            *line_info,
         ));
     }
 
@@ -110,7 +110,7 @@ fn lexicon_expunge(
         _ => {
             return Err(EvalError::TypeError(
                 "expunge() key must be a rune".to_string(),
-                line_info.clone(),
+                *line_info,
             ));
         }
     };
@@ -120,17 +120,17 @@ fn lexicon_expunge(
 
 fn lexicon_glossary(
     _env: &mut RuntimeEnv,
-    _receiver_ast: &AST,
+    _receiver_ast: &Expr,
     _receiver_var_name: Option<&str>,
     receiver_value: Value,
     args: Vec<CallArg>,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<EvalResult, EvalError> {
     let entries = expect_lexicon(receiver_value);
     if !args.is_empty() {
         return Err(EvalError::InvalidOperation(
             "glossary() does not take any arguments".to_string(),
-            line_info.clone(),
+            *line_info,
         ));
     }
 
@@ -173,7 +173,7 @@ mod tests {
         let mut env = RuntimeEnv::new();
         let result = lexicon_tally(
             &mut env,
-            &AST::Abyss(None),
+            &Expr::Abyss(None),
             None,
             dummy_lexicon(),
             dummy_args(1),
@@ -190,7 +190,7 @@ mod tests {
         let mut env = RuntimeEnv::new();
         let _result = lexicon_define(
             &mut env,
-            &AST::Abyss(None),
+            &Expr::Abyss(None),
             Some("lex"), // Mutable receiver needs a name
             dummy_lexicon(),
             dummy_args(1), // Needs 2
@@ -216,7 +216,7 @@ mod tests {
         // Now call with wrong args
         let result = lexicon_define(
             &mut env,
-            &AST::Var("lex".to_string(), None),
+            &Expr::Var("lex".to_string(), None),
             Some("lex"),
             dummy_lexicon(),
             dummy_args(1),
@@ -242,7 +242,7 @@ mod tests {
 
         let result = lexicon_expunge(
             &mut env,
-            &AST::Var("lex".to_string(), None),
+            &Expr::Var("lex".to_string(), None),
             Some("lex"),
             dummy_lexicon(),
             dummy_args(0), // Needs 1
@@ -260,7 +260,7 @@ mod tests {
         let mut env = RuntimeEnv::new();
         let result = lexicon_glossary(
             &mut env,
-            &AST::Abyss(None),
+            &Expr::Abyss(None),
             None,
             dummy_lexicon(),
             dummy_args(1),

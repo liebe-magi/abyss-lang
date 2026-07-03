@@ -1,5 +1,5 @@
 use crate::env::{ArtifactHandle, ArtifactValue, Value};
-use abyss_core::ast::{LineInfo, Type};
+use abyss_core::ast::{Span, Type};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -7,17 +7,13 @@ use std::rc::Rc;
 use super::result::{EvalError, EvalResult};
 
 pub(crate) fn value_to_eval_result(value: &Value) -> EvalResult {
-    match value {
-        Value::Artifact(handle) => EvalResult::Artifact(handle.clone()),
-        _ => EvalResult::data(value.clone()),
-    }
+    EvalResult::data(value.clone())
 }
 
 pub(crate) fn eval_result_to_value_any(result: EvalResult) -> Result<Value, EvalError> {
     match result {
         EvalResult::Data(value) => Ok(value),
-        EvalResult::Artifact(handle) => Ok(Value::Artifact(handle)),
-        EvalResult::Revealed(_) | EvalResult::Resume(_) | EvalResult::Eject(_) => {
+        EvalResult::Revealed(_) | EvalResult::Revolve(_) | EvalResult::Eject(_) => {
             Err(EvalError::InvalidOperation(
                 "Control-flow result cannot be treated as data".to_string(),
                 None,
@@ -28,11 +24,11 @@ pub(crate) fn eval_result_to_value_any(result: EvalResult) -> Result<Value, Eval
 
 pub(crate) fn eval_result_to_value_checked(
     result: EvalResult,
-    line_info: Option<LineInfo>,
+    line_info: Option<Span>,
 ) -> Result<Value, EvalError> {
     eval_result_to_value_any(result).map_err(|err| match err {
-        EvalError::InvalidOperation(msg, _) => EvalError::InvalidOperation(msg, line_info.clone()),
-        EvalError::TypeError(msg, _) => EvalError::TypeError(msg, line_info.clone()),
+        EvalError::InvalidOperation(msg, _) => EvalError::InvalidOperation(msg, line_info),
+        EvalError::TypeError(msg, _) => EvalError::TypeError(msg, line_info),
         other => other,
     })
 }
@@ -40,15 +36,14 @@ pub(crate) fn eval_result_to_value_checked(
 pub(crate) fn convert_to_typed_value(
     result: EvalResult,
     expected: &Type,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<Value, EvalError> {
     let value = match result {
         EvalResult::Data(value) => value,
-        EvalResult::Artifact(handle) => Value::Artifact(handle),
         control => {
             return Err(EvalError::InvalidOperation(
                 format!("Expected data value but received {:?}", control),
-                line_info.clone(),
+                *line_info,
             ));
         }
     };
@@ -60,59 +55,35 @@ pub(crate) fn convert_to_typed_value(
         }),
         Type::Arcana => match value {
             Value::Arcana(_) => Ok(value),
-            _ => Err(EvalError::TypeError(
-                "Expected arcana value".to_string(),
-                line_info.clone(),
-            )),
+            _ => Err(EvalError::ExpectedType(Type::Arcana, *line_info)),
         },
         Type::Aether => match value {
             Value::Aether(_) => Ok(value),
-            _ => Err(EvalError::TypeError(
-                "Expected aether value".to_string(),
-                line_info.clone(),
-            )),
+            _ => Err(EvalError::ExpectedType(Type::Aether, *line_info)),
         },
         Type::Rune => match value {
             Value::Rune(_) => Ok(value),
-            _ => Err(EvalError::TypeError(
-                "Expected rune value".to_string(),
-                line_info.clone(),
-            )),
+            _ => Err(EvalError::ExpectedType(Type::Rune, *line_info)),
         },
         Type::Omen => match value {
             Value::Omen(_) => Ok(value),
-            _ => Err(EvalError::TypeError(
-                "Expected omen value".to_string(),
-                line_info.clone(),
-            )),
+            _ => Err(EvalError::ExpectedType(Type::Omen, *line_info)),
         },
         Type::Abyss => match value {
             Value::Abyss => Ok(value),
-            _ => Err(EvalError::TypeError(
-                "Expected abyss value".to_string(),
-                line_info.clone(),
-            )),
+            _ => Err(EvalError::ExpectedType(Type::Abyss, *line_info)),
         },
         Type::Scroll => match value {
             Value::Scroll(_) => Ok(value),
-            _ => Err(EvalError::TypeError(
-                "Expected scroll value".to_string(),
-                line_info.clone(),
-            )),
+            _ => Err(EvalError::ExpectedType(Type::Scroll, *line_info)),
         },
         Type::Lexicon => match value {
             Value::Lexicon(_) => Ok(value),
-            _ => Err(EvalError::TypeError(
-                "Expected lexicon value".to_string(),
-                line_info.clone(),
-            )),
+            _ => Err(EvalError::ExpectedType(Type::Lexicon, *line_info)),
         },
         Type::Glyph => match value {
             Value::Glyph(_) => Ok(value),
-            _ => Err(EvalError::TypeError(
-                "Expected glyph value".to_string(),
-                line_info.clone(),
-            )),
+            _ => Err(EvalError::ExpectedType(Type::Glyph, *line_info)),
         },
         Type::Artifact(expected) => match value {
             Value::Artifact(handle) => {
@@ -120,18 +91,16 @@ pub(crate) fn convert_to_typed_value(
                 if &borrowed.type_name == expected {
                     Ok(Value::Artifact(clone_artifact_handle(&handle)))
                 } else {
-                    Err(EvalError::TypeError(
-                        format!(
-                            "Expected artifact of type {} but received {}",
-                            expected, borrowed.type_name
-                        ),
-                        line_info.clone(),
-                    ))
+                    Err(EvalError::ArtifactTypeMismatch {
+                        expected: expected.clone(),
+                        found: borrowed.type_name.clone(),
+                        line_info: *line_info,
+                    })
                 }
             }
-            _ => Err(EvalError::TypeError(
-                format!("Expected artifact of type {}", expected),
-                line_info.clone(),
+            _ => Err(EvalError::ExpectedType(
+                Type::Artifact(expected.clone()),
+                *line_info,
             )),
         },
     }
@@ -139,53 +108,41 @@ pub(crate) fn convert_to_typed_value(
 
 pub(crate) fn extract_arcana(
     result: &EvalResult,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<i64, EvalError> {
     match result {
         EvalResult::Data(Value::Arcana(v)) => Ok(*v),
-        _ => Err(EvalError::TypeError(
-            "Expected arcana value".to_string(),
-            line_info.clone(),
-        )),
+        _ => Err(EvalError::ExpectedType(Type::Arcana, *line_info)),
     }
 }
 
 pub(crate) fn extract_aether(
     result: &EvalResult,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<f64, EvalError> {
     match result {
         EvalResult::Data(Value::Aether(v)) => Ok(*v),
-        _ => Err(EvalError::TypeError(
-            "Expected aether value".to_string(),
-            line_info.clone(),
-        )),
+        _ => Err(EvalError::ExpectedType(Type::Aether, *line_info)),
     }
 }
 
 pub(crate) fn extract_rune(
     result: &EvalResult,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<String, EvalError> {
     match result {
         EvalResult::Data(Value::Rune(rc)) => Ok(rc.as_ref().clone()),
-        _ => Err(EvalError::TypeError(
-            "Expected rune value".to_string(),
-            line_info.clone(),
-        )),
+        _ => Err(EvalError::ExpectedType(Type::Rune, *line_info)),
     }
 }
 
 pub(crate) fn extract_omen(
     result: &EvalResult,
-    line_info: &Option<LineInfo>,
+    line_info: &Option<Span>,
 ) -> Result<bool, EvalError> {
     match result {
         EvalResult::Data(Value::Omen(v)) => Ok(*v),
-        _ => Err(EvalError::TypeError(
-            "Expected omen value".to_string(),
-            line_info.clone(),
-        )),
+        _ => Err(EvalError::ExpectedType(Type::Omen, *line_info)),
     }
 }
 
@@ -253,25 +210,11 @@ fn clone_lexicon(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{cell::RefCell, collections::HashMap, rc::Rc};
+    use crate::eval::test_support::artifact_handle;
+    use std::{cell::RefCell, rc::Rc};
 
-    fn artifact_handle(name: &str, fields: Vec<(&str, Value)>) -> ArtifactHandle {
-        let mut map = HashMap::new();
-        let mut order = Vec::new();
-        for (key, value) in fields {
-            let key_string = key.to_string();
-            order.push(key_string.clone());
-            map.insert(key_string, value);
-        }
-        Rc::new(RefCell::new(ArtifactValue {
-            type_name: name.to_string(),
-            fields: map,
-            field_order: order,
-        }))
-    }
-
-    fn line() -> Option<LineInfo> {
-        Some(LineInfo::new(2, 3))
+    fn line() -> Option<Span> {
+        Some(Span::new(2, 3))
     }
 
     #[test]
@@ -284,7 +227,9 @@ mod tests {
 
         let handle = artifact_handle("Glyph", vec![("power", Value::Arcana(3))]);
         match value_to_eval_result(&Value::Artifact(handle.clone())) {
-            EvalResult::Artifact(result_handle) => assert!(Rc::ptr_eq(&handle, &result_handle)),
+            EvalResult::Data(Value::Artifact(result_handle)) => {
+                assert!(Rc::ptr_eq(&handle, &result_handle))
+            }
             other => panic!("expected artifact handle, got {:?}", other),
         }
     }
@@ -292,12 +237,12 @@ mod tests {
     #[test]
     fn eval_result_to_value_checked_overrides_line_info() {
         let info = line();
-        let err = eval_result_to_value_checked(EvalResult::Resume(None), info.clone())
+        let err = eval_result_to_value_checked(EvalResult::Revolve(None), info)
             .expect_err("control flow should error");
         match err {
             EvalError::InvalidOperation(_, returned) => {
-                let returned = returned.expect("line info should propagate");
-                assert_eq!((returned.line, returned.column), (2, 3));
+                let returned = returned.expect("span should propagate");
+                assert_eq!((returned.start(), returned.end()), (2, 3));
             }
             other => panic!("unexpected error {:?}", other),
         }
@@ -318,7 +263,7 @@ mod tests {
         )
         .expect_err("type mismatch should error");
         match rune_err {
-            EvalError::TypeError(_, info) => assert!(info.is_some()),
+            EvalError::ExpectedType(Type::Arcana, info) => assert!(info.is_some()),
             other => panic!("expected type error, got {:?}", other),
         }
 
@@ -351,12 +296,17 @@ mod tests {
         )
         .expect_err("mismatched artifact type should fail");
         match wrong_artifact {
-            EvalError::TypeError(msg, _) => assert!(msg.contains("Glyph")),
+            EvalError::ArtifactTypeMismatch {
+                expected, found, ..
+            } => {
+                assert_eq!(expected, "Glyph");
+                assert_eq!(found, "Sigil");
+            }
             other => panic!("expected type error, got {:?}", other),
         }
 
         let info = line();
-        let control_err = convert_to_typed_value(EvalResult::Resume(None), &Type::Arcana, &info)
+        let control_err = convert_to_typed_value(EvalResult::Revolve(None), &Type::Arcana, &info)
             .expect_err("control flow should not convert");
         match control_err {
             EvalError::InvalidOperation(_, _) => {}
@@ -391,19 +341,61 @@ mod tests {
     }
 
     #[test]
+    fn convert_to_typed_value_rejects_each_scalar_mismatch() {
+        let info = line();
+        let cases: Vec<(Type, Value)> = vec![
+            (Type::Arcana, Value::Abyss),
+            (Type::Aether, Value::Arcana(1)),
+            (Type::Rune, Value::Arcana(1)),
+            (Type::Omen, Value::Arcana(1)),
+            (Type::Abyss, Value::Arcana(1)),
+            (Type::Scroll, Value::Arcana(1)),
+            (Type::Lexicon, Value::Arcana(1)),
+            (Type::Glyph, Value::Arcana(1)),
+        ];
+        for (expected, value) in cases {
+            let err = convert_to_typed_value(EvalResult::data(value), &expected, &info)
+                .expect_err("mismatched value should fail");
+            match err {
+                EvalError::ExpectedType(ty, returned) => {
+                    assert_eq!(ty, expected);
+                    assert!(returned.is_some());
+                }
+                other => panic!("expected ExpectedType for {:?}, got {:?}", expected, other),
+            }
+        }
+
+        let err = convert_to_typed_value(
+            EvalResult::data(Value::Arcana(1)),
+            &Type::Artifact("Player".into()),
+            &info,
+        )
+        .expect_err("non-artifact should fail artifact conversion");
+        match err {
+            EvalError::ExpectedType(Type::Artifact(name), _) => assert_eq!(name, "Player"),
+            other => panic!("expected artifact ExpectedType, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn extractors_error_on_wrong_type() {
         let info = line();
         let err = extract_rune(&EvalResult::data(Value::Arcana(1)), &info).unwrap_err();
         match err {
-            EvalError::TypeError(_, info) => assert!(info.is_some()),
+            EvalError::ExpectedType(Type::Rune, info) => assert!(info.is_some()),
             other => panic!("expected type error, got {:?}", other),
         }
 
-        let resume = EvalResult::Resume(None);
+        let err = extract_arcana(&EvalResult::data(Value::Abyss), &info).unwrap_err();
+        assert!(matches!(err, EvalError::ExpectedType(Type::Arcana, _)));
+        let err = extract_omen(&EvalResult::data(Value::Abyss), &info).unwrap_err();
+        assert!(matches!(err, EvalError::ExpectedType(Type::Omen, _)));
+
+        let revolve = EvalResult::Revolve(None);
         let info = line();
-        let err = extract_aether(&resume, &info).unwrap_err();
+        let err = extract_aether(&revolve, &info).unwrap_err();
         match err {
-            EvalError::TypeError(_, info) => assert!(info.is_some()),
+            EvalError::ExpectedType(Type::Aether, info) => assert!(info.is_some()),
             other => panic!("expected type error from control value, got {:?}", other),
         }
     }

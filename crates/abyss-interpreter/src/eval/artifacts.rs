@@ -426,7 +426,7 @@ mod tests {
             other => panic!("expected invalid operation, got {:?}", other),
         }
 
-        let control_err = expect_artifact_from_eval(EvalResult::Resume(None), &None).unwrap_err();
+        let control_err = expect_artifact_from_eval(EvalResult::Revolve(None), &None).unwrap_err();
         match control_err {
             EvalError::InvalidOperation(_, _) => {}
             other => panic!("expected invalid operation, got {:?}", other),

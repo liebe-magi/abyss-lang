@@ -79,7 +79,7 @@ fn stmt_span(stmt: &Stmt) -> Option<crate::span::Span> {
         | Stmt::Reveal(_, span)
         | Stmt::Block(_, span)
         | Stmt::Comment(_, span)
-        | Stmt::Resume(_, span)
+        | Stmt::Revolve(_, span)
         | Stmt::Eject(_, span)
         | Stmt::VarAssign { span, .. }
         | Stmt::Assignment { span, .. }
@@ -221,9 +221,9 @@ fn format_stmt_body_inner(
             );
             result
         }
-        Stmt::Resume(value, _) => match value {
-            Some(identifier) => format!("resume {}", identifier),
-            None => "resume".to_string(),
+        Stmt::Revolve(value, _) => match value {
+            Some(identifier) => format!("revolve {}", identifier),
+            None => "revolve".to_string(),
         },
         Stmt::Eject(value, _) => match value {
             Some(identifier) => format!("eject {}", identifier),

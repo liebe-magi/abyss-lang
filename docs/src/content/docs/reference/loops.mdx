@@ -3,7 +3,7 @@ title: Loops
 description: Orbit over ranges, tuples, or open-ended rituals.
 ---
 
-`orbit` controls iteration in AbySS. Pair it with `resume` and `eject` for fine-grained flow.
+`orbit` controls iteration in AbySS. Pair it with `revolve` and `eject` for fine-grained flow.
 
 ## Simple Range
 
@@ -45,14 +45,14 @@ orbit (i = 0..3, j = 0..3) {
 
 ## Flow Control
 
-- `resume <loop-var>` skips to the next iteration of the named loop.
+- `revolve <loop-var>` skips to the next iteration of the named loop.
 - `eject <loop-var>` breaks out of the specified loop.
 
 ```abyss
 orbit (i = 0..3) {
     orbit (j = 0..3) {
         oracle (i == j) {
-            (boon) => resume j;
+            (boon) => revolve j;
         };
         unveil(i, " ", j);
     }
@@ -70,4 +70,4 @@ orbit (i = 0..3) {
 }
 ```
 
-`resume` and `eject` understand nesting, so you maintain readable flow even in complex rituals.
+`revolve` and `eject` understand nesting, so you maintain readable flow even in complex rituals.

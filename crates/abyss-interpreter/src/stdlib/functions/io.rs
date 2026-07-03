@@ -102,8 +102,8 @@ pub(crate) fn format_eval_result(
             "Cannot unveil a Revealed value (control flow construct)".to_string(),
             *line,
         )),
-        EvalResult::Resume(_) => Err(EvalError::InvalidOperation(
-            "Cannot unveil a Resume value (control flow construct)".to_string(),
+        EvalResult::Revolve(_) => Err(EvalError::InvalidOperation(
+            "Cannot unveil a Revolve value (control flow construct)".to_string(),
             *line,
         )),
         EvalResult::Eject(_) => Err(EvalError::InvalidOperation(

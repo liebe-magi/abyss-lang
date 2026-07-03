@@ -14,8 +14,8 @@ Add a condition that must hold for the arm to fire. The `ward` keyword sits betw
 ```abyss
 forge n: arcana = 7;
 oracle (n) {
-    (x) ward x > 0 => unveil("positive: " + x.trans(rune));
-    (x) ward x < 0 => unveil("negative: " + x.trans(rune));
+    (x) ward x > 0 => unveil("positive: " + x.transmute(rune));
+    (x) ward x < 0 => unveil("negative: " + x.transmute(rune));
     _ => unveil("zero");
 };
 ```
@@ -49,8 +49,8 @@ Destructure a `scroll` scrutinee into its elements. Each element is one of:
 forge xs: scroll = [10, 20, 30, 40];
 oracle (xs) {
     [] => unveil("empty");
-    [only] => unveil("just " + only.trans(rune));
-    [head, ..rest] => unveil("head=" + head.trans(rune) + ", " + rest.tally().trans(rune) + " more");
+    [only] => unveil("just " + only.transmute(rune));
+    [head, ..rest] => unveil("head=" + head.transmute(rune) + ", " + rest.tally().transmute(rune) + " more");
 };
 ```
 
@@ -96,7 +96,7 @@ Destructure a `lexicon` scrutinee by listing the keys you care about. The shape 
 forge config: lexicon = { "name": "Ardyn", "port": 8080, "active": boon };
 oracle (config) {
     { "name": "Ardyn", "active": boon } => unveil("the chosen one is online");
-    { "name": who, "port": p } => unveil(who + "@" + p.trans(rune));
+    { "name": who, "port": p } => unveil(who + "@" + p.transmute(rune));
     {} => unveil("any other lexicon");
 };
 ```
@@ -111,7 +111,7 @@ The three destructuring forms (scroll, artifact, lexicon) recurse, and they also
 forge bag: lexicon = { "name": "satchel", "items": ["sword", "shield", "rune"] };
 oracle (bag) {
     { "name": label, "items": [first, ..tail] } =>
-        unveil(label + " holds " + first + " plus " + tail.tally().trans(rune) + " more");
+        unveil(label + " holds " + first + " plus " + tail.tally().transmute(rune) + " more");
 };
 ```
 

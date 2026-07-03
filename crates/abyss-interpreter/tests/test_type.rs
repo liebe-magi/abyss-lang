@@ -6,7 +6,7 @@ use common::test_base;
 
 #[test]
 fn test_cast_arcana_to_aether() {
-    let input = "42.trans(aether);";
+    let input = "42.transmute(aether);";
     match test_base(input) {
         Ok(results) => {
             assert_eq!(results.len(), 1);
@@ -21,7 +21,7 @@ fn test_cast_arcana_to_aether() {
 
 #[test]
 fn test_cast_aether_to_arcana() {
-    let input = "3.14.trans(arcana);";
+    let input = "3.14.transmute(arcana);";
     match test_base(input) {
         Ok(results) => {
             assert_eq!(results.len(), 1);
@@ -36,7 +36,7 @@ fn test_cast_aether_to_arcana() {
 
 #[test]
 fn test_cast_rune_to_aether() {
-    let input = "\"3.14\".trans(aether);";
+    let input = "\"3.14\".transmute(aether);";
     match test_base(input) {
         Ok(results) => {
             assert_eq!(results.len(), 1);
@@ -56,7 +56,7 @@ fn test_cast_rune_to_aether() {
 
 #[test]
 fn test_cast_rune_to_arcana() {
-    let input = "\"123\".trans(arcana);";
+    let input = "\"123\".transmute(arcana);";
     match test_base(input) {
         Ok(results) => {
             assert_eq!(results.len(), 1);
@@ -71,7 +71,7 @@ fn test_cast_rune_to_arcana() {
 
 #[test]
 fn test_cast_arcana_to_rune() {
-    let input = "123.trans(rune);";
+    let input = "123.transmute(rune);";
     match test_base(input) {
         Ok(results) => {
             assert_eq!(results.len(), 1);
@@ -86,7 +86,7 @@ fn test_cast_arcana_to_rune() {
 
 #[test]
 fn test_cast_aether_to_rune() {
-    let input = "3.14.trans(rune);";
+    let input = "3.14.transmute(rune);";
     match test_base(input) {
         Ok(results) => {
             assert_eq!(results.len(), 1);
@@ -101,7 +101,7 @@ fn test_cast_aether_to_rune() {
 
 #[test]
 fn trans_requires_glyph_argument() {
-    let input = "42.trans(42);";
+    let input = "42.transmute(42);";
     match test_base(input) {
         Ok(_) => panic!("expected glyph validation error"),
         Err(err) => match err.downcast_ref::<EvalError>() {

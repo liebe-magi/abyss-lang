@@ -13,7 +13,7 @@ pub(crate) fn value_to_eval_result(value: &Value) -> EvalResult {
 pub(crate) fn eval_result_to_value_any(result: EvalResult) -> Result<Value, EvalError> {
     match result {
         EvalResult::Data(value) => Ok(value),
-        EvalResult::Revealed(_) | EvalResult::Resume(_) | EvalResult::Eject(_) => {
+        EvalResult::Revealed(_) | EvalResult::Revolve(_) | EvalResult::Eject(_) => {
             Err(EvalError::InvalidOperation(
                 "Control-flow result cannot be treated as data".to_string(),
                 None,
@@ -237,7 +237,7 @@ mod tests {
     #[test]
     fn eval_result_to_value_checked_overrides_line_info() {
         let info = line();
-        let err = eval_result_to_value_checked(EvalResult::Resume(None), info)
+        let err = eval_result_to_value_checked(EvalResult::Revolve(None), info)
             .expect_err("control flow should error");
         match err {
             EvalError::InvalidOperation(_, returned) => {
@@ -306,7 +306,7 @@ mod tests {
         }
 
         let info = line();
-        let control_err = convert_to_typed_value(EvalResult::Resume(None), &Type::Arcana, &info)
+        let control_err = convert_to_typed_value(EvalResult::Revolve(None), &Type::Arcana, &info)
             .expect_err("control flow should not convert");
         match control_err {
             EvalError::InvalidOperation(_, _) => {}
@@ -391,9 +391,9 @@ mod tests {
         let err = extract_omen(&EvalResult::data(Value::Abyss), &info).unwrap_err();
         assert!(matches!(err, EvalError::ExpectedType(Type::Omen, _)));
 
-        let resume = EvalResult::Resume(None);
+        let revolve = EvalResult::Revolve(None);
         let info = line();
-        let err = extract_aether(&resume, &info).unwrap_err();
+        let err = extract_aether(&revolve, &info).unwrap_err();
         match err {
             EvalError::ExpectedType(Type::Aether, info) => assert!(info.is_some()),
             other => panic!("expected type error from control value, got {:?}", other),

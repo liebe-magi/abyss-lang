@@ -600,7 +600,7 @@ fn match_artifact_pattern(
                 let pattern_result = evaluate_expr(other, env)?;
                 let pattern_value = match pattern_result {
                     EvalResult::Data(value) => value,
-                    EvalResult::Revealed(_) | EvalResult::Resume(_) | EvalResult::Eject(_) => {
+                    EvalResult::Revealed(_) | EvalResult::Revolve(_) | EvalResult::Eject(_) => {
                         return Err(EvalError::InvalidOperation(
                             "Artifact field pattern compare must yield a value".to_string(),
                             *line_info,
@@ -713,7 +713,7 @@ fn match_lexicon_pattern(
                 let pattern_result = evaluate_expr(other, env)?;
                 let pattern_value = match pattern_result {
                     EvalResult::Data(value) => value,
-                    EvalResult::Revealed(_) | EvalResult::Resume(_) | EvalResult::Eject(_) => {
+                    EvalResult::Revealed(_) | EvalResult::Revolve(_) | EvalResult::Eject(_) => {
                         return Err(EvalError::InvalidOperation(
                             "Lexicon entry pattern compare must yield a value".to_string(),
                             *line_info,

@@ -1108,3 +1108,39 @@ fn test_aether_pow_assign() {
         Err(e) => panic!("Error: {:?}", e),
     }
 }
+
+#[test]
+fn math_rituals_evaluate() {
+    let input = r#"
+abs(-7);
+abs(-2.5);
+sqrt(9.0);
+floor(2.9);
+ceil(2.1);
+"#;
+    let results = test_base(input).expect("math rituals should evaluate");
+    assert!(matches!(&results[0], EvalResult::Data(Value::Arcana(7))));
+    match &results[1] {
+        EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 2.5),
+        other => panic!("expected aether, got {:?}", other),
+    }
+    match &results[2] {
+        EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 3.0),
+        other => panic!("expected aether, got {:?}", other),
+    }
+    assert!(matches!(&results[3], EvalResult::Data(Value::Arcana(2))));
+    assert!(matches!(&results[4], EvalResult::Data(Value::Arcana(3))));
+}
+
+#[test]
+fn sqrt_of_negative_errors() {
+    match test_base("sqrt(-1.0);") {
+        Ok(_) => panic!("expected sqrt error"),
+        Err(err) => match err.downcast_ref::<EvalError>() {
+            Some(EvalError::InvalidOperation(msg, _)) => {
+                assert!(msg.contains("non-negative"), "msg: {msg}");
+            }
+            other => panic!("expected invalid operation, got {:?}", other),
+        },
+    }
+}

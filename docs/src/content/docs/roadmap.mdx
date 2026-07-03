@@ -3,81 +3,120 @@ title: Roadmap
 description: Upcoming rituals and long-term compiler plans.
 ---
 
-The AbySS interpreter already ships collections, artifact structs and methods, themed pattern matching, and VS Code tooling. The sections below outline what is delivered today, the next few release cycles in order, and the longer-horizon items still in design.
+The AbySS interpreter already ships collections, artifact structs and methods, themed pattern matching, a browser playground, and VS Code tooling. The sections below outline what is delivered today, the next few release cycles in priority order, and the longer-horizon items still in design — including the staged path towards self-hosting.
+
+## Guiding priorities
+
+The ordering below follows four rules:
+
+1. **Ship merged value first** — work sitting on `develop` is released before new work starts.
+2. **Everyday gaps before new machinery** — string helpers matter more than editor tooling while both are missing.
+3. **Error handling before anything that can fail** — file I/O and fallible stdlib APIs are designed *after* `fate` / `augury` exist, so nothing has to be retrofitted.
+4. **Deep semantic changes last** — modules, enums, and generics land once the infrastructure they lean on is stable.
+
+## Vocabulary principles
+
+AbySS's reserved words are the language's signature. New keywords are chosen by four tests, induced from the existing vocabulary (`forge`, `ward`, `orbit`, `scribe`, …):
+
+1. The metaphor explains the behaviour (`orbit` = loop, `ward` = guard).
+2. Five-to-seven characters, comfortable to type.
+3. Real English words without programming-language baggage.
+4. One concept, one word — no collisions or near-collisions (this is why the Option type is *not* called `echo`: shell users read `echo` as "print").
 
 ## Delivered
 
 - **Collection Types** – `scroll`, `lexicon`, and `materia` literals plus standard rituals.
-- **Artifact Structs** – Typed schemas, literals, formatter integration, and field mutation rules.
-- **Artifact Methods** – `TypeName::method` syntax with `core` / `morph core` receivers, dispatched through a unified stdlib method registry.
-- **Themed Pattern Matching** – `oracle` runs in either if-else mode (top-down guard expressions) or match mode (scrutinee-based pattern arms with `=>`).
-- **Multi-crate Workspace** – `abyss-core` (AST / parser / semantics) and `abyss-interpreter` (runtime / stdlib) are published independently from the `abyss-lang` CLI so editor tooling and future Wasm playgrounds can depend on a lean core.
-- **Automated Release Pipeline** – Pushing a workspace version bump to `main` runs the test suite, tags the release, drafts notes from PRs since the previous tag, publishes the three crates to crates.io, attaches per-target binary archives (`tar.gz` / `zip` plus `.sha256` sidecars), and publishes the VS Code extension at the matching version.
-- **Diagnostic Polish (v0.4.1)** – Levenshtein-based "did you mean?" hints for undefined identifiers, missing artifact fields, and missing methods; runtime errors that carry a resolvable source position now render through the same `ariadne` reporter the parser uses (positionless errors still fall back to a plain `Error: …` line), so script-time and runtime failures with location info share one visual style.
+- **Artifact Structs & Methods** – Typed schemas, literals, field mutation rules, and `TypeName::method` syntax with `core` / `morph core` receivers.
+- **Themed Pattern Matching (v0.5.0)** – `oracle` if-else and match modes, `ward` guard clauses, and scroll / artifact / lexicon destructuring.
+- **Web Playground & Wasm (v0.6.0 cycle)** – `crates/abyss-wasm` adapter and a browser editor on this site, seeded with the `examples/` programs.
+- **Span-tracking & AST Overhaul (v0.6.0 cycle, pulled forward from v0.8.0)** – AST nodes and `EvalError` carry `start..end` byte spans (runtime diagnostics underline the full offending range), the AST is split into `Expr` / `Stmt` / `Pattern`, and `EvalError` gained structured variants. Pure infrastructure, no language change — it cleared the runway for the LSP.
+- **Comment-preserving Formatter (v0.6.0 cycle)** – `abyss align` re-emits comments beside the statements they accompanied, powered by the new spans.
+- **Multi-crate Workspace, Release Pipeline, Diagnostic Polish** – as before: independent crates on crates.io, one-push releases with per-target binaries and the VS Code extension, and "did you mean?" hints throughout.
 
 ## Release Plan
 
-The next several release cycles, in order. Versioning follows the project's `0.x.y` convention (a `0.x.0` bump signals a potentially-breaking release; `0.x.y` is compatibility-preserving).
+Versioning follows the project's `0.x.y` convention (a `0.x.0` bump signals a potentially-breaking release; `0.x.y` is compatibility-preserving).
 
-### v0.5.0 — Pattern Matching Enhancements
+### v0.6.0 — Web Playground & Internal Overhaul *(next release — everything is merged)*
 
-Make `oracle` match-mode genuinely useful for everyday scripting. All pieces are purely additive grammar; existing match arms continue to compile.
+The release that ships the current `develop`: the browser playground plus the span/AST/formatter overhaul described above. All breaking API changes of this era (`LineInfo` removal, the `Expr` / `Stmt` / `Pattern` split, the `semantic` module removal) are concentrated in this single `0.x.0`.
 
-- Guard clauses on match arms (`(x) ward x > 0 => …`), introducing the new `ward` keyword for "the arm fires only when this condition holds".
-- Scroll head/tail destructuring (`[head, ..rest]`).
-- Artifact field destructuring (`Player { name, health }`), surfacing the existing field "did you mean?" hint when a pattern names an unknown field.
-- Lexicon key destructuring (`{ "name": n, "port": p }`).
-- VS Code TextMate grammar update plus a dedicated pattern-matching reference page on this site.
+### v0.6.x — Standard Library Essentials
 
-### v0.6.0 — Web Playground & Wasm
+Round out the everyday helpers as compatibility-preserving point releases. `rune` comes first — it currently has **no** methods, which is the biggest daily-use gap for a scripting language.
 
-Make AbySS runnable directly from the browser, hosted alongside the docs site.
-
-- Build the `abyss-core` and `abyss-interpreter` crates for the `wasm32-unknown-unknown` target.
-- Refactor `display_error_with_source` so the renderer can return its output as a string for non-CLI consumers (Wasm playground, future LSP).
-- New `crates/abyss-wasm` adapter exposing a single `eval(source) -> { stdout, stderr, error }` entry point via `wasm-bindgen`.
-- A code-editor component (CodeMirror or Monaco) embedded in the Starlight site, seeded with the `examples/` programs.
-
-### v0.6.x — Standard Library Growth
-
-Round out the everyday helpers as compatibility-preserving point releases.
-
-- `rune` methods: `upper`, `lower`, `contains`, `split`, `replace`.
-- `scroll` methods: `sort`, `unique`, `sum`, `min`, `max`.
-- Math and time rituals once their interaction with playground sandboxing has been decided.
+- `rune` methods: `upper`, `lower`, `contains`, `split`, `replace`, `trim`, `tally`.
+- `scroll` methods: `sort`, `unique`, `sum`, `min`, `max`. Empty-scroll `min` / `max` raise an error for now; they move to `augury` returns in the v0.7.x API revision.
+- Math rituals that are sandbox-safe everywhere: `abs`, `sqrt`, `floor`, `ceil`. Time rituals wait for the I/O design.
+- **Vocabulary fix**: register `transmute` as the themed name for the `materia` conversion method and deprecate the off-theme `trans` ([#524](https://github.com/liebe-magi/abyss-lang/issues/524)).
 
 ### v0.7.0 — First-class Error Handling
 
-Promote runtime failures from "interpreter prints a diagnostic and either aborts (`invoke`) or returns to the next prompt (`cast`)" to a value scripts can handle themselves. The v0.5.0 artifact pattern type-dispatch already lets users build their own `Some` / `None` / `Ok` / `Err` records and match on them — this cycle standardises that convention into the language and stdlib so calling code stays terse.
+Promote runtime failures from "interpreter prints a diagnostic and aborts" to a value scripts can handle. The artifact pattern type-dispatch shipped in v0.5.0 already supports the mechanics; this cycle standardises the types and adds the propagation operator. The `Expr` / `Stmt` split makes `?` a straightforward postfix expression.
 
-- Stdlib `Option` and `Result` types as built-in artifacts, ergonomic to construct (`Ok { value }`, `Err { reason }`, `Some { value }`, `None {}`) and to destructure with the existing artifact pattern.
-- New `?` propagation operator that early-returns the `Err` / `None` variant from the enclosing function. `forge x: arcana = parse(input)?;` becomes the everyday form.
-- `engrave` return-type support for `Result` and `Option`, and the matching enforcement at compile / call time.
-- Optional `try` / `recover` block syntax is deferred — the `?` operator on its own covers the bulk of the use cases without bringing in another control-flow construct.
+- Stdlib **`fate`** type (the themed `Result`): **`bless { value }`** / **`curse { reason }`**, ergonomic to construct and to destructure with the existing artifact patterns.
+- Stdlib **`augury`** type (the themed `Option`): **`manifest { value }`** / **`naught {}`** — an augury may reveal something, or nothing.
+- New `?` propagation operator that early-returns the `curse` / `naught` variant from the enclosing function: `forge x: arcana = parse(input)?;`.
+- `engrave` return-type support for `fate` and `augury`, with call-time enforcement.
+- **Vocabulary fix**: `resume` → **`revolve`** (loop-continue that reads like another revolution of the `orbit`; [#525](https://github.com/liebe-magi/abyss-lang/issues/525)).
+- `try` / `recover` block syntax stays deferred — `?` covers the bulk of the use cases.
 
-User-defined sum types (true enums with arbitrary variants, payloads, and generics) remain in *Later*; they require generics, which the `Option<T>` / `Result<T, E>` shape would otherwise demand.
+### v0.7.x — Scripting Ergonomics
 
-### v0.8.0 — Span-tracking Refactor *(shipped early, in the v0.6.0 cycle)*
+The quality-of-life layer that makes AbySS practical for real command-line scripts, as point releases.
 
-~~Replace the current single-point `LineInfo` (`{ line, column }`) attached to AST nodes and `EvalError` with `start..end` byte spans.~~ **Done ahead of schedule** ([#510](https://github.com/liebe-magi/abyss-lang/issues/510)): AST nodes and `EvalError` now carry byte spans (runtime diagnostics underline the full offending range), and the single `AST` enum has been split into `Expr` / `Stmt` / `Pattern`. This is what the `#[non_exhaustive]` marker on `EvalError` shipped in v0.4.1 was reserved for. Pure infrastructure with no user-visible language change — pulled forward because every prerequisite refactor had already landed, clearing the runway for the LSP work below.
+- **`invocation`** — a built-in `scroll` of script arguments (`abyss invoke script.aby -- …`); exit-code conventions for `curse`-terminated scripts.
+- **`aura`** — a built-in `lexicon` of environment variables (read-only to start).
+- **`incant`** — string interpolation as a prefixed rune literal (`incant "count: {n}"`), additive so existing literals are untouched.
+- **`perish(code)`** — explicit abnormal termination.
+- Fallible-API revision: `min` / `max` / conversion helpers move to `augury` / `fate` returns.
+- REPL improvements: multi-line editing and history search.
 
-### v0.8.1+ — LSP MVP
+### v0.8.x — LSP MVP
 
-Ship a Language Server in stages so the VS Code extension can layer source-aware features on top of its current TextMate grammar, snippets, and static keyword-completion provider without waiting for a full implementation.
+The prerequisites (byte spans, the `Expr` / `Stmt` / `Pattern` AST) shipped early in the v0.6.0 cycle, so this can start any time after v0.7.0. Ship in stages so the VS Code extension layers source-aware features onto its TextMate grammar without waiting for a full implementation. The old `SymbolTable` scaffold was removed in that same cycle; the server builds a fresh span-aware resolver on the new AST.
 
-1. **v0.8.1** – `crates/abyss-lsp` with the `tower-lsp` plumbing, exposing parser + semantic diagnostics over LSP. The extension launches the server alongside its existing grammar, snippets, and keyword-completion provider.
-2. **v0.8.2** – Hover (types and `engrave` doc strings), document symbols (outline view).
-3. **v0.8.3** – Completion (keywords, in-scope identifiers, methods on the receiver type), goto definition.
-4. **v0.8.4** – Semantic-tokens highlighting; the TextMate grammar becomes a bootstrap fallback.
-5. **v0.8.5** – Rename, plus broader workspace symbol search.
+1. **v0.8.0** – `crates/abyss-lsp` with the `tower-lsp` plumbing, exposing parser diagnostics over LSP.
+2. **v0.8.1** – Hover (types and `engrave` doc strings), document symbols (outline view).
+3. **v0.8.2** – Completion (keywords, in-scope identifiers, methods on the receiver type), goto definition.
+4. **v0.8.3** – Semantic-tokens highlighting; the TextMate grammar becomes a bootstrap fallback.
+5. **v0.8.4** – Rename, plus broader workspace symbol search.
+
+### v0.9.0 — File I/O & OS Rituals
+
+Deliberately sequenced *after* v0.7.0 so every API returns `fate` from day one. Native-only, `cfg`-gated; the playground answers these rituals with the same "not available here" error `summon` uses. Files are tomes:
+
+- **`recite(path) -> fate`** — read a file into a `rune`.
+- **`inscribe(path, rune) -> fate`** — write.
+- **`banish(path) -> fate`** — delete; plus an existence check.
+- Time rituals land here too, alongside the sandbox decision they share.
+
+### v0.10.0 — Module System
+
+Import / export across files, designed together with the workspace-level LSP features (workspace symbols, cross-file goto) that motivate it.
+
+- **`conjure "path/to/module";`** — bring a module's bestowed names into scope.
+- **`bestow`** — mark an `engrave` / `artifact` / `forge` as exported.
 
 ## Later
 
 Items still in design — sequencing depends on what falls out of the cycles above.
 
-- **File I/O** – Filesystem rituals beyond console I/O. The Wasm playground will already have set the precedent that browser builds are console-only, so the design can lean into native-only `cfg`-gated modules.
-- **Module System** – Import/export across files. Naturally couples with the LSP work because workspace symbol resolution is one of the bigger LSP wins.
-- **Generics + User-defined Enums** – Parameterise functions and data structures with type glyphs (`Result<T, E>`, `Option<T>`), and lift the v0.7.0 stdlib `Option` / `Result` from special-cased artifacts to user-definable sum types with arbitrary variants. The two are tied together because the canonical motivating examples (`Result<T, E>`, `Option<T>`) need both.
-- **Interpreter Performance** – Faster REPL feedback, debugging hooks, and (further out) a bytecode VM if the interpreter loop becomes a bottleneck for non-trivial scripts.
+- **Bytecode VM** *(promoted: this is the performance path)* – Compile the AST to a compact bytecode with a register or stack VM. Typical 10–50× over tree-walking, keeps the Wasm playground story simple, and — crucially — becomes the compilation target a future self-hosted AbySS compiler emits. Sequenced before any native backend.
+- **Native compilation (Cranelift first, LLVM if ever)** – Only worth opening after the VM exists and the type system has settled (enums, generics); a native backend added earlier would need reworking with every language change. Cranelift is the natural first step in a Rust workspace; LLVM only if peak performance or broad target coverage becomes a real goal. AbySS's mandatory type annotations keep this door open.
+- **`familiar` — first-class functions / closures** *(new)* – A familiar is a bound spirit that captures its surroundings and serves its summoner: the perfect name for a closure. Not currently on any cycle, but self-hosting pressure (below) and stdlib ergonomics (`sort` with a custom comparator) both pull it forward.
+- **Generics + User-defined Sum Types (`rite`)** – Parameterise functions and data with type glyphs, and lift `fate` / `augury` from special-cased artifacts to user-definable sum types. The v0.7.0 experience feeds this design.
+- **Interpreter Performance, Packaging, Distribution** – beyond the VM: debugging hooks, and a package story once modules have settled.
+
+## Self-hosting Milestones
+
+The long-term flagship goal is an AbySS toolchain written in AbySS. It arrives in stages, and each stage doubles as a stress test of the cycles above:
+
+| Stage | Milestone | Unblocked by |
+|---|---|---|
+| 0 | **Self-lexing** — an AbySS tokenizer for AbySS source | v0.6.x strings + v0.7.0 `fate` / `augury` |
+| 1 | **Self-formatting** — `align` reimplemented in AbySS | v0.9.0 file I/O, v0.10.0 modules, `rite` enums |
+| 2 | **Self-interpreting** — an AbySS interpreter in AbySS, running (slowly) on the Rust interpreter | Stage 1 + `familiar` closures |
+| 3 | **True self-hosting** — Stage 2 at practical speed, targeting the bytecode VM | the VM; realistically post-1.0 |
 
 Track progress via the [GitHub issue tracker](https://github.com/liebe-magi/abyss-lang/issues) or the project [CHANGELOG](https://github.com/liebe-magi/abyss-lang/blob/main/CHANGELOG.md).

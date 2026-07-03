@@ -8,6 +8,7 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 
 ### Added
 
+- **`scroll` ordering and aggregation methods** ([#534](https://github.com/liebe-magi/abyss-lang/issues/534)) — `sort()` and `unique()` return new scrolls (the receiver is untouched, so no `morph` needed); `sum()`, `min()`, and `max()` aggregate homogeneous scrolls of `arcana` / `aether` (/ `rune` for ordering). Empty-scroll aggregation errors for now and moves to `augury` returns in the v0.7.x fallible-API revision.
 - **`rune` methods** ([#533](https://github.com/liebe-magi/abyss-lang/issues/533)) — the first item of the v0.6.x Standard Library Essentials cycle. `upper()`, `lower()`, `trim()`, `tally()` (Unicode character count), `contains(needle)`, `replace(from, to)`, and `split(separator)`. All return new values; `replace` and `split` reject empty search/separator runes with a clear error.
 
 ### Fixed

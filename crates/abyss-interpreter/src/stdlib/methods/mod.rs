@@ -1,5 +1,6 @@
 mod lexicon;
 mod materia;
+mod rune;
 mod scroll;
 
 use crate::diagnostics::did_you_mean_hint;
@@ -14,6 +15,7 @@ use std::collections::HashMap;
 pub fn get_all_builtin_methods() -> BuiltinMethodRegistry {
     let mut registry = BuiltinMethodRegistry::new();
     materia::register_methods(&mut registry);
+    rune::register_methods(&mut registry);
     scroll::register_methods(&mut registry);
     lexicon::register_methods(&mut registry);
     registry

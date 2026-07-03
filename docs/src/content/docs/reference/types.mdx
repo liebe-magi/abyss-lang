@@ -32,4 +32,38 @@ forge ledger: lexicon = {"sun": 1, "moon": 2};
 forge essence: materia = 99;
 ```
 
+## Rune Methods
+
+Runes carry their own rituals for everyday text work. All of them return new values — runes are never mutated in place.
+
+- `rune.upper()` / `rune.lower()` → case-shifted copy.
+- `rune.trim()` → copy with surrounding whitespace removed.
+- `rune.tally()` → character count as `arcana` (Unicode characters, mirroring `scroll.tally()`'s element count).
+- `rune.contains(needle)` → `omen`.
+- `rune.replace(from, to)` → copy with every `from` replaced (the search rune must be non-empty).
+- `rune.split(separator)` → `scroll` of runes (the separator must be non-empty).
+
+```aby
+forge chant: rune = "  Fiat Lux  ";
+forge clean: rune = chant.trim();
+
+unveil(clean.upper());
+unveil(clean.lower());
+unveil(clean.tally().transmute(rune));
+unveil(clean.contains("Lux"));
+unveil(clean.replace("Lux", "Nox"));
+
+forge parts: scroll = "boon,hex,abyss".split(",");
+unveil(parts[1]);
+```
+
+```
+FIAT LUX
+fiat lux
+8
+boon
+Fiat Nox
+hex
+```
+
 Each rune name hints at its intent: `glyph` tokens are passed into conversions, `artifact` declarations craft reusable records, and `materia` absorbs values whose final shape is still unknown.

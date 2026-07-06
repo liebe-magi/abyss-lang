@@ -28,6 +28,9 @@ pub enum Expr {
     LogicalAnd(Box<Expr>, Box<Expr>, Option<Span>),
     LogicalOr(Box<Expr>, Box<Expr>, Option<Span>),
     LogicalNot(Box<Expr>, Option<Span>),
+    /// `expr?` — unwrap a `bless` / `manifest` value, or propagate the
+    /// `curse` / `naught` out of the enclosing `engrave`.
+    Propagate(Box<Expr>, Option<Span>),
     Var(String, Option<Span>),
     FuncCall {
         name: String,

@@ -273,6 +273,7 @@ pub(super) enum PostfixSuffix {
     Index((Expr, SimpleSpan<usize>)),
     Field((String, SimpleSpan<usize>)),
     Method(MethodSuffix),
+    Propagate(SimpleSpan<usize>),
 }
 
 pub(super) struct MethodSuffix {
@@ -305,6 +306,11 @@ pub(super) fn apply_postfix_suffixes<'src>(
                 }
                 PostfixSuffix::Method(method_suffix) => {
                     create_method_call(ctx_for_map.clone(), acc, method_suffix)
+                }
+                PostfixSuffix::Propagate(question_span) => {
+                    let span = SimpleSpan::new(acc.1.start(), question_span.end());
+                    let info = ctx_for_map.info(span);
+                    (Expr::Propagate(Box::new(acc.0), info), span)
                 }
             })
     })
@@ -356,7 +362,10 @@ pub(super) fn postfix_suffix_parser<'src>(
             }
         });
 
-    choice((index, method)).boxed()
+    let propagate =
+        just(Token::Question).map_with(|_, extra| PostfixSuffix::Propagate(extra.span()));
+
+    choice((index, method, propagate)).boxed()
 }
 
 pub(super) fn index_suffix_parser<'src>(

@@ -6,6 +6,16 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+## [v0.6.1] - 2026-07-06
+
+### Fixed
+
+- The support-function highlight group now colours `transmute` instead of the removed `trans` (follow-up to the 0.6.0 rename; completion and snippets were already correct).
+
+### Changed
+
+- Bumped the extension version to 0.6.1 to stay in lockstep with the `abyss-lang` crate. The 0.6.1 cycle adds stdlib methods (`rune` / `scroll` / math rituals); per the established convention the completion list covers keywords rather than method names, so no grammar changes beyond the fix above.
+
 ## [v0.6.0] - 2026-07-03
 
 ### Changed

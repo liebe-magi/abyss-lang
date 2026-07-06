@@ -6,6 +6,10 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-07-06
+
+The first Standard Library Essentials point release. `rune` goes from zero methods to the everyday seven, `scroll` learns to sort and aggregate, sandbox-safe math rituals arrive, and a nasty parser bug dies: strings containing `//` (every URL) previously failed to parse. Fully compatibility-preserving — no language or API changes beyond the additions.
+
 ### Added
 
 - **Math rituals** ([#535](https://github.com/liebe-magi/abyss-lang/issues/535)) — sandbox-safe global functions `abs` (type-preserving for `arcana` / `aether`), `sqrt` (non-negative `aether`; negative input errors until the v0.7.0 `fate` return), and `floor` / `ceil` (`aether` → `arcana`). Pure functions, identical on CLI and Playground.
@@ -15,6 +19,8 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 ### Fixed
 
 - **Comment scrubber corrupted string literals containing `//` or `/*`** ([#532](https://github.com/liebe-magi/abyss-lang/issues/532)) — the pre-lex comment scanner treated comment openers inside rune literals as comments, so any string containing them (every URL, for instance) failed to parse. The scanner is now string-aware, honouring the lexer's escape rules, and a single shared region scan backs both the scrubber and the formatter's comment collector so their views cannot diverge. Bonus fix: comments are now blanked byte-wise, so multi-byte characters in comments no longer shift the spans of everything after them.
+
+For the full diff, see the [GitHub compare v0.6.0...v0.6.1](https://github.com/liebe-magi/abyss-lang/compare/v0.6.0...v0.6.1).
 
 ## [0.6.0] - 2026-07-03
 

@@ -26,6 +26,30 @@ Methods keep APIs uniform with artifact calls.
 - `scroll.tally()` → length as `arcana`.
 - `scroll.scribe(value)` → append to a morph scroll.
 - `scroll.extract()` → pop the last entry from a morph scroll.
+- `scroll.sort()` → new ascending scroll (homogeneous `arcana`, `aether`, or `rune` elements); the receiver is untouched.
+- `scroll.unique()` → new scroll keeping the first occurrence of each scalar value.
+- `scroll.sum()` → total of a numeric scroll (`arcana` or `aether`).
+- `scroll.min()` / `scroll.max()` → smallest / largest element.
+
+`sum`, `min`, and `max` raise an error on an empty scroll for now; they move to `augury` returns in the v0.7.x fallible-API revision (see the roadmap).
+
+```aby
+forge rolls: scroll = [3, 1, 2, 3, 1];
+
+unveil(rolls.sort());
+unveil(rolls.unique());
+unveil(rolls.sum().transmute(rune));
+unveil(rolls.min().transmute(rune));
+unveil(rolls.max().transmute(rune));
+```
+
+```
+[1, 1, 2, 3, 3]
+[3, 1, 2]
+10
+1
+3
+```
 - `lexicon.tally()` → number of rune entries.
 - `lexicon.define("key", value)` → insert/update.
 - `lexicon.expunge("key")` → remove an entry.

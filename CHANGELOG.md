@@ -6,6 +6,22 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-07-06
+
+The first Standard Library Essentials point release. `rune` goes from zero methods to the everyday seven, `scroll` learns to sort and aggregate, sandbox-safe math rituals arrive, and a nasty parser bug dies: strings containing `//` (every URL) previously failed to parse. Fully compatibility-preserving — no language or API changes beyond the additions.
+
+### Added
+
+- **Math rituals** ([#535](https://github.com/liebe-magi/abyss-lang/issues/535)) — sandbox-safe global functions `abs` (type-preserving for `arcana` / `aether`), `sqrt` (non-negative `aether`; negative input errors until the v0.7.0 `fate` return), and `floor` / `ceil` (`aether` → `arcana`). Pure functions, identical on CLI and Playground.
+- **`scroll` ordering and aggregation methods** ([#534](https://github.com/liebe-magi/abyss-lang/issues/534)) — `sort()` and `unique()` return new scrolls (the receiver is untouched, so no `morph` needed); `sum()`, `min()`, and `max()` aggregate homogeneous scrolls of `arcana` / `aether` (/ `rune` for ordering). Empty-scroll aggregation errors for now and moves to `augury` returns in the v0.7.x fallible-API revision.
+- **`rune` methods** ([#533](https://github.com/liebe-magi/abyss-lang/issues/533)) — the first item of the v0.6.x Standard Library Essentials cycle. `upper()`, `lower()`, `trim()`, `tally()` (Unicode character count), `contains(needle)`, `replace(from, to)`, and `split(separator)`. All return new values; `replace` and `split` reject empty search/separator runes with a clear error.
+
+### Fixed
+
+- **Comment scrubber corrupted string literals containing `//` or `/*`** ([#532](https://github.com/liebe-magi/abyss-lang/issues/532)) — the pre-lex comment scanner treated comment openers inside rune literals as comments, so any string containing them (every URL, for instance) failed to parse. The scanner is now string-aware, honouring the lexer's escape rules, and a single shared region scan backs both the scrubber and the formatter's comment collector so their views cannot diverge. Bonus fix: comments are now blanked byte-wise, so multi-byte characters in comments no longer shift the spans of everything after them.
+
+For the full diff, see the [GitHub compare v0.6.0...v0.6.1](https://github.com/liebe-magi/abyss-lang/compare/v0.6.0...v0.6.1).
+
 ## [0.6.0] - 2026-07-03
 
 The Web Playground release, riding on the biggest internal overhaul since the workspace split. AbySS now runs directly in the browser at [abyss-lang.dev/playground](https://abyss-lang.dev/playground) via a new Wasm adapter, while under the hood the compiler grew up: every AST node and runtime error carries a byte span (diagnostics underline the full offending range), the AST is split into `Expr` / `Stmt` / `Pattern`, `EvalError` gained structured variants, and `abyss align` finally preserves comments. Two off-theme names were hard-switched while the user base is small: `resume` → `revolve` and `trans` → `transmute`. Language semantics are otherwise unchanged — scripts that used neither renamed word run identically.

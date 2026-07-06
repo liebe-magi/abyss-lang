@@ -178,3 +178,82 @@ fn test_unveil_no_args_error() {
         Ok(_) => panic!("Expected an error for unveil() with no arguments"),
     }
 }
+
+#[test]
+fn rune_methods_transform_and_query() {
+    let input = r#"
+forge spell: rune = "  Dark Incantation  ";
+forge clean: rune = spell.trim();
+clean.upper();
+clean.lower();
+clean.tally();
+clean.contains("Incant");
+clean.replace("Dark", "Bright");
+"#;
+    let results = test_base(input).expect("rune methods should evaluate");
+    assert_eq!(results.len(), 7);
+    match &results[2] {
+        EvalResult::Data(Value::Rune(s)) => assert_eq!(s.as_ref(), "DARK INCANTATION"),
+        other => panic!("expected upper() rune, got {:?}", other),
+    }
+    match &results[3] {
+        EvalResult::Data(Value::Rune(s)) => assert_eq!(s.as_ref(), "dark incantation"),
+        other => panic!("expected lower() rune, got {:?}", other),
+    }
+    match &results[4] {
+        EvalResult::Data(Value::Arcana(n)) => assert_eq!(*n, 16),
+        other => panic!("expected tally() arcana, got {:?}", other),
+    }
+    match &results[5] {
+        EvalResult::Data(Value::Omen(true)) => {}
+        other => panic!("expected contains() boon, got {:?}", other),
+    }
+    match &results[6] {
+        EvalResult::Data(Value::Rune(s)) => assert_eq!(s.as_ref(), "Bright Incantation"),
+        other => panic!("expected replace() rune, got {:?}", other),
+    }
+}
+
+#[test]
+fn rune_split_yields_scroll_of_runes() {
+    let input = r#"
+forge csv: rune = "boon,hex,abyss";
+forge parts: scroll = csv.split(",");
+parts.tally();
+parts[1];
+"#;
+    let results = test_base(input).expect("split should evaluate");
+    assert_eq!(results.len(), 4);
+    match &results[2] {
+        EvalResult::Data(Value::Arcana(3)) => {}
+        other => panic!("expected 3 parts, got {:?}", other),
+    }
+    match &results[3] {
+        EvalResult::Data(Value::Rune(s)) => assert_eq!(s.as_ref(), "hex"),
+        other => panic!("expected rune part, got {:?}", other),
+    }
+}
+
+#[test]
+fn rune_tally_counts_unicode_characters() {
+    let input = r#""呪文詠唱".tally();"#;
+    let results = test_base(input).expect("tally should evaluate");
+    match &results[0] {
+        EvalResult::Data(Value::Arcana(4)) => {}
+        other => panic!("expected 4 characters, got {:?}", other),
+    }
+}
+
+#[test]
+fn rune_split_rejects_empty_separator() {
+    let input = r#""abc".split("");"#;
+    match test_base(input) {
+        Ok(_) => panic!("expected split error"),
+        Err(err) => match err.downcast_ref::<EvalError>() {
+            Some(EvalError::InvalidOperation(msg, _)) => {
+                assert!(msg.contains("non-empty separator"), "msg: {msg}");
+            }
+            other => panic!("expected invalid operation, got {:?}", other),
+        },
+    }
+}

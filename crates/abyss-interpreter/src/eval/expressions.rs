@@ -655,6 +655,27 @@ fn evaluate_engraved_function(
         (Type::Scroll, Value::Scroll(values)) => Ok(EvalResult::data(Value::Scroll(values))),
         (Type::Lexicon, Value::Lexicon(entries)) => Ok(EvalResult::data(Value::Lexicon(entries))),
         (Type::Materia, value) => Ok(EvalResult::data(value)),
+        (ty @ (Type::Fate | Type::Augury), Value::Artifact(handle)) => {
+            let allowed: [&str; 2] = if ty == Type::Fate {
+                ["bless", "curse"]
+            } else {
+                ["manifest", "naught"]
+            };
+            let type_name = handle.borrow().type_name.clone();
+            if allowed.contains(&type_name.as_str()) {
+                Ok(EvalResult::artifact(handle))
+            } else {
+                Err(EvalError::TypeError(
+                    format!(
+                        "Type mismatch for return value of function {} (expected {}, got artifact {})",
+                        function.name,
+                        if ty == Type::Fate { "fate" } else { "augury" },
+                        type_name
+                    ),
+                    function.line_info,
+                ))
+            }
+        }
         (Type::Artifact(expected), Value::Artifact(handle)) => {
             let type_name = handle.borrow().type_name.clone();
             if type_name == expected {

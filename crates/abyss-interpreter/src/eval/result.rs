@@ -78,6 +78,8 @@ fn type_label(ty: &Type) -> &str {
         Type::Lexicon => "lexicon",
         Type::Glyph => "glyph",
         Type::Materia => "materia",
+        Type::Fate => "fate",
+        Type::Augury => "augury",
         Type::Artifact(name) => name,
     }
 }

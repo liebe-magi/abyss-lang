@@ -6,6 +6,10 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 
 ## [Unreleased]
 
+### Added
+
+- **`fate` and `augury` types with built-in variant artifacts** ([#548](https://github.com/liebe-magi/abyss-lang/issues/548), v0.7.0 PR 1/3) — the themed `Result` / `Option`: `fate` admits the pre-seeded `bless { value }` / `curse { reason }` artifacts and `augury` admits `manifest { value }` / `naught {}`. Construction uses ordinary artifact literals, destructuring uses ordinary artifact patterns, and `forge` annotations, `engrave` parameters, and `engrave` return types all accept the union types with call-time enforcement. The six names are reserved in every scope. Payload fields are `materia` until generics land.
+
 ## [0.6.1] - 2026-07-06
 
 The first Standard Library Essentials point release. `rune` goes from zero methods to the everyday seven, `scroll` learns to sort and aggregate, sandbox-safe math rituals arrive, and a nasty parser bug dies: strings containing `//` (every URL) previously failed to parse. Fully compatibility-preserving — no language or API changes beyond the additions.

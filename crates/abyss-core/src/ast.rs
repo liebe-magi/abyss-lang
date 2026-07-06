@@ -227,6 +227,12 @@ pub enum Type {
     Lexicon,
     Materia,
     Glyph,
+    /// Union type over the built-in `bless` / `curse` artifacts (the
+    /// themed `Result`). Payloads are `materia` until generics land.
+    Fate,
+    /// Union type over the built-in `manifest` / `naught` artifacts
+    /// (the themed `Option`).
+    Augury,
     Artifact(String),
 }
 

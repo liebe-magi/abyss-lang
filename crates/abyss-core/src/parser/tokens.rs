@@ -215,6 +215,8 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<SpannedToken>, LexerExt
         "lexicon" => Token::Type(Type::Lexicon),
         "materia" => Token::Type(Type::Materia),
         "glyph" => Token::Type(Type::Glyph),
+        "fate" => Token::Type(Type::Fate),
+        "augury" => Token::Type(Type::Augury),
         "boon" => Token::OmenLiteral(true),
         "hex" => Token::OmenLiteral(false),
         _ => Token::Identifier(ident.to_string()),

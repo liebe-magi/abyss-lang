@@ -85,6 +85,21 @@ pub(crate) fn convert_to_typed_value(
             Value::Glyph(_) => Ok(value),
             _ => Err(EvalError::ExpectedType(Type::Glyph, *line_info)),
         },
+        Type::Fate | Type::Augury => {
+            let allowed: [&str; 2] = if *expected == Type::Fate {
+                ["bless", "curse"]
+            } else {
+                ["manifest", "naught"]
+            };
+            match value {
+                Value::Artifact(handle)
+                    if allowed.contains(&handle.borrow().type_name.as_str()) =>
+                {
+                    Ok(Value::Artifact(clone_artifact_handle(&handle)))
+                }
+                _ => Err(EvalError::ExpectedType(expected.clone(), *line_info)),
+            }
+        }
         Type::Artifact(expected) => match value {
             Value::Artifact(handle) => {
                 let borrowed = handle.borrow();

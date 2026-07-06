@@ -113,6 +113,21 @@ impl RuntimeEnv {
         self.artifact_scopes.push(HashMap::new());
     }
 
+    /// Current scope-stack depth. Paired with [`truncate_scopes`](Self::truncate_scopes)
+    /// so `?`-propagation catch points can restore the exact depth they saw,
+    /// even when the propagation unwound out of nested `orbit` / `oracle`
+    /// scopes that never reached their own pops.
+    pub(crate) fn scopes_len(&self) -> usize {
+        self.scopes.len()
+    }
+
+    /// Pop scopes until the stack is back at `depth`.
+    pub(crate) fn truncate_scopes(&mut self, depth: usize) {
+        while self.scopes.len() > depth {
+            self.pop_scope();
+        }
+    }
+
     /// Pops the most recent scope off the stack, discarding the current local environment.
     pub fn pop_scope(&mut self) {
         self.scopes.pop();

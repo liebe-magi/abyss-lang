@@ -231,6 +231,64 @@ pub(crate) fn evaluate_expr(expr: &Expr, env: &mut RuntimeEnv) -> Result<EvalRes
             args,
             span: line_info,
         } => evaluate_method_call(env, receiver, method, args, line_info)?,
+        Expr::Propagate(inner, span) => {
+            let result = evaluate_expr(inner, env)?;
+            match result {
+                EvalResult::Data(Value::Artifact(handle)) => {
+                    let type_name = handle.borrow().type_name.clone();
+                    match type_name.as_str() {
+                        // Success variants unwrap their payload as the
+                        // expression's value.
+                        "bless" | "manifest" => {
+                            let value =
+                                handle
+                                    .borrow()
+                                    .fields
+                                    .get("value")
+                                    .cloned()
+                                    .ok_or_else(|| {
+                                        EvalError::InvalidOperation(
+                                            format!("{} is missing its value field", type_name),
+                                            *span,
+                                        )
+                                    })?;
+                            EvalResult::data(value)
+                        }
+                        // Failure variants ride the error channel so every
+                        // enclosing expression / statement context unwinds
+                        // without bespoke plumbing; the engrave boundary
+                        // (or the top level) catches them.
+                        "curse" | "naught" => {
+                            return Err(EvalError::Propagation(handle, *span));
+                        }
+                        _ => {
+                            return Err(EvalError::InvalidOperation(
+                                format!(
+                                    "? requires a fate or augury value, found artifact {}",
+                                    type_name
+                                ),
+                                *span,
+                            ));
+                        }
+                    }
+                }
+                EvalResult::Data(other) => {
+                    return Err(EvalError::InvalidOperation(
+                        format!(
+                            "? requires a fate or augury value, found {}",
+                            describe_value(&other)
+                        ),
+                        *span,
+                    ));
+                }
+                control => {
+                    return Err(EvalError::InvalidOperation(
+                        format!("? cannot operate on control flow ({:?})", control),
+                        *span,
+                    ));
+                }
+            }
+        }
         Expr::Oracle {
             is_match,
             conditionals,
@@ -607,6 +665,7 @@ fn evaluate_engraved_function(
 ) -> Result<EvalResult, EvalError> {
     let eval_args: Vec<EvalResult> = evaluated_args.into_iter().map(|arg| arg.value).collect();
     let params = function.params.clone();
+    let caller_scope_depth = env.scopes_len();
     env.push_scope();
 
     if eval_args.len() != params.len() {
@@ -638,13 +697,26 @@ fn evaluate_engraved_function(
         );
     }
 
-    let result = {
-        let evaluated = statements::evaluate(&function.body, env);
-        env.pop_scope();
-        evaluated?
+    // The engrave boundary is the catch point for `?` propagation: a
+    // curse / naught unwinding out of the body becomes this function's
+    // return value (checked against the declared return type below).
+    // truncate_scopes restores the caller's exact depth even when the
+    // propagation unwound out of nested orbit / oracle scopes that never
+    // reached their own pops.
+    let value = match statements::evaluate(&function.body, env) {
+        Ok(result) => {
+            env.truncate_scopes(caller_scope_depth);
+            eval_result_to_value_checked(result, function.line_info)?
+        }
+        Err(EvalError::Propagation(handle, _)) => {
+            env.truncate_scopes(caller_scope_depth);
+            Value::Artifact(handle)
+        }
+        Err(other) => {
+            env.truncate_scopes(caller_scope_depth);
+            return Err(other);
+        }
     };
-
-    let value = eval_result_to_value_checked(result, function.line_info)?;
 
     match (function.return_type.clone(), value) {
         (Type::Arcana, Value::Arcana(v)) => Ok(EvalResult::data(Value::Arcana(v))),

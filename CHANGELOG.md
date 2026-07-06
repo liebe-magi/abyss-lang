@@ -8,6 +8,7 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 
 ### Added
 
+- **`?` propagation operator** ([#548](https://github.com/liebe-magi/abyss-lang/issues/548), v0.7.0 PR 2/3) — postfix `expr?` unwraps a `bless` / `manifest` payload, or propagates the `curse` / `naught` out of the enclosing `engrave` as its return value (checked against the declared return type; cross-union propagation is rejected, no implicit conversion). A propagation that reaches the top level renders as an `Uncaught curse: …` / `Uncaught naught` diagnostic underlining the `?` expression, and `abyss invoke` now exits non-zero on any script failure. Scope depth is restored exactly at the catch point even when the propagation unwound out of nested `orbit` / `oracle` scopes.
 - **`fate` and `augury` types with built-in variant artifacts** ([#548](https://github.com/liebe-magi/abyss-lang/issues/548), v0.7.0 PR 1/3) — the themed `Result` / `Option`: `fate` admits the pre-seeded `bless { value }` / `curse { reason }` artifacts and `augury` admits `manifest { value }` / `naught {}`. Construction uses ordinary artifact literals, destructuring uses ordinary artifact patterns, and `forge` annotations, `engrave` parameters, and `engrave` return types all accept the union types with call-time enforcement. The six names are reserved in every scope. Payload fields are `materia` until generics land.
 
 ## [0.6.1] - 2026-07-06

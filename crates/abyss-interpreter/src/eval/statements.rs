@@ -165,6 +165,19 @@ pub fn evaluate(stmt: &Stmt, env: &mut RuntimeEnv) -> Result<EvalResult, EvalErr
                         *value_slot =
                             convert_to_typed_value(evaluated_value, &Type::Lexicon, line_info)?;
                     }
+                    (value_slot, ty @ (Type::Fate | Type::Augury)) => {
+                        if !matches!(op, AssignmentOp::Assign) {
+                            return Err(EvalError::InvalidOperation(
+                                format!(
+                                    "{} variables only support =",
+                                    if *ty == Type::Fate { "Fate" } else { "Augury" }
+                                ),
+                                *line_info,
+                            ));
+                        }
+                        let ty = ty.clone();
+                        *value_slot = convert_to_typed_value(evaluated_value, &ty, line_info)?;
+                    }
                     (value_slot, Type::Materia) => {
                         if !matches!(op, AssignmentOp::Assign) {
                             return Err(EvalError::InvalidOperation(
@@ -469,6 +482,15 @@ pub fn evaluate(stmt: &Stmt, env: &mut RuntimeEnv) -> Result<EvalResult, EvalErr
             fields,
             span: line_info,
         } => {
+            if RuntimeEnv::RESERVED_ARTIFACT_NAMES.contains(&name.as_str()) {
+                return Err(EvalError::InvalidOperation(
+                    format!(
+                        "Artifact name {} is reserved by the error-handling built-ins",
+                        name
+                    ),
+                    *line_info,
+                ));
+            }
             if env.artifact_defined_in_current_scope(name) {
                 return Err(EvalError::InvalidOperation(
                     format!("Artifact {} is already defined", name),

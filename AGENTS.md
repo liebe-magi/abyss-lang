@@ -51,7 +51,7 @@ AbySS is a magic-themed scripting language with its own interpreter, formatter, 
 
 ## Domain Vocabulary
 
-Language types map to magical concepts: `arcana` (integer), `aether` (float), `rune` (string), `omen` (boolean with `boon`/`hex`), `abyss` (unit), `scroll`/`lexicon` (collections), `materia` (untyped slot), and `glyph` (type token passed to conversion APIs).
+Language types map to magical concepts: `arcana` (integer), `aether` (float), `rune` (string), `omen` (boolean with `boon`/`hex`), `abyss` (unit), `scroll`/`lexicon` (collections), `materia` (untyped slot), `glyph` (type token passed to conversion APIs), and the error-handling unions `fate` (over the built-in `bless`/`curse` artifacts) and `augury` (over `manifest`/`naught`).
 
 Control flow keywords: `oracle` (conditionals / patterns), `orbit` (loops with `revolve`/`eject`), `engrave` (function definition), `summon` (input), `unveil` (output). Statements terminate with semicolons; block structure relies on braces, so formatter and REPL brace counting must stay accurate.
 

@@ -90,15 +90,31 @@ pub(crate) fn make_variant(name: &str, field: Option<(&str, Value)>) -> Value {
 
 /// Seed the script-runtime globals: `invocation` (the script arguments,
 /// empty by default — the CLI overwrites it for `invoke`) as an immutable
-/// scroll of runes.
+/// scroll of runes, and `aura` (the environment variables at startup) as
+/// an immutable lexicon of runes.
 fn seed_runtime_globals(env: &mut RuntimeEnv) {
     use std::cell::RefCell;
+    use std::collections::HashMap;
     use std::rc::Rc;
 
     env.set_var(
         "invocation".to_string(),
         Value::Scroll(Rc::new(RefCell::new(Vec::new()))),
         Type::Scroll,
+        false,
+        None,
+    );
+
+    // `aura` — the ambience the script runs in: a snapshot of the process
+    // environment variables as an immutable lexicon. On wasm32 std yields
+    // no variables, so the Playground naturally sees an empty aura.
+    let vars: HashMap<String, Value> = std::env::vars()
+        .map(|(key, value)| (key, Value::Rune(Rc::new(value))))
+        .collect();
+    env.set_var(
+        "aura".to_string(),
+        Value::Lexicon(Rc::new(RefCell::new(vars))),
+        Type::Lexicon,
         false,
         None,
     );

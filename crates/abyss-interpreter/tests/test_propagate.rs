@@ -170,3 +170,15 @@ run();
         },
     }
 }
+
+#[test]
+fn aura_exposes_environment_variables() {
+    // SAFETY: test-local variable name; integration test binaries run
+    // their #[test] fns in threads, but nothing else reads this name.
+    unsafe { std::env::set_var("ABYSS_TEST_AURA", "sigil-9") };
+    let results = test_base(r#"aura["ABYSS_TEST_AURA"];"#).expect("aura lookup should evaluate");
+    match results.last().unwrap() {
+        EvalResult::Data(Value::Rune(s)) => assert_eq!(s.as_ref(), "sigil-9"),
+        other => panic!("expected rune from aura, got {:?}", other),
+    }
+}

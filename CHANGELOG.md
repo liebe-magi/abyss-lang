@@ -8,6 +8,7 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 
 ### Added
 
+- **`aura` environment lexicon** ([#558](https://github.com/liebe-magi/abyss-lang/issues/558)) — a built-in immutable lexicon snapshotting the process environment variables at startup; empty on the Playground, where the sandbox has no environment.
 - **`invocation` script arguments and `perish(code)`** ([#557](https://github.com/liebe-magi/abyss-lang/issues/557)) — the first Scripting Ergonomics pieces. `invocation` is a built-in immutable scroll of runes holding everything after `--` in `abyss invoke script.aby -- …` (empty in the REPL and Playground); `perish(code)` terminates the script with an exit code (`perish()` = 0) — `invoke` exits with the code silently, the REPL prints a notice and continues.
 
 ## [0.7.0] - 2026-07-07

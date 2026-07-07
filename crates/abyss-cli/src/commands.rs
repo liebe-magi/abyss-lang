@@ -7,7 +7,7 @@ use abyss_core::{
     parser::{ParserDiagnostic, collect_comments, emit_diagnostics, parse},
 };
 use abyss_interpreter::{
-    eval::{display_error_with_source, evaluate},
+    eval::{EvalError, display_error_with_source, evaluate},
     stdlib,
 };
 
@@ -26,24 +26,32 @@ pub fn report_diagnostics(source_id: &str, source: &str, diagnostics: &[ParserDi
 }
 
 /// Executes a given AbySS script by parsing and evaluating it in a new
-/// environment. Returns `false` when parsing or evaluation failed (the
-/// diagnostic has already been rendered) so the caller can exit non-zero
-/// — an uncaught `curse` from `?` should fail the invocation the same
-/// way any other runtime error does.
-pub fn execute_script(script: &str) -> bool {
+/// environment, with `args` installed as the `invocation` scroll.
+/// Returns the process exit code: 0 on success, 1 when parsing or
+/// evaluation failed (the diagnostic has already been rendered), or the
+/// code a `perish(code)` requested (terminating silently — perishing is
+/// deliberate, not an error).
+pub fn execute_script(script: &str, args: &[String]) -> i32 {
     let mut env = stdlib::create_global_environment();
+    stdlib::set_invocation(&mut env, args);
     let outcome = parse(script);
     if report_diagnostics("<script>", script, &outcome.diagnostics) {
-        return false;
+        return 1;
     }
 
     for ast in outcome.ast {
-        if let Err(error) = evaluate(&ast, &mut env) {
-            display_error_with_source(script, &error);
-            return false;
+        match evaluate(&ast, &mut env) {
+            Ok(_) => {}
+            Err(EvalError::Perished(code, _)) => {
+                return i32::try_from(code).unwrap_or(1);
+            }
+            Err(error) => {
+                display_error_with_source(script, &error);
+                return 1;
+            }
         }
     }
-    true
+    0
 }
 
 /// Formats the provided AbySS script by parsing and reconstructing it with proper indentation.

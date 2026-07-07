@@ -140,6 +140,13 @@ pub fn start_interpreter(debug: bool) {
                                     _ => {}
                                 }
                             }
+                            Err(abyss_interpreter::eval::EvalError::Perished(code, _)) => {
+                                println!(
+                                    "{}",
+                                    format!("Perished with code {} — the session lives on", code)
+                                        .yellow()
+                                );
+                            }
                             Err(e) => {
                                 println!("{}", format!("Error: {}", e).red());
                             }

@@ -139,3 +139,34 @@ fn question_on_non_fate_value_errors() {
         },
     }
 }
+
+#[test]
+fn invocation_defaults_to_empty_scroll() {
+    let results = test_base("invocation.tally();").expect("invocation should exist");
+    assert!(matches!(
+        results.last().unwrap(),
+        EvalResult::Data(Value::Arcana(0))
+    ));
+}
+
+#[test]
+fn perish_unwinds_with_code() {
+    let input = r#"
+engrave run() -> abyss {
+    orbit (i = 0..10) {
+        oracle {
+            (i == 2) => perish(7);
+            _ => unveil(i);
+        };
+    };
+};
+run();
+"#;
+    match test_base(input) {
+        Ok(_) => panic!("expected perish"),
+        Err(err) => match err.downcast_ref::<EvalError>() {
+            Some(EvalError::Perished(7, _)) => {}
+            other => panic!("expected Perished(7), got {:?}", other),
+        },
+    }
+}

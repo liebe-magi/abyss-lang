@@ -22,6 +22,10 @@ enum Commands {
     Invoke {
         /// The path to the script file
         script: String,
+        /// Arguments handed to the script as the `invocation` scroll
+        /// (everything after `--`)
+        #[arg(last = true)]
+        args: Vec<String>,
     },
     /// Start the interactive interpreter
     Cast {
@@ -40,10 +44,11 @@ fn main() {
     let cli = Cli::parse();
 
     match &cli.command {
-        Commands::Invoke { script } => {
+        Commands::Invoke { script, args } => {
             if let Ok(contents) = fs::read_to_string(script) {
-                if !execute_script(&contents) {
-                    std::process::exit(1);
+                let code = execute_script(&contents, args);
+                if code != 0 {
+                    std::process::exit(code);
                 }
             } else {
                 eprintln!("Error: Could not read the script file.");

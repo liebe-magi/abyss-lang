@@ -4,7 +4,7 @@
 
 use chumsky::prelude::*;
 
-use crate::ast::Expr;
+use crate::ast::{Expr, IncantSegment};
 
 use crate::parser::SimpleSpan;
 use crate::parser::tokens::Token;
@@ -258,6 +258,7 @@ pub(super) fn primary_expr_parser<'src>(
     expression: BoxedParser<'src, SpannedExpr>,
 ) -> BoxedParser<'src, SpannedExpr> {
     choice((
+        incant_parser(ctx.clone()),
         list_literal_parser(ctx.clone(), expression.clone()),
         map_literal_parser(ctx.clone(), expression.clone()),
         artifact_literal_parser(ctx.clone(), expression.clone()),
@@ -581,6 +582,100 @@ pub(super) fn artifact_literal_parser<'src>(
                     },
                     span,
                 )
+            },
+        )
+        .boxed()
+}
+
+/// Split an `incant` literal's text into verbatim and `{name}` segments.
+/// `{{` / `}}` escape literal braces; anything else between braces must be
+/// a plain identifier. Errors describe the offending brace for the parser
+/// diagnostic.
+pub(super) fn parse_incant_segments(text: &str) -> Result<Vec<IncantSegment>, String> {
+    let mut segments = Vec::new();
+    let mut current = String::new();
+    let mut chars = text.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            '{' => {
+                if chars.peek() == Some(&'{') {
+                    chars.next();
+                    current.push('{');
+                    continue;
+                }
+                let mut name = String::new();
+                loop {
+                    match chars.next() {
+                        Some('}') => break,
+                        Some(c) if c.is_ascii_alphanumeric() || c == '_' => name.push(c),
+                        Some(c) => {
+                            return Err(format!(
+                                "incant placeholder may only contain an identifier, found `{}`",
+                                c
+                            ));
+                        }
+                        None => {
+                            return Err("incant literal has an unclosed `{`".to_string());
+                        }
+                    }
+                }
+                if name.is_empty() {
+                    return Err(
+                        "incant placeholder is empty — use `{{` for a literal brace".to_string()
+                    );
+                }
+                if name.chars().next().is_some_and(|c| c.is_ascii_digit()) {
+                    return Err(format!(
+                        "incant placeholder `{}` must start with a letter or `_`",
+                        name
+                    ));
+                }
+                if !current.is_empty() {
+                    segments.push(IncantSegment::Text(std::mem::take(&mut current)));
+                }
+                segments.push(IncantSegment::Var(name));
+            }
+            '}' => {
+                if chars.peek() == Some(&'}') {
+                    chars.next();
+                    current.push('}');
+                } else {
+                    return Err(
+                        "incant literal has a stray `}` — use `}}` for a literal brace".to_string(),
+                    );
+                }
+            }
+            other => current.push(other),
+        }
+    }
+    if !current.is_empty() {
+        segments.push(IncantSegment::Text(current));
+    }
+    Ok(segments)
+}
+
+pub(super) fn incant_parser<'src>(ctx: ParserContext) -> BoxedParser<'src, SpannedExpr> {
+    just(Token::Incant)
+        .map_with(|_, extra| extra.span())
+        .then(select! { Token::Rune(text) => text }.map_with(|text, extra| (text, extra.span())))
+        .try_map(
+            move |(incant_span, (text, rune_span)): (
+                SimpleSpan<usize>,
+                (String, SimpleSpan<usize>),
+            ),
+                  _span| {
+                let span = SimpleSpan::new(incant_span.start(), rune_span.end());
+                match parse_incant_segments(&text) {
+                    Ok(segments) => Ok((
+                        Expr::Incant {
+                            segments,
+                            span: ctx.info(span),
+                        },
+                        span,
+                    )),
+                    Err(message) => Err(chumsky::error::Rich::custom(span, message)),
+                }
             },
         )
         .boxed()

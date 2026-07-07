@@ -31,6 +31,13 @@ pub enum Expr {
     /// `expr?` — unwrap a `bless` / `manifest` value, or propagate the
     /// `curse` / `naught` out of the enclosing `engrave`.
     Propagate(Box<Expr>, Option<Span>),
+    /// `incant "…{name}…"` — string interpolation. Parsed into literal
+    /// text and variable segments at parse time; each variable renders
+    /// with the same formatting `unveil` uses.
+    Incant {
+        segments: Vec<IncantSegment>,
+        span: Option<Span>,
+    },
     Var(String, Option<Span>),
     FuncCall {
         name: String,
@@ -167,6 +174,14 @@ pub enum Pattern {
     /// Fallback: an expression evaluated and compared against the
     /// scrutinee. In match mode a bare `Expr::Var` binds instead.
     Expr(Expr),
+}
+
+/// One piece of an `incant` literal: verbatim text or a variable to
+/// interpolate.
+#[derive(Debug, Clone)]
+pub enum IncantSegment {
+    Text(String),
+    Var(String),
 }
 
 /// One `oracle` match arm: `(pattern, …) ward guard => body`.

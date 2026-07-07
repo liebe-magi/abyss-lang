@@ -231,6 +231,28 @@ pub(crate) fn evaluate_expr(expr: &Expr, env: &mut RuntimeEnv) -> Result<EvalRes
             args,
             span: line_info,
         } => evaluate_method_call(env, receiver, method, args, line_info)?,
+        Expr::Incant { segments, span } => {
+            use abyss_core::ast::IncantSegment;
+
+            let mut rendered = String::new();
+            for segment in segments {
+                match segment {
+                    IncantSegment::Text(piece) => rendered.push_str(piece),
+                    IncantSegment::Var(name) => match env.get_var(name) {
+                        Some(var_info) => {
+                            let value = var_info.value.clone();
+                            rendered.push_str(&crate::stdlib::functions::io::format_value(
+                                &value, span,
+                            )?);
+                        }
+                        None => {
+                            return Err(env.undefined_variable_error(name, *span));
+                        }
+                    },
+                }
+            }
+            EvalResult::data(Value::Rune(Rc::new(rendered)))
+        }
         Expr::Propagate(inner, span) => {
             let result = evaluate_expr(inner, env)?;
             match result {

@@ -257,3 +257,42 @@ fn rune_split_rejects_empty_separator() {
         },
     }
 }
+
+#[test]
+fn incant_interpolates_variables() {
+    let input = r#"
+forge name: rune = "Ardyn";
+forge count: arcana = 3;
+forge ratio: aether = 2.5;
+forge ready: omen = boon;
+incant "{name} gathered {count} sigils (x{ratio}, ready: {ready})";
+"#;
+    let results = test_base(input).expect("incant should evaluate");
+    match results.last().unwrap() {
+        EvalResult::Data(Value::Rune(s)) => {
+            assert_eq!(s.as_ref(), "Ardyn gathered 3 sigils (x2.5, ready: boon)");
+        }
+        other => panic!("expected interpolated rune, got {:?}", other),
+    }
+}
+
+#[test]
+fn incant_escapes_braces() {
+    let results =
+        test_base(r#"incant "literal {{braces}} stay";"#).expect("escaped braces should parse");
+    match results.last().unwrap() {
+        EvalResult::Data(Value::Rune(s)) => assert_eq!(s.as_ref(), "literal {braces} stay"),
+        other => panic!("expected rune, got {:?}", other),
+    }
+}
+
+#[test]
+fn incant_reports_undefined_variables() {
+    match test_base(r#"incant "{missing}";"#) {
+        Ok(_) => panic!("expected undefined variable error"),
+        Err(err) => match err.downcast_ref::<EvalError>() {
+            Some(EvalError::UndefinedVariable(_, _)) => {}
+            other => panic!("expected undefined variable, got {:?}", other),
+        },
+    }
+}

@@ -21,7 +21,11 @@ export function activate(context: vscode.ExtensionContext) {
                 'bless',
                 'curse',
                 'manifest',
-                'naught'
+                'naught',
+                'incant',
+                'perish',
+                'invocation',
+                'aura'
             ];
             const completionItems = keywords.map(keyword => {
                 return new vscode.CompletionItem(keyword, vscode.CompletionItemKind.Keyword);

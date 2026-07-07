@@ -52,7 +52,7 @@
 			"patterns": [
 				{
 					"name": "keyword.control.abyss",
-					"match": "\\b(forge|morph|core|oracle|orbit|revolve|eject|engrave|reveal|artifact|ward)\\b"
+					"match": "\\b(forge|morph|core|oracle|orbit|revolve|eject|engrave|reveal|artifact|ward|incant)\\b"
 				}
 			]
 		},

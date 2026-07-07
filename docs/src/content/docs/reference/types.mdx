@@ -66,4 +66,20 @@ Fiat Nox
 hex
 ```
 
+## Incant — String Interpolation
+
+`incant` weaves variable values into a rune literal. Placeholders name a variable in scope; values render with the same formatting `unveil` uses. `{{` and `}}` produce literal braces.
+
+```aby
+forge name: rune = "Nova";
+forge hp: arcana = 42;
+unveil(incant "hero {name} at {hp} HP {{intact}}");
+```
+
+```
+hero Nova at 42 HP {intact}
+```
+
+Malformed placeholders (unclosed or empty braces, non-identifier contents) are parse-time diagnostics, not runtime surprises. Arbitrary expressions inside braces are not supported yet — bind to a variable first.
+
 Each rune name hints at its intent: `glyph` tokens are passed into conversions, `artifact` declarations craft reusable records, and `materia` absorbs values whose final shape is still unknown.

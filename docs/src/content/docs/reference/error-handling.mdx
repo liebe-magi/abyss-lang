@@ -1,0 +1,99 @@
+---
+title: Error Handling
+description: fate, augury, and the ? propagation operator.
+---
+
+AbySS promotes failures from "the interpreter prints a diagnostic and aborts" to values your rituals can handle. Two union types cover the everyday cases:
+
+| Type | Variants | Meaning |
+|---|---|---|
+| `fate` | `bless { value }` / `curse { reason }` | an operation that succeeds or fails (the themed `Result`) |
+| `augury` | `manifest { value }` / `naught {}` | a reading that reveals something, or nothing (the themed `Option`) |
+
+The variants are ordinary artifacts: you construct them with artifact literals and destructure them with the artifact patterns you already know. Their names — and `fate` / `augury` themselves — are reserved; no user artifact may claim them. Payload fields are `materia` until generics arrive.
+
+## Returning a fate
+
+```aby
+engrave parse_rank(raw: arcana) -> fate {
+    oracle {
+        (raw < 0) => reveal curse { reason: "rank must be non-negative" };
+        _ => reveal bless { value: raw * 10 };
+    };
+};
+
+oracle (parse_rank(3)) {
+    bless { value } => unveil(value);
+    curse { reason } => unveil(reason);
+};
+```
+
+```
+30
+```
+
+A function declared `-> fate` may only return `bless` or `curse`; `-> augury` only `manifest` or `naught`. Anything else is a call-time type error.
+
+## The `?` operator
+
+Postfix `?` unwraps a success variant, or returns the failure variant from the enclosing `engrave` — so straight-line code stays straight:
+
+```aby
+engrave parse_rank(raw: arcana) -> fate {
+    oracle {
+        (raw < 0) => reveal curse { reason: "rank must be non-negative" };
+        _ => reveal bless { value: raw * 10 };
+    };
+};
+
+engrave total_rank(a: arcana, b: arcana) -> fate {
+    forge first: arcana = parse_rank(a)?;
+    forge second: arcana = parse_rank(b)?;
+    reveal bless { value: first + second };
+};
+
+oracle (total_rank(3, 0 - 4)) {
+    bless { value } => unveil(value);
+    curse { reason } => unveil(reason);
+};
+```
+
+```
+rank must be non-negative
+```
+
+Rules of the road:
+
+- `?` works on `fate` and `augury` values; anything else raises `? requires a fate or augury value, found …`.
+- There is **no implicit conversion** between the unions: propagating a `naught` out of a `fate`-returning function fails the return-type check. Convert explicitly at the boundary.
+- A propagation nobody catches surfaces as a diagnostic underlining the `?` expression — `Uncaught curse: rank must be non-negative` — and `abyss invoke` exits non-zero.
+
+## Fallible stdlib APIs
+
+APIs whose failure depends on the *data* return these unions; APIs whose failure is a programming error (wrong types, wrong arity) keep raising diagnostics.
+
+- `scroll.min()` / `scroll.max()` → `augury` (`naught {}` on an empty scroll).
+- `sqrt(x)` → `fate` (`curse` for a negative input), so `sqrt(x)?` is the everyday form.
+
+```aby
+forge rolls: scroll = [3, 1, 4];
+oracle (rolls.min()) {
+    manifest { value } => unveil(value);
+    naught {} => unveil("empty scroll");
+};
+
+engrave hypot(a: aether, b: aether) -> fate {
+    reveal bless { value: sqrt(a * a + b * b)? };
+};
+oracle (hypot(3.0, 4.0)) {
+    bless { value } => unveil(value);
+    curse { reason } => unveil(reason);
+};
+```
+
+```
+1
+5
+```
+
+See [`examples/fate.aby`](https://github.com/liebe-magi/abyss-lang/blob/main/examples/fate.aby) for the full tour.

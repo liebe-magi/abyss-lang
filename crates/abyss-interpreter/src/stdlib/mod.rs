@@ -67,6 +67,27 @@ fn seed_error_handling_artifacts(env: &mut RuntimeEnv) {
     }
 }
 
+/// Construct one of the error-handling variant artifacts from Rust —
+/// the stdlib's counterpart of writing `bless {{ value: … }}` in AbySS.
+pub(crate) fn make_variant(name: &str, field: Option<(&str, Value)>) -> Value {
+    use crate::artifact::ArtifactValue;
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+    use std::rc::Rc;
+
+    let mut fields = HashMap::new();
+    let mut field_order = Vec::new();
+    if let Some((field_name, value)) = field {
+        field_order.push(field_name.to_string());
+        fields.insert(field_name.to_string(), value);
+    }
+    Value::Artifact(Rc::new(RefCell::new(ArtifactValue {
+        type_name: name.to_string(),
+        fields,
+        field_order,
+    })))
+}
+
 pub fn create_global_environment() -> RuntimeEnv {
     let mut env = RuntimeEnv::new();
     let functions = functions::get_all_global_functions();

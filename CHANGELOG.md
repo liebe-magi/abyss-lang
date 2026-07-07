@@ -6,6 +6,10 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 
 ## [Unreleased]
 
+### Changed (breaking — stdlib)
+
+- **Fallible stdlib APIs return `fate` / `augury`** ([#548](https://github.com/liebe-magi/abyss-lang/issues/548), v0.7.0 PR 3/3) — `scroll.min()` / `scroll.max()` now return `manifest { value }` or `naught {}` instead of a bare element / an empty-scroll error, and `sqrt(x)` returns `bless { value }` or `curse { reason }` instead of erroring on negative input — so `sqrt(x)?` is the everyday form. The convention: data-dependent failure returns a union; programming errors (wrong types, arity) keep raising diagnostics. `sum()` still errors on empty scrolls pending generics.
+
 ### Added
 
 - **`?` propagation operator** ([#548](https://github.com/liebe-magi/abyss-lang/issues/548), v0.7.0 PR 2/3) — postfix `expr?` unwraps a `bless` / `manifest` payload, or propagates the `curse` / `naught` out of the enclosing `engrave` as its return value (checked against the declared return type; cross-union propagation is rejected, no implicit conversion). A propagation that reaches the top level renders as an `Uncaught curse: …` / `Uncaught naught` diagnostic underlining the `?` expression, and `abyss invoke` now exits non-zero on any script failure. Scope depth is restored exactly at the catch point even when the propagation unwound out of nested `orbit` / `oracle` scopes.

@@ -19,22 +19,32 @@ pub fn native_abs(
     }
 }
 
-/// `sqrt(x)` — square root of a non-negative `aether`. Negative input is
-/// an error for now; the v0.7.0 error-handling cycle moves this to a
-/// `fate` return.
+/// `sqrt(x)` — square root as a `fate`: `bless {{ value }}` for a
+/// non-negative `aether`, `curse {{ reason }}` for a negative one, so
+/// call sites write `sqrt(x)?` (v0.7.0 fallible-API convention,
+/// design: #548). A non-`aether` argument remains a hard error —
+/// that's a programming mistake, not data-dependent failure.
 pub fn native_sqrt(
     _env: &mut RuntimeEnv,
     args: Vec<CallArg>,
     line_info: Option<Span>,
 ) -> Result<EvalResult, EvalError> {
+    use std::rc::Rc;
+
     let value = take_one_aether(args, "sqrt", &line_info)?;
     if value < 0.0 {
-        return Err(EvalError::InvalidOperation(
-            "sqrt() requires a non-negative aether".to_string(),
-            line_info,
-        ));
+        return Ok(EvalResult::data(crate::stdlib::make_variant(
+            "curse",
+            Some((
+                "reason",
+                Value::Rune(Rc::new("sqrt() requires a non-negative aether".to_string())),
+            )),
+        )));
     }
-    Ok(EvalResult::data(Value::Aether(value.sqrt())))
+    Ok(EvalResult::data(crate::stdlib::make_variant(
+        "bless",
+        Some(("value", Value::Aether(value.sqrt()))),
+    )))
 }
 
 /// `floor(x)` — largest `arcana` not greater than the `aether` input.
@@ -139,19 +149,27 @@ mod tests {
     }
 
     #[test]
-    fn sqrt_rejects_negative_and_non_aether() {
+    fn sqrt_returns_fate_variants() {
         let mut env = RuntimeEnv::new();
-        assert!(matches!(
-            native_sqrt(&mut env, arg(Value::Aether(-1.0)), None),
-            Err(EvalError::InvalidOperation(msg, _)) if msg.contains("non-negative")
-        ));
+        match native_sqrt(&mut env, arg(Value::Aether(-1.0)), None) {
+            Ok(EvalResult::Data(Value::Artifact(handle))) => {
+                assert_eq!(handle.borrow().type_name, "curse");
+            }
+            other => panic!("expected curse, got {:?}", other),
+        }
         assert!(matches!(
             native_sqrt(&mut env, arg(Value::Arcana(4)), None),
             Err(EvalError::InvalidOperation(msg, _)) if msg.contains("expects an aether value, found arcana")
         ));
         match native_sqrt(&mut env, arg(Value::Aether(9.0)), None) {
-            Ok(EvalResult::Data(Value::Aether(n))) => assert_eq!(n, 3.0),
-            other => panic!("expected aether, got {:?}", other),
+            Ok(EvalResult::Data(Value::Artifact(handle))) => {
+                let borrowed = handle.borrow();
+                assert_eq!(borrowed.type_name, "bless");
+                assert!(
+                    matches!(borrowed.fields.get("value"), Some(Value::Aether(n)) if *n == 3.0)
+                );
+            }
+            other => panic!("expected bless, got {:?}", other),
         }
     }
 

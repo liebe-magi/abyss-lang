@@ -226,8 +226,18 @@ names.sort();
     assert_eq!(as_arcana_vec(&results[1]), vec![1, 1, 2, 3, 3]);
     assert_eq!(as_arcana_vec(&results[2]), vec![3, 1, 2]);
     assert!(matches!(&results[3], EvalResult::Data(Value::Arcana(10))));
-    assert!(matches!(&results[4], EvalResult::Data(Value::Arcana(1))));
-    assert!(matches!(&results[5], EvalResult::Data(Value::Arcana(3))));
+    let expect_manifest = |result: &EvalResult, expected: i64| match result {
+        EvalResult::Data(Value::Artifact(handle)) => {
+            let borrowed = handle.borrow();
+            assert_eq!(borrowed.type_name, "manifest");
+            assert!(
+                matches!(borrowed.fields.get("value"), Some(Value::Arcana(n)) if *n == expected)
+            );
+        }
+        other => panic!("expected manifest, got {:?}", other),
+    };
+    expect_manifest(&results[4], 1);
+    expect_manifest(&results[5], 3);
     match &results[7] {
         EvalResult::Data(Value::Scroll(items)) => {
             let names: Vec<String> = items
@@ -261,14 +271,12 @@ fn scroll_aggregates_reject_empty_and_mixed() {
 forge xs: scroll = [];
 xs.min();
 "#;
-    match test_base(empty) {
-        Ok(_) => panic!("expected empty-scroll error"),
-        Err(err) => match err.downcast_ref::<EvalError>() {
-            Some(EvalError::InvalidOperation(msg, _)) => {
-                assert!(msg.contains("empty scroll"), "msg: {msg}");
-            }
-            other => panic!("expected invalid operation, got {:?}", other),
-        },
+    let results = test_base(empty).expect("empty min should return naught");
+    match results.last().unwrap() {
+        EvalResult::Data(Value::Artifact(handle)) => {
+            assert_eq!(handle.borrow().type_name, "naught");
+        }
+        other => panic!("expected naught, got {:?}", other),
     }
 
     let mixed = r#"

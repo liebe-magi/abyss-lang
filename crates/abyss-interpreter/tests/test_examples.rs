@@ -34,6 +34,12 @@ fn artifact_example_executes() {
 }
 
 #[test]
+fn fate_example_executes() {
+    let source = load_example("fate.aby");
+    test_base(&source).expect("fate example failed to execute");
+}
+
+#[test]
 fn pattern_example_executes() {
     let source = load_example("pattern.aby");
     test_base(&source).expect("pattern example failed to execute");

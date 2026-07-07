@@ -6,6 +6,16 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+## [v0.7.0] - 2026-07-07
+
+### Added
+
+- `fate` and `augury` join the storage-type highlight group, and the six error-handling names (`fate`, `augury`, `bless`, `curse`, `manifest`, `naught`) join keyword completion, matching the v0.7.0 language release.
+
+### Changed
+
+- Bumped the extension version to 0.7.0 to stay in lockstep with the `abyss-lang` crate. The `?` operator needs no grammar change (punctuation).
+
 ## [v0.6.1] - 2026-07-06
 
 ### Fixed

@@ -6,6 +6,10 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-07
+
+The First-class Error Handling release. Failures become values: `fate` (`bless { value }` / `curse { reason }`) and `augury` (`manifest { value }` / `naught {}`) arrive as built-in union types constructed and destructured with the artifact machinery you already know, and the new postfix `?` unwraps a success or propagates the failure out of the enclosing `engrave`. The fallible stdlib APIs follow the convention from day one, and `abyss invoke` finally exits non-zero on script failure. Breaking changes are limited to the fallible-API return types and six newly reserved names.
+
 ### Changed (breaking — stdlib)
 
 - **Fallible stdlib APIs return `fate` / `augury`** ([#548](https://github.com/liebe-magi/abyss-lang/issues/548), v0.7.0 PR 3/3) — `scroll.min()` / `scroll.max()` now return `manifest { value }` or `naught {}` instead of a bare element / an empty-scroll error, and `sqrt(x)` returns `bless { value }` or `curse { reason }` instead of erroring on negative input — so `sqrt(x)?` is the everyday form. The convention: data-dependent failure returns a union; programming errors (wrong types, arity) keep raising diagnostics. `sum()` still errors on empty scrolls pending generics.
@@ -14,6 +18,8 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 
 - **`?` propagation operator** ([#548](https://github.com/liebe-magi/abyss-lang/issues/548), v0.7.0 PR 2/3) — postfix `expr?` unwraps a `bless` / `manifest` payload, or propagates the `curse` / `naught` out of the enclosing `engrave` as its return value (checked against the declared return type; cross-union propagation is rejected, no implicit conversion). A propagation that reaches the top level renders as an `Uncaught curse: …` / `Uncaught naught` diagnostic underlining the `?` expression, and `abyss invoke` now exits non-zero on any script failure. Scope depth is restored exactly at the catch point even when the propagation unwound out of nested `orbit` / `oracle` scopes.
 - **`fate` and `augury` types with built-in variant artifacts** ([#548](https://github.com/liebe-magi/abyss-lang/issues/548), v0.7.0 PR 1/3) — the themed `Result` / `Option`: `fate` admits the pre-seeded `bless { value }` / `curse { reason }` artifacts and `augury` admits `manifest { value }` / `naught {}`. Construction uses ordinary artifact literals, destructuring uses ordinary artifact patterns, and `forge` annotations, `engrave` parameters, and `engrave` return types all accept the union types with call-time enforcement. The six names are reserved in every scope. Payload fields are `materia` until generics land.
+
+For the full diff, see the [GitHub compare v0.6.1...v0.7.0](https://github.com/liebe-magi/abyss-lang/compare/v0.6.1...v0.7.0).
 
 ## [0.6.1] - 2026-07-06
 

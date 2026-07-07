@@ -51,7 +51,7 @@ Round out the everyday helpers as compatibility-preserving point releases. `rune
 - `scroll` methods: `sort`, `unique`, `sum`, `min`, `max`. Empty-scroll `min` / `max` raise an error for now; they move to `augury` returns in the v0.7.x API revision.
 - Math rituals that are sandbox-safe everywhere: `abs`, `sqrt`, `floor`, `ceil`. Time rituals wait for the I/O design.
 
-### v0.7.0 — First-class Error Handling
+### v0.7.0 — First-class Error Handling *(shipped)*
 
 Promote runtime failures from "interpreter prints a diagnostic and aborts" to a value scripts can handle. The artifact pattern type-dispatch shipped in v0.5.0 already supports the mechanics; this cycle standardises the types and adds the propagation operator. The `Expr` / `Stmt` split makes `?` a straightforward postfix expression.
 

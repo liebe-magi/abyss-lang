@@ -1,5 +1,6 @@
 pub mod io;
 pub mod math;
+pub mod runtime;
 
 use std::collections::HashMap;
 
@@ -25,7 +26,8 @@ pub fn get_all_global_functions() -> HashMap<String, Callable> {
     );
 
     for (name, func) in [
-        ("abs", math::native_abs as crate::env::BuiltinFunc),
+        ("perish", runtime::native_perish as crate::env::BuiltinFunc),
+        ("abs", math::native_abs),
         ("sqrt", math::native_sqrt),
         ("floor", math::native_floor),
         ("ceil", math::native_ceil),

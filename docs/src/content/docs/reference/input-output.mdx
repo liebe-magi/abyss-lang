@@ -23,3 +23,34 @@ unveil("Hello, ", name, "! You are ", age, " years old.");
 `summon` always returns a `rune`. Chain `.transmute(glyph)` to coerce into numeric runes as needed.
 
 These rituals keep the language's magical tone while retaining predictable console I/O behavior.
+
+## Script Runtime Rituals
+
+### `invocation` — script arguments
+
+`invocation` is a built-in immutable `scroll` of runes holding the arguments passed after `--`:
+
+```
+abyss invoke script.aby -- ember frost
+```
+
+```aby
+unveil(invocation.tally().transmute(rune));
+oracle {
+    (invocation.tally() == 0) => unveil("no arguments");
+    _ => unveil(invocation[0]);
+};
+```
+
+With `-- ember` this prints:
+
+```
+1
+ember
+```
+
+In the REPL and the Playground, `invocation` is an empty scroll.
+
+### `perish(code)` — deliberate termination
+
+`perish(code)` ends the script with an exit code; `perish()` means code 0. Perishing is deliberate, not an error: `abyss invoke` exits with the code silently, while the REPL prints `Perished with code N — the session lives on` and keeps going.

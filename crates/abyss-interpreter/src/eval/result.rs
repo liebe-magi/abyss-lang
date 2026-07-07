@@ -70,6 +70,10 @@ pub enum EvalError {
     /// Travelling on the error channel means every expression context
     /// propagates it without bespoke plumbing.
     Propagation(ArtifactHandle, Option<Span>),
+    /// `perish(code)` — deliberate script termination riding the error
+    /// channel. `invoke` exits with the code (no diagnostic), the REPL
+    /// prints and continues, the Playground reports it.
+    Perished(i64, Option<Span>),
 }
 
 /// Lowercase keyword name for a type, as used in "Expected … value"
@@ -106,6 +110,7 @@ impl EvalError {
             | EvalError::ScrollIndexOutOfBounds(_, info)
             | EvalError::MissingLexiconKey(_, info)
             | EvalError::Propagation(_, info)
+            | EvalError::Perished(_, info)
             | EvalError::NegativeExponent(info) => info.as_ref(),
         }
     }
@@ -128,6 +133,7 @@ impl EvalError {
                 "naught" => "Uncaught naught",
                 _ => "Uncaught propagation",
             },
+            EvalError::Perished(_, _) => "Perished",
         }
     }
 }
@@ -171,6 +177,7 @@ impl fmt::Display for EvalError {
             EvalError::MissingLexiconKey(key, _) => {
                 write!(f, "Invalid operation: Lexicon key '{}' does not exist", key)
             }
+            EvalError::Perished(code, _) => write!(f, "Perished with code {}", code),
             EvalError::Propagation(handle, _) => {
                 let borrowed = handle.borrow();
                 match borrowed.type_name.as_str() {

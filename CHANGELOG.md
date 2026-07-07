@@ -6,6 +6,10 @@ The accompanying VS Code extension has its own changelog at [`editors/code/CHANG
 
 ## [Unreleased]
 
+### Added
+
+- **`invocation` script arguments and `perish(code)`** ([#557](https://github.com/liebe-magi/abyss-lang/issues/557)) — the first Scripting Ergonomics pieces. `invocation` is a built-in immutable scroll of runes holding everything after `--` in `abyss invoke script.aby -- …` (empty in the REPL and Playground); `perish(code)` terminates the script with an exit code (`perish()` = 0) — `invoke` exits with the code silently, the REPL prints a notice and continues.
+
 ## [0.7.0] - 2026-07-07
 
 The First-class Error Handling release. Failures become values: `fate` (`bless { value }` / `curse { reason }`) and `augury` (`manifest { value }` / `naught {}`) arrive as built-in union types constructed and destructured with the artifact machinery you already know, and the new postfix `?` unwraps a success or propagates the failure out of the enclosing `engrave`. The fallible stdlib APIs follow the convention from day one, and `abyss invoke` finally exits non-zero on script failure. Breaking changes are limited to the fallible-API return types and six newly reserved names.

@@ -88,6 +88,42 @@ pub(crate) fn make_variant(name: &str, field: Option<(&str, Value)>) -> Value {
     })))
 }
 
+/// Seed the script-runtime globals: `invocation` (the script arguments,
+/// empty by default — the CLI overwrites it for `invoke`) as an immutable
+/// scroll of runes.
+fn seed_runtime_globals(env: &mut RuntimeEnv) {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    env.set_var(
+        "invocation".to_string(),
+        Value::Scroll(Rc::new(RefCell::new(Vec::new()))),
+        Type::Scroll,
+        false,
+        None,
+    );
+}
+
+/// Install the given script arguments as the `invocation` scroll. The CLI
+/// calls this for `invoke script.aby -- …`; hosts that never call it keep
+/// the empty default.
+pub fn set_invocation(env: &mut RuntimeEnv, args: &[String]) {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let runes: Vec<Value> = args
+        .iter()
+        .map(|arg| Value::Rune(Rc::new(arg.clone())))
+        .collect();
+    env.set_var(
+        "invocation".to_string(),
+        Value::Scroll(Rc::new(RefCell::new(runes))),
+        Type::Scroll,
+        false,
+        None,
+    );
+}
+
 pub fn create_global_environment() -> RuntimeEnv {
     let mut env = RuntimeEnv::new();
     let functions = functions::get_all_global_functions();
@@ -96,6 +132,7 @@ pub fn create_global_environment() -> RuntimeEnv {
     env.set_builtin_methods(methods);
     seed_builtin_glyphs(&mut env);
     seed_error_handling_artifacts(&mut env);
+    seed_runtime_globals(&mut env);
     env
 }
 

@@ -206,6 +206,10 @@ fn scroll_sum(
     }
 }
 
+/// `min` / `max` return an `augury`: `manifest {{ value }}` with the
+/// extremum, or `naught {{}}` for an empty scroll — the v0.7.0
+/// fallible-API convention (design: #548). Mixed-type scrolls remain a
+/// hard error (programming error, not data-dependent absence).
 fn scroll_extremum(
     receiver_value: Value,
     args: Vec<CallArg>,
@@ -221,6 +225,11 @@ fn scroll_extremum(
         ));
     }
     let values: Vec<Value> = items.borrow().clone();
+    if values.is_empty() {
+        return Ok(EvalResult::data(crate::stdlib::make_variant(
+            "naught", None,
+        )));
+    }
     let kind = homogeneous_kind(&values, method, line_info)?;
     let mut best = values[0].clone();
     for value in &values[1..] {
@@ -234,7 +243,10 @@ fn scroll_extremum(
             best = value.clone();
         }
     }
-    Ok(EvalResult::data(best))
+    Ok(EvalResult::data(crate::stdlib::make_variant(
+        "manifest",
+        Some(("value", best)),
+    )))
 }
 
 fn scroll_min(

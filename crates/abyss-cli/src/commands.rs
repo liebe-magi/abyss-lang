@@ -25,23 +25,25 @@ pub fn report_diagnostics(source_id: &str, source: &str, diagnostics: &[ParserDi
     true
 }
 
-/// Executes a given AbySS script by parsing and evaluating it in a new environment.
-///
-/// # Arguments
-/// * `script` - A string containing the AbySS script to be executed.
-pub fn execute_script(script: &str) {
+/// Executes a given AbySS script by parsing and evaluating it in a new
+/// environment. Returns `false` when parsing or evaluation failed (the
+/// diagnostic has already been rendered) so the caller can exit non-zero
+/// — an uncaught `curse` from `?` should fail the invocation the same
+/// way any other runtime error does.
+pub fn execute_script(script: &str) -> bool {
     let mut env = stdlib::create_global_environment();
     let outcome = parse(script);
     if report_diagnostics("<script>", script, &outcome.diagnostics) {
-        return;
+        return false;
     }
 
     for ast in outcome.ast {
         if let Err(error) = evaluate(&ast, &mut env) {
             display_error_with_source(script, &error);
-            return;
+            return false;
         }
     }
+    true
 }
 
 /// Formats the provided AbySS script by parsing and reconstructing it with proper indentation.

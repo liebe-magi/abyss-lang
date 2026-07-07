@@ -1,0 +1,47 @@
+// fate & augury: first-class error handling with the ? operator.
+
+engrave parse_rank(raw: arcana) -> fate {
+    oracle {
+        (raw < 0) => reveal curse { reason: "rank must be non-negative" };
+        _ => reveal bless { value: raw * 10 };
+    };
+};
+
+engrave total_rank(a: arcana, b: arcana) -> fate {
+    // ? unwraps a bless, or returns the curse from total_rank itself.
+    forge first: arcana = parse_rank(a)?;
+    forge second: arcana = parse_rank(b)?;
+    reveal bless { value: first + second };
+};
+
+oracle (total_rank(3, 4)) {
+    bless { value } => unveil(value);
+    curse { reason } => unveil(reason);
+};
+
+oracle (total_rank(3, 0 - 4)) {
+    bless { value } => unveil(value);
+    curse { reason } => unveil(reason);
+};
+
+// augury: presence or absence, straight from the stdlib.
+forge rolls: scroll = [3, 1, 4];
+oracle (rolls.min()) {
+    manifest { value } => unveil(value);
+    naught {} => unveil("empty scroll");
+};
+
+forge nothing: scroll = [];
+oracle (nothing.min()) {
+    manifest { value } => unveil(value);
+    naught {} => unveil("empty scroll");
+};
+
+// sqrt returns a fate, so ? composes with math.
+engrave hypot(a: aether, b: aether) -> fate {
+    reveal bless { value: sqrt(a * a + b * b)? };
+};
+oracle (hypot(3.0, 4.0)) {
+    bless { value } => unveil(value);
+    curse { reason } => unveil(reason);
+};

@@ -102,6 +102,8 @@ fn type_keyword(var_type: &Type) -> String {
         Type::Lexicon => "lexicon".to_string(),
         Type::Materia => "materia".to_string(),
         Type::Glyph => "glyph".to_string(),
+        Type::Fate => "fate".to_string(),
+        Type::Augury => "augury".to_string(),
         Type::Artifact(name) => name.clone(),
     }
 }
@@ -341,7 +343,7 @@ fn precedence(node: &Expr) -> u8 {
         Expr::Mul(_, _, _) | Expr::Div(_, _, _) | Expr::Mod(_, _, _) => 60,
         Expr::PowArcana(_, _, _) | Expr::PowAether(_, _, _) => 70,
         Expr::LogicalNot(_, _) => 80,
-        Expr::IndexAccess { .. } | Expr::FieldAccess { .. } => 90,
+        Expr::IndexAccess { .. } | Expr::FieldAccess { .. } | Expr::Propagate(_, _) => 90,
         _ => 100,
     }
 }
@@ -407,6 +409,9 @@ pub fn format_expr(expr: &Expr, indent_level: usize) -> String {
         }
         Expr::LogicalNot(inner, _) => {
             format!("!{}", format_with_parentheses(inner, current_precedence))
+        }
+        Expr::Propagate(inner, _) => {
+            format!("{}?", format_with_parentheses(inner, current_precedence))
         }
         Expr::Var(name, _) => name.clone(),
         Expr::FieldAccess { target, field, .. } => {

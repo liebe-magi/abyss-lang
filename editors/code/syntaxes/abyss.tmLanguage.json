@@ -60,7 +60,7 @@
 			"patterns": [
 				{
 					"name": "storage.type.abyss",
-					"match": "\\b(arcana|aether|rune|omen|abyss|scroll|lexicon|materia|glyph)\\b"
+					"match": "\\b(arcana|aether|rune|omen|abyss|scroll|lexicon|materia|glyph|fate|augury)\\b"
 				}
 			]
 		},

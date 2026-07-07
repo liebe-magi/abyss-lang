@@ -124,6 +124,8 @@ fn glyph_label(var_type: &Type) -> String {
         Type::Lexicon => "lexicon".to_string(),
         Type::Materia => "materia".to_string(),
         Type::Glyph => "glyph".to_string(),
+        Type::Fate => "fate".to_string(),
+        Type::Augury => "augury".to_string(),
         Type::Artifact(name) => name.clone(),
     }
 }

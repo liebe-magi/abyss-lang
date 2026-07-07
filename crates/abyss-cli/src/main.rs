@@ -42,9 +42,12 @@ fn main() {
     match &cli.command {
         Commands::Invoke { script } => {
             if let Ok(contents) = fs::read_to_string(script) {
-                execute_script(&contents);
+                if !execute_script(&contents) {
+                    std::process::exit(1);
+                }
             } else {
                 eprintln!("Error: Could not read the script file.");
+                std::process::exit(1);
             }
         }
         Commands::Cast { debug } => {

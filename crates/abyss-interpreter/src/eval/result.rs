@@ -63,6 +63,13 @@ pub enum EvalError {
     ScrollIndexOutOfBounds(usize, Option<Span>),
     /// Lexicon lookup with a key that has no entry.
     MissingLexiconKey(String, Option<Span>),
+    /// A `curse` / `naught` unwinding out of a `?` expression. Caught at
+    /// the enclosing `engrave` boundary (where it becomes the function's
+    /// return value, subject to the declared return type); if it reaches
+    /// the top level it renders as an "Uncaught curse / naught" report.
+    /// Travelling on the error channel means every expression context
+    /// propagates it without bespoke plumbing.
+    Propagation(ArtifactHandle, Option<Span>),
 }
 
 /// Lowercase keyword name for a type, as used in "Expected … value"
@@ -78,6 +85,8 @@ fn type_label(ty: &Type) -> &str {
         Type::Lexicon => "lexicon",
         Type::Glyph => "glyph",
         Type::Materia => "materia",
+        Type::Fate => "fate",
+        Type::Augury => "augury",
         Type::Artifact(name) => name,
     }
 }
@@ -96,6 +105,7 @@ impl EvalError {
             | EvalError::ImmutableAssignment(_, info)
             | EvalError::ScrollIndexOutOfBounds(_, info)
             | EvalError::MissingLexiconKey(_, info)
+            | EvalError::Propagation(_, info)
             | EvalError::NegativeExponent(info) => info.as_ref(),
         }
     }
@@ -113,6 +123,11 @@ impl EvalError {
             EvalError::TypeError(_, _)
             | EvalError::ExpectedType(_, _)
             | EvalError::ArtifactTypeMismatch { .. } => "Type error",
+            EvalError::Propagation(handle, _) => match handle.borrow().type_name.as_str() {
+                "curse" => "Uncaught curse",
+                "naught" => "Uncaught naught",
+                _ => "Uncaught propagation",
+            },
         }
     }
 }
@@ -155,6 +170,24 @@ impl fmt::Display for EvalError {
             ),
             EvalError::MissingLexiconKey(key, _) => {
                 write!(f, "Invalid operation: Lexicon key '{}' does not exist", key)
+            }
+            EvalError::Propagation(handle, _) => {
+                let borrowed = handle.borrow();
+                match borrowed.type_name.as_str() {
+                    "curse" => {
+                        let reason = borrowed
+                            .fields
+                            .get("reason")
+                            .map(|value| {
+                                crate::stdlib::functions::io::format_value(value, &None)
+                                    .unwrap_or_else(|_| "<unprintable reason>".to_string())
+                            })
+                            .unwrap_or_else(|| "<no reason>".to_string());
+                        write!(f, "Uncaught curse: {}", reason)
+                    }
+                    "naught" => write!(f, "Uncaught naught: the augury revealed nothing"),
+                    other => write!(f, "Uncaught propagation of artifact {}", other),
+                }
             }
         }
     }

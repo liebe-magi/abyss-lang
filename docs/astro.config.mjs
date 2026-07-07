@@ -41,6 +41,7 @@ export default defineConfig({
                         { label: 'Control Flow: Pattern Matching', slug: 'reference/pattern-matching' },
                         { label: 'Control Flow: Loops', slug: 'reference/loops' },
                         { label: 'Functions', slug: 'reference/functions' },
+                        { label: 'Error Handling', slug: 'reference/error-handling' },
                         { label: 'Collections', slug: 'reference/collections' },
                         { label: 'Artifacts', slug: 'reference/artifacts' },
                     ],

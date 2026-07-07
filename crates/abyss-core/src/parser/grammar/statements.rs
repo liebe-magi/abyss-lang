@@ -626,6 +626,8 @@ pub(super) fn type_keyword_name(ty: &Type) -> String {
         Type::Lexicon => "lexicon",
         Type::Materia => "materia",
         Type::Glyph => "glyph",
+        Type::Fate => "fate",
+        Type::Augury => "augury",
         Type::Artifact(name) => name,
     }
     .to_string()

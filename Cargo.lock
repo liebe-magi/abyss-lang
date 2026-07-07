@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "abyss-core"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "ariadne",
  "chumsky",
@@ -13,7 +13,7 @@ dependencies = [
 
 [[package]]
 name = "abyss-interpreter"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "abyss-core",
  "ariadne",
@@ -21,7 +21,7 @@ dependencies = [
 
 [[package]]
 name = "abyss-lang"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "abyss-core",
  "abyss-interpreter",
@@ -33,7 +33,7 @@ dependencies = [
 
 [[package]]
 name = "abyss-wasm"
-version = "0.6.1"
+version = "0.7.0"
 dependencies = [
  "abyss-core",
  "abyss-interpreter",
@@ -147,9 +147,9 @@ checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
 name = "cc"
-version = "1.2.65"
+version = "1.2.66"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e228eec9be7c17ccb640b59b36a5cd805ea2a564a4c5e162c2f659fea30d3b96"
+checksum = "f5d6cac793997bd970000024b2934968efe83b382de4fdcf4fcb46b6ee4ad996"
 dependencies = [
  "find-msvc-tools",
  "shlex",

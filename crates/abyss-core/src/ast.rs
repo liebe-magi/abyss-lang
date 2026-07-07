@@ -28,6 +28,9 @@ pub enum Expr {
     LogicalAnd(Box<Expr>, Box<Expr>, Option<Span>),
     LogicalOr(Box<Expr>, Box<Expr>, Option<Span>),
     LogicalNot(Box<Expr>, Option<Span>),
+    /// `expr?` — unwrap a `bless` / `manifest` value, or propagate the
+    /// `curse` / `naught` out of the enclosing `engrave`.
+    Propagate(Box<Expr>, Option<Span>),
     Var(String, Option<Span>),
     FuncCall {
         name: String,
@@ -227,6 +230,12 @@ pub enum Type {
     Lexicon,
     Materia,
     Glyph,
+    /// Union type over the built-in `bless` / `curse` artifacts (the
+    /// themed `Result`). Payloads are `materia` until generics land.
+    Fate,
+    /// Union type over the built-in `manifest` / `naught` artifacts
+    /// (the themed `Option`).
+    Augury,
     Artifact(String),
 }
 

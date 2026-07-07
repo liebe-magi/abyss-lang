@@ -113,6 +113,21 @@ impl RuntimeEnv {
         self.artifact_scopes.push(HashMap::new());
     }
 
+    /// Current scope-stack depth. Paired with [`truncate_scopes`](Self::truncate_scopes)
+    /// so `?`-propagation catch points can restore the exact depth they saw,
+    /// even when the propagation unwound out of nested `orbit` / `oracle`
+    /// scopes that never reached their own pops.
+    pub(crate) fn scopes_len(&self) -> usize {
+        self.scopes.len()
+    }
+
+    /// Pop scopes until the stack is back at `depth`.
+    pub(crate) fn truncate_scopes(&mut self, depth: usize) {
+        while self.scopes.len() > depth {
+            self.pop_scope();
+        }
+    }
+
     /// Pops the most recent scope off the stack, discarding the current local environment.
     pub fn pop_scope(&mut self) {
         self.scopes.pop();
@@ -269,7 +284,30 @@ impl RuntimeEnv {
         }
     }
 
+    /// Names claimed by the error-handling built-ins. User artifacts may
+    /// not use them in any scope, so `bless { … }` always means the seeded
+    /// variant and patterns can never be shadowed into silence.
+    pub const RESERVED_ARTIFACT_NAMES: [&'static str; 6] =
+        ["fate", "augury", "bless", "curse", "manifest", "naught"];
+
+    /// Registers a built-in artifact schema, bypassing the reserved-name
+    /// guard. Only the stdlib seeding path uses this.
+    pub(crate) fn define_builtin_artifact(&mut self, schema: ArtifactSchema) {
+        if let Some(scope) = self.artifact_scopes.first_mut() {
+            scope.insert(schema.name.clone(), schema);
+        }
+    }
+
     pub fn define_artifact(&mut self, schema: ArtifactSchema) -> Result<(), EvalError> {
+        if Self::RESERVED_ARTIFACT_NAMES.contains(&schema.name.as_str()) {
+            return Err(EvalError::InvalidOperation(
+                format!(
+                    "Artifact name {} is reserved by the error-handling built-ins",
+                    schema.name
+                ),
+                schema.line_info,
+            ));
+        }
         if let Some(scope) = self.artifact_scopes.last_mut() {
             if scope.contains_key(&schema.name) {
                 return Err(EvalError::InvalidOperation(

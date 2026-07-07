@@ -1125,22 +1125,42 @@ ceil(2.1);
         other => panic!("expected aether, got {:?}", other),
     }
     match &results[2] {
-        EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 3.0),
-        other => panic!("expected aether, got {:?}", other),
+        EvalResult::Data(Value::Artifact(handle)) => {
+            let borrowed = handle.borrow();
+            assert_eq!(borrowed.type_name, "bless");
+            assert!(matches!(borrowed.fields.get("value"), Some(Value::Aether(n)) if *n == 3.0));
+        }
+        other => panic!("expected bless, got {:?}", other),
     }
     assert!(matches!(&results[3], EvalResult::Data(Value::Arcana(2))));
     assert!(matches!(&results[4], EvalResult::Data(Value::Arcana(3))));
 }
 
 #[test]
-fn sqrt_of_negative_errors() {
-    match test_base("sqrt(-1.0);") {
-        Ok(_) => panic!("expected sqrt error"),
-        Err(err) => match err.downcast_ref::<EvalError>() {
-            Some(EvalError::InvalidOperation(msg, _)) => {
-                assert!(msg.contains("non-negative"), "msg: {msg}");
-            }
-            other => panic!("expected invalid operation, got {:?}", other),
-        },
+fn sqrt_of_negative_returns_curse() {
+    let results = test_base("sqrt(-1.0);").expect("sqrt should return a fate");
+    match &results[0] {
+        EvalResult::Data(Value::Artifact(handle)) => {
+            assert_eq!(handle.borrow().type_name, "curse");
+        }
+        other => panic!("expected curse, got {:?}", other),
+    }
+}
+
+#[test]
+fn sqrt_composes_with_question_operator() {
+    let input = r#"
+engrave hypot(a: aether, b: aether) -> fate {
+    reveal bless { value: sqrt(a * a + b * b)? };
+};
+oracle (hypot(3.0, 4.0)) {
+    bless { value } => value;
+    curse { reason } => 0.0;
+};
+"#;
+    let results = test_base(input).expect("hypot should evaluate");
+    match results.last().unwrap() {
+        EvalResult::Data(Value::Aether(n)) => assert_eq!(*n, 5.0),
+        other => panic!("expected 5.0, got {:?}", other),
     }
 }

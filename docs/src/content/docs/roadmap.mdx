@@ -51,7 +51,7 @@ Round out the everyday helpers as compatibility-preserving point releases. `rune
 - `scroll` methods: `sort`, `unique`, `sum`, `min`, `max`. Empty-scroll `min` / `max` raise an error for now; they move to `augury` returns in the v0.7.x API revision.
 - Math rituals that are sandbox-safe everywhere: `abs`, `sqrt`, `floor`, `ceil`. Time rituals wait for the I/O design.
 
-### v0.7.0 — First-class Error Handling
+### v0.7.0 — First-class Error Handling *(shipped)*
 
 Promote runtime failures from "interpreter prints a diagnostic and aborts" to a value scripts can handle. The artifact pattern type-dispatch shipped in v0.5.0 already supports the mechanics; this cycle standardises the types and adds the propagation operator. The `Expr` / `Stmt` split makes `?` a straightforward postfix expression.
 
@@ -59,6 +59,7 @@ Promote runtime failures from "interpreter prints a diagnostic and aborts" to a 
 - Stdlib **`augury`** type (the themed `Option`): **`manifest { value }`** / **`naught {}`** — an augury may reveal something, or nothing.
 - New `?` propagation operator that early-returns the `curse` / `naught` variant from the enclosing function: `forge x: arcana = parse(input)?;`.
 - `engrave` return-type support for `fate` and `augury`, with call-time enforcement.
+- Fallible stdlib revision folded in from v0.7.x (a return-type change is breaking, so it belongs in the `0.x.0`): `scroll.min()` / `max()` return `augury`, `sqrt` returns `fate`.
 - `try` / `recover` block syntax stays deferred — `?` covers the bulk of the use cases.
 
 ### v0.7.x — Scripting Ergonomics
@@ -69,7 +70,6 @@ The quality-of-life layer that makes AbySS practical for real command-line scrip
 - **`aura`** — a built-in `lexicon` of environment variables (read-only to start).
 - **`incant`** — string interpolation as a prefixed rune literal (`incant "count: {n}"`), additive so existing literals are untouched.
 - **`perish(code)`** — explicit abnormal termination.
-- Fallible-API revision: `min` / `max` / conversion helpers move to `augury` / `fate` returns.
 - REPL improvements: multi-line editing and history search.
 
 ### v0.8.x — LSP MVP

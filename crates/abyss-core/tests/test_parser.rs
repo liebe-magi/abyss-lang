@@ -37,3 +37,25 @@ fn emit_diagnostics_prints_reports() {
     emit_diagnostics("<test>", "artifact Foo {};", &diagnostics)
         .expect("ariadne should print diagnostics successfully");
 }
+
+#[test]
+fn incant_malformed_braces_emit_diagnostics() {
+    for (source, needle) in [
+        (r#"incant "unclosed {name";"#, "unclosed"),
+        (r#"incant "empty {}";"#, "empty"),
+        (r#"incant "stray } here";"#, "stray"),
+        (r#"incant "bad {na-me}";"#, "identifier"),
+    ] {
+        let outcome = parse(source);
+        assert!(
+            outcome
+                .diagnostics
+                .iter()
+                .any(|diag| diag.label.contains(needle)),
+            "expected `{}` diagnostic for {}, got {:?}",
+            needle,
+            source,
+            outcome.diagnostics
+        );
+    }
+}

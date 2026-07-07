@@ -1,4 +1,4 @@
-use crate::ast::{AssignmentOp, Expr, Pattern, Stmt, Type};
+use crate::ast::{AssignmentOp, Expr, IncantSegment, Pattern, Stmt, Type};
 use crate::parser::SourceComment;
 
 /// Walks the comment list in source order while statements are being
@@ -412,6 +412,22 @@ pub fn format_expr(expr: &Expr, indent_level: usize) -> String {
         }
         Expr::Propagate(inner, _) => {
             format!("{}?", format_with_parentheses(inner, current_precedence))
+        }
+        Expr::Incant { segments, .. } => {
+            let mut text = String::new();
+            for segment in segments {
+                match segment {
+                    IncantSegment::Text(piece) => {
+                        text.push_str(&piece.replace('{', "{{").replace('}', "}}"));
+                    }
+                    IncantSegment::Var(name) => {
+                        text.push('{');
+                        text.push_str(name);
+                        text.push('}');
+                    }
+                }
+            }
+            format!("incant \"{}\"", text)
         }
         Expr::Var(name, _) => name.clone(),
         Expr::FieldAccess { target, field, .. } => {

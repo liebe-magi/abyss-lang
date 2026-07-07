@@ -51,6 +51,19 @@ ember
 
 In the REPL and the Playground, `invocation` is an empty scroll.
 
+### `aura` — environment variables
+
+`aura` is a built-in immutable `lexicon` snapshotting the process environment at startup — the ambience the script runs in. Lexicon patterns make reading it pleasant:
+
+```aby
+oracle (aura) {
+    { "HOME": home } => unveil(home);
+    _ => unveil("no HOME in the aura");
+};
+```
+
+On the Playground the aura is empty (the browser sandbox has no environment).
+
 ### `perish(code)` — deliberate termination
 
 `perish(code)` ends the script with an exit code; `perish()` means code 0. Perishing is deliberate, not an error: `abyss invoke` exits with the code silently, while the REPL prints `Perished with code N — the session lives on` and keeps going.

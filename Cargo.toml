@@ -8,7 +8,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.6.1"
+version = "0.7.0"
 edition = "2024"
 authors = ["liebe-magi <ripe.gold1058@fastmail.com>"]
 license = "MIT"
@@ -16,8 +16,8 @@ repository = "https://github.com/liebe-magi/abyss-lang"
 homepage = "https://abyss-lang.dev"
 
 [workspace.dependencies]
-abyss-core = { path = "crates/abyss-core", version = "0.6.1" }
-abyss-interpreter = { path = "crates/abyss-interpreter", version = "0.6.1" }
+abyss-core = { path = "crates/abyss-core", version = "0.7.0" }
+abyss-interpreter = { path = "crates/abyss-interpreter", version = "0.7.0" }
 ariadne = "0.6"
 chumsky = "0.13"
 ordered-float = "5"

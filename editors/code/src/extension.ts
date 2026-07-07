@@ -15,7 +15,13 @@ export function activate(context: vscode.ExtensionContext) {
                 'morph',
                 'engrave',
                 'summon',
-                'ward'
+                'ward',
+                'fate',
+                'augury',
+                'bless',
+                'curse',
+                'manifest',
+                'naught'
             ];
             const completionItems = keywords.map(keyword => {
                 return new vscode.CompletionItem(keyword, vscode.CompletionItemKind.Keyword);

@@ -19,7 +19,7 @@ homepage = "https://abyss-lang.dev"
 abyss-core = { path = "crates/abyss-core", version = "0.7.0" }
 abyss-interpreter = { path = "crates/abyss-interpreter", version = "0.7.0" }
 ariadne = "0.6"
-chumsky = "0.13"
+chumsky = "0.14"
 ordered-float = "5"
 
 [workspace.metadata.release]
